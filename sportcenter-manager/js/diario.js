@@ -19,7 +19,6 @@ let viewingUserId = null; // uid di cui si sta visualizzando il diario
 let todayEntriesUnsub = null;
 
 let tipiAttivitaCache = [];
-let tipiUtenzaCache = [];
 let campiCache = [];
 let tipiGruppoPadelCache = [];
 let rowCounter = 0;
@@ -38,17 +37,15 @@ function calcOre(oraInizio, oraFine) {
   return Math.round((diff / 60) * 100) / 100;
 }
 
-// ---------- Caricamento cataloghi (tipi attività, utenza, campi, gruppo padel) ----------
+// ---------- Caricamento cataloghi (tipi attività, campi, gruppo padel) ----------
 
 async function loadCatalogs() {
-  const [taSnap, tuSnap, cSnap, tgSnap] = await Promise.all([
+  const [taSnap, cSnap, tgSnap] = await Promise.all([
     db.collection("tipiAttivita").where("attivo", "==", true).get(),
-    db.collection("tipiUtenza").where("attivo", "==", true).get(),
     db.collection("campi").where("attivo", "==", true).get(),
     db.collection("tipiGruppoPadel").where("attivo", "==", true).get()
   ]);
   tipiAttivitaCache = taSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-  tipiUtenzaCache = tuSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   campiCache = cSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   tipiGruppoPadelCache = tgSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
@@ -79,28 +76,25 @@ function rowHtml(rowId) {
           <select class="row-gruppo"></select>
         </div>
       </div>
-      <div class="field">
-        <label>Tipo utenza</label>
-        <select class="row-utenza"></select>
-      </div>
       <div class="row2">
-        <div class="field">
-          <label>Ora inizio</label>
-          <input type="time" class="row-orainizio" required>
-        </div>
-        <div class="field">
-          <label>Ora fine</label>
-          <input type="time" class="row-orafine" required>
-        </div>
-      </div>
-      <div class="row2">
-        <div class="field" style="flex:0 0 100px;">
-          <label>Quantità</label>
-          <input type="number" class="row-quantita" min="1" value="1" required>
+        <div class="field" style="flex:0 0 110px;">
+          <label>Nr. ore</label>
+          <input type="number" class="row-nrore" min="0" step="0.25" placeholder="es. 1.5">
         </div>
         <div class="field">
           <label>Note (opzionale)</label>
           <input type="text" class="row-note" placeholder="es. nome allievo">
+        </div>
+      </div>
+      <div class="row-label">oppure specifica gli orari</div>
+      <div class="row2">
+        <div class="field">
+          <label>Ora inizio</label>
+          <input type="time" class="row-orainizio">
+        </div>
+        <div class="field">
+          <label>Ora fine</label>
+          <input type="time" class="row-orafine">
         </div>
       </div>
     </div>
@@ -141,7 +135,6 @@ function addRow() {
 
   const rowEl = container.querySelector(`[data-row-id="${rowCounter}"]`);
   populateSelect(rowEl.querySelector(".row-disciplina"), DISCIPLINE);
-  populateSelect(rowEl.querySelector(".row-utenza"), tipiUtenzaCache.map(u => ({ id: u.id, label: u.nome })), "—");
   populateRowDependents(rowEl);
 
   rowEl.querySelector(".row-disciplina").addEventListener("change", () => populateRowDependents(rowEl));
@@ -194,19 +187,26 @@ async function onSubmitEntry(e) {
 
   const dataVal = document.getElementById("data").value;
   const rows = Array.from(document.querySelectorAll(".entry-row"));
-  const entriesToSave = [];
 
   try {
-    rows.forEach(rowEl => {
+    const entries = rows.map(rowEl => {
       const disciplina = rowEl.querySelector(".row-disciplina").value;
       const tipoAttivitaSel = rowEl.querySelector(".row-tipoattivita");
       const campoSel = rowEl.querySelector(".row-campo");
-      const utenzaSel = rowEl.querySelector(".row-utenza");
       const gruppoSel = rowEl.querySelector(".row-gruppo");
       const oraInizio = rowEl.querySelector(".row-orainizio").value;
       const oraFine = rowEl.querySelector(".row-orafine").value;
-      const quantita = Math.max(1, parseInt(rowEl.querySelector(".row-quantita").value, 10) || 1);
+      const nrOreRaw = rowEl.querySelector(".row-nrore").value;
       const note = rowEl.querySelector(".row-note").value.trim();
+
+      let ore;
+      if (nrOreRaw) {
+        ore = parseFloat(nrOreRaw);
+      } else if (oraInizio && oraFine) {
+        ore = calcOre(oraInizio, oraFine);
+      } else {
+        throw new Error("Per ogni riga inserisci il numero di ore oppure ora inizio e ora fine.");
+      }
 
       const entry = {
         userId: currentProfile.uid,
@@ -215,28 +215,24 @@ async function onSubmitEntry(e) {
         disciplina,
         tipoAttivitaId: tipoAttivitaSel.value,
         tipoAttivitaNome: selectedLabel(tipoAttivitaSel),
-        oraInizio,
-        oraFine,
-        ore: calcOre(oraInizio, oraFine),
+        ore,
         note,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       };
 
+      if (oraInizio) entry.oraInizio = oraInizio;
+      if (oraFine) entry.oraFine = oraFine;
       if (campoSel.value) entry.campoNumero = campoSel.value;
-      if (utenzaSel.value) {
-        entry.tipoUtenzaId = utenzaSel.value;
-        entry.tipoUtenzaNome = selectedLabel(utenzaSel);
-      }
       if (disciplina === "padel" && gruppoSel && gruppoSel.value) {
         entry.tipoGruppoId = gruppoSel.value;
         entry.tipoGruppoNome = selectedLabel(gruppoSel);
       }
 
-      for (let i = 0; i < quantita; i++) entriesToSave.push(entry);
+      return entry;
     });
 
     const batch = db.batch();
-    entriesToSave.forEach(entry => {
+    entries.forEach(entry => {
       batch.set(db.collection("diario").doc(), entry);
     });
     await batch.commit();
@@ -281,7 +277,7 @@ function renderEntries(entries) {
     if (en.campoNumero) metaParts.push("Campo " + en.campoNumero);
     if (en.tipoUtenzaNome) metaParts.push(en.tipoUtenzaNome);
     if (en.tipoGruppoNome) metaParts.push(en.tipoGruppoNome);
-    metaParts.push(`${en.oraInizio || "—"}–${en.oraFine || "—"}`);
+    if (en.oraInizio || en.oraFine) metaParts.push(`${en.oraInizio || "—"}–${en.oraFine || "—"}`);
     if (en.note) metaParts.push(en.note);
 
     return `
