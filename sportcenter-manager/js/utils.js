@@ -12,6 +12,22 @@ function disciplinaLabel(id) {
   return (DISCIPLINE.find(d => d.id === id) || {}).label || id;
 }
 
+// Etichette per voci diario create prima dell'introduzione dei tipi
+// attività configurabili (vedi pannello Configurazione).
+const LEGACY_TIPI_ATTIVITA_LABELS = {
+  lezione_privata: "Lezione privata",
+  corso: "Corso",
+  camp: "Camp",
+  manutenzione: "Manutenzione",
+  amministrazione: "Amministrazione",
+  altro: "Altro"
+};
+
+function tipoAttivitaLabelFor(entry) {
+  if (entry.tipoAttivitaNome) return entry.tipoAttivitaNome;
+  return LEGACY_TIPI_ATTIVITA_LABELS[entry.tipoAttivita] || entry.tipoAttivita || "—";
+}
+
 function escapeHtml(str) {
   return String(str).replace(/[&<>"']/g, (c) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"

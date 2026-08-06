@@ -3,17 +3,6 @@
 // Richiede firebase-config.js, utils.js e auth.js già caricati.
 // ============================================================
 
-// Etichette per voci storiche create prima dell'introduzione dei
-// tipi attività configurabili (vedi pannello Configurazione).
-const LEGACY_TIPI_ATTIVITA_LABELS = {
-  lezione_privata: "Lezione privata",
-  corso: "Corso",
-  camp: "Camp",
-  manutenzione: "Manutenzione",
-  amministrazione: "Amministrazione",
-  altro: "Altro"
-};
-
 let currentProfile = null;
 let viewingUserId = null; // uid di cui si sta visualizzando il diario
 let todayEntriesUnsub = null;
@@ -253,11 +242,6 @@ async function onSubmitEntry(e) {
 }
 
 // ---------- Elenco voci di oggi ----------
-
-function tipoAttivitaLabelFor(entry) {
-  if (entry.tipoAttivitaNome) return entry.tipoAttivitaNome;
-  return LEGACY_TIPI_ATTIVITA_LABELS[entry.tipoAttivita] || entry.tipoAttivita || "—";
-}
 
 function renderEntries(entries) {
   const list = document.getElementById("entries-list");

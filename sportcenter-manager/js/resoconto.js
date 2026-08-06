@@ -1,7 +1,9 @@
 // ============================================================
 // resoconto.js — totale ore per periodo (dal/al), con breakdown
-// per disciplina (vista personale) e per dipendente (chi ha il
-// permesso diario:leggi_tutti).
+// per disciplina (vista personale) e, per chi ha il permesso
+// diario:leggi_tutti, per dipendente e per tipo di attività con
+// cumulo dei costi (in base alle tariffe configurate) e totale
+// complessivo.
 // Richiede firebase-config.js, utils.js e auth.js già caricati.
 // ============================================================
 
@@ -38,19 +40,67 @@ async function loadPersonal(uid, dal, al) {
   return { totale, perDisciplina };
 }
 
-async function loadTutti(dal, al) {
-  const snap = await db.collection("diario")
-    .where("data", ">=", dal)
-    .where("data", "<=", al)
-    .get();
+// Tra le tariffe di un tipo attività, trova quella "per tutti" (senza
+// tipo utenza specifico, dato che il diario non lo registra più) il
+// cui periodo copre la data della voce. Se più tariffe si sovrappongono
+// vince quella con periodoInizio più recente.
+function prezzoPerData(tipoAttivita, dataStr) {
+  if (!tipoAttivita || !Array.isArray(tipoAttivita.prezzi)) return null;
 
-  const entries = snap.docs.map(d => d.data());
+  const candidate = tipoAttivita.prezzi
+    .filter(p => !p.tipoUtenzaId)
+    .filter(p => !p.periodoInizio || dataStr >= p.periodoInizio)
+    .filter(p => !p.periodoFine || dataStr <= p.periodoFine)
+    .sort((a, b) => (b.periodoInizio || "").localeCompare(a.periodoInizio || ""))[0];
+
+  return candidate ? candidate.prezzoOra : null;
+}
+
+async function loadTutti(dal, al) {
+  const [diarioSnap, tipiSnap] = await Promise.all([
+    db.collection("diario").where("data", ">=", dal).where("data", "<=", al).get(),
+    db.collection("tipiAttivita").get()
+  ]);
+
+  const entries = diarioSnap.docs.map(d => d.data());
+  const tipiById = {};
+  tipiSnap.docs.forEach(d => { tipiById[d.id] = { id: d.id, ...d.data() }; });
+
   const perUtente = {};
+  const perTipo = {};
+  let totaleOre = 0;
+  let totaleCosto = 0;
+  let vociSenzaTariffa = 0;
+
   entries.forEach(e => {
+    const ore = e.ore || 0;
+    totaleOre += ore;
+
     if (!perUtente[e.userId]) perUtente[e.userId] = { nome: e.userNome || e.userId, totale: 0 };
-    perUtente[e.userId].totale += (e.ore || 0);
+    perUtente[e.userId].totale += ore;
+
+    const tipoKey = e.tipoAttivitaId || ("legacy:" + (e.tipoAttivita || "altro"));
+    if (!perTipo[tipoKey]) perTipo[tipoKey] = { nome: tipoAttivitaLabelFor(e), ore: 0, costo: 0 };
+    perTipo[tipoKey].ore += ore;
+
+    const tipoAttivitaDoc = e.tipoAttivitaId ? tipiById[e.tipoAttivitaId] : null;
+    const prezzoOra = prezzoPerData(tipoAttivitaDoc, e.data);
+    if (prezzoOra != null) {
+      const costo = ore * prezzoOra;
+      perTipo[tipoKey].costo += costo;
+      totaleCosto += costo;
+    } else {
+      vociSenzaTariffa++;
+    }
   });
-  return Object.values(perUtente).sort((a, b) => b.totale - a.totale);
+
+  return {
+    perDipendente: Object.values(perUtente).sort((a, b) => b.totale - a.totale),
+    perTipoAttivita: Object.values(perTipo).sort((a, b) => b.ore - a.ore),
+    totaleOre,
+    totaleCosto,
+    vociSenzaTariffa
+  };
 }
 
 function renderDisciplinaBreakdown(perDisciplina) {
@@ -90,6 +140,25 @@ function renderDipendenti(lista) {
   `).join("");
 }
 
+function renderPerTipoAttivita(lista) {
+  const el = document.getElementById("tipoattivita-list");
+
+  if (lista.length === 0) {
+    el.innerHTML = `<div class="empty-state"><div class="display">Nessuna voce nel periodo</div></div>`;
+    return;
+  }
+
+  el.innerHTML = lista.map(t => `
+    <div class="entry-card">
+      <div class="entry-main">
+        <div class="entry-tipo">${escapeHtml(t.nome)}</div>
+        <div class="entry-meta">${t.ore.toFixed(1)}h</div>
+      </div>
+      <div class="entry-ore">CHF ${t.costo.toFixed(2)}</div>
+    </div>
+  `).join("");
+}
+
 async function calcola() {
   const dal = document.getElementById("dal").value;
   const al = document.getElementById("al").value;
@@ -106,7 +175,16 @@ async function calcola() {
 
     if (hasPermission(currentProfile, "diario:leggi_tutti")) {
       const tutti = await loadTutti(dal, al);
-      renderDipendenti(tutti);
+      renderDipendenti(tutti.perDipendente);
+      renderPerTipoAttivita(tutti.perTipoAttivita);
+
+      document.getElementById("totale-complessivo-ore").innerHTML = `${tutti.totaleOre.toFixed(1)}<small>h</small>`;
+      document.getElementById("totale-complessivo-costo").textContent = `CHF ${tutti.totaleCosto.toFixed(2)}`;
+
+      const warningEl = document.getElementById("tariffe-warning");
+      warningEl.textContent = tutti.vociSenzaTariffa > 0
+        ? `${tutti.vociSenzaTariffa} voci senza tariffa configurata (escluse dal totale costi).`
+        : "";
     }
   } catch (err) {
     showError(errorEl, "Errore nel calcolo: " + err.message);
