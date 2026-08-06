@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Resoconto — sportcenter-manager</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <h1>Resoconto</h1>
+    <div class="user-chip" id="user-chip">—</div>
+  </div>
+
+  <main>
+
+    <div class="section-title"><h2>Periodo</h2></div>
+    <form id="period-form">
+      <div class="row2">
+        <div class="field">
+          <label for="dal">Dal</label>
+          <input type="date" id="dal" required>
+        </div>
+        <div class="field">
+          <label for="al">Al</label>
+          <input type="date" id="al" required>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary" id="calcola-btn">Calcola</button>
+    </form>
+
+    <hr class="court-divider">
+
+    <div class="scoreboard">
+      <div>
+        <div class="label" id="totale-label">Ore totali nel periodo</div>
+        <div class="value" id="totale-ore">0.0<small>h</small></div>
+      </div>
+    </div>
+
+    <div id="disciplina-breakdown"></div>
+
+    <div id="admin-section" class="hidden">
+      <hr class="court-divider">
+      <div class="section-title"><h2>Per dipendente</h2></div>
+      <div id="dipendenti-list">
+        <div class="empty-state"><div class="display">Caricamento…</div></div>
+      </div>
+    </div>
+
+  </main>
+
+  <nav class="bottom-nav">
+    <a href="diario.html">Diario</a>
+    <a href="resoconto.html" class="active">Resoconto</a>
+    <a href="#" title="In arrivo">Corsi</a>
+    <a href="#" title="In arrivo">Prenotazioni</a>
+    <a href="#" title="In arrivo">Camp</a>
+    <a href="utenti.html">Team</a>
+    <a href="configurazione.html">Config</a>
+    <a href="#" id="logout-link">Esci</a>
+  </nav>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/resoconto.js"></script>
+</body>
+</html>
