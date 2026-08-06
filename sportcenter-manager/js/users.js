@@ -6,6 +6,38 @@
 let currentProfile = null;
 let rolesCache = []; // [{id, permessi:[...]}]
 
+const KNOWN_PERMISSIONS = [
+  { id: "*", label: "Amministratore (tutti i permessi)" },
+  { id: "diario:leggi_tutti", label: "Diario: leggere le voci di tutti" },
+  { id: "diario:gestisci_tutti", label: "Diario: modificare/cancellare le voci di tutti" },
+  { id: "users:gestisci", label: "Gestire utenti" },
+  { id: "ruoli:gestisci", label: "Gestire ruoli e permessi" },
+  { id: "config:gestisci", label: "Gestire configurazione (tipi attività, tariffe, campi)" }
+];
+
+function permessoLabel(id) {
+  return (KNOWN_PERMISSIONS.find(p => p.id === id) || {}).label || id;
+}
+
+function getCheckedPermessi() {
+  return Array.from(document.querySelectorAll("#new-role-permessi-list input[type=checkbox]:checked")).map(cb => cb.value);
+}
+
+function setCheckedPermessi(permessi) {
+  document.querySelectorAll("#new-role-permessi-list input[type=checkbox]").forEach(cb => {
+    cb.checked = (permessi || []).includes(cb.value);
+  });
+  syncAdminExclusive();
+}
+
+function syncAdminExclusive() {
+  const adminCb = document.getElementById("perm-admin");
+  document.querySelectorAll("#new-role-permessi-list input[type=checkbox]:not(#perm-admin)").forEach(cb => {
+    cb.disabled = adminCb.checked;
+    if (adminCb.checked) cb.checked = false;
+  });
+}
+
 // ---------- Creazione utente senza perdere la sessione admin ----------
 // Creare un utente con l'SDK client normale forza il login automatico
 // sul nuovo account, disconnettendo l'admin. Per evitarlo, usiamo una
@@ -129,13 +161,23 @@ async function loadRoles() {
   }
 
   list.innerHTML = roles.map(r => `
-    <div class="entry-card">
+    <div class="entry-card" data-role-id="${r.id}">
       <div class="entry-main">
         <div class="entry-tipo">${escapeHtml(r.id)}</div>
-        <div class="entry-meta">${(r.permessi || []).map(escapeHtml).join(", ") || "nessun permesso"}</div>
+        <div class="entry-meta">${(r.permessi || []).map(p => escapeHtml(permessoLabel(p))).join(", ") || "nessun permesso"}</div>
       </div>
+      <button class="btn btn-ghost edit-role-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${r.id}">Modifica</button>
     </div>
   `).join("");
+
+  list.querySelectorAll(".edit-role-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const role = roles.find(r => r.id === btn.dataset.id);
+      document.getElementById("new-role-id").value = role.id;
+      setCheckedPermessi(role.permessi || []);
+      document.getElementById("new-role-id").scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  });
 }
 
 async function onCreateRole(e) {
@@ -144,25 +186,23 @@ async function onCreateRole(e) {
   const errorEl = document.getElementById("new-role-error");
   errorEl.textContent = "";
   btn.disabled = true;
-  btn.textContent = "Creazione…";
+  btn.textContent = "Salvataggio…";
 
   const roleId = document.getElementById("new-role-id").value.trim();
-  const permessiRaw = document.getElementById("new-role-permessi").value.trim();
-  const permessi = permessiRaw
-    ? permessiRaw.split(",").map(p => p.trim()).filter(Boolean)
-    : [];
+  const permessi = getCheckedPermessi();
 
   try {
     if (!roleId) throw new Error("Inserisci un ID ruolo (es. reception).");
     await db.collection("roles").doc(roleId).set({ permessi });
     document.getElementById("new-role-form").reset();
+    syncAdminExclusive();
     await loadRoles();
     await populateRoleSelect();
   } catch (err) {
     errorEl.textContent = "Errore: " + err.message;
   } finally {
     btn.disabled = false;
-    btn.textContent = "Crea ruolo";
+    btn.textContent = "Salva ruolo";
   }
 }
 
@@ -180,6 +220,7 @@ requireAuth(async (profile) => {
 
   document.getElementById("new-user-form").addEventListener("submit", onCreateUser);
   document.getElementById("new-role-form").addEventListener("submit", onCreateRole);
+  document.getElementById("perm-admin").addEventListener("change", syncAdminExclusive);
 
   await populateRoleSelect();
   await loadUsers();

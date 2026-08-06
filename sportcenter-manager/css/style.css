@@ -221,6 +221,36 @@ select:focus, input:focus, textarea:focus {
 .row2 { display: flex; gap: 10px; }
 .row2 > .field { flex: 1; }
 
+/* Checklist permessi ruolo */
+.checkbox-list {
+  border: 1px solid var(--court-blue-700);
+  border-radius: 8px;
+  padding: 4px 12px;
+}
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px dashed var(--court-blue-700);
+}
+.checkbox-row:last-child { border-bottom: none; }
+.checkbox-row input[type=checkbox] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--ball);
+  flex-shrink: 0;
+}
+.checkbox-row label {
+  font-size: 0.85rem;
+  color: var(--line-white);
+  text-transform: none;
+  letter-spacing: normal;
+  cursor: pointer;
+}
+.checkbox-row.admin-row label { color: var(--ball); font-weight: 600; }
+.checkbox-row input:disabled + label { color: var(--chalk-grey-dim); cursor: not-allowed; }
+
 /* Riga ripetibile (voci diario, tariffe tipo attività) */
 .row-card {
   border: 1px dashed var(--court-blue-700);
