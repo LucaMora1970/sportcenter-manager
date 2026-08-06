@@ -67,12 +67,6 @@ async function onToggleActive(e) {
   }
 }
 
-function escapeHtml(str) {
-  return String(str).replace(/[&<>"']/g, (c) => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
-  }[c]));
-}
-
 async function populateRoleSelect() {
   const select = document.getElementById("new-user-ruolo");
   const snap = await db.collection("roles").get();

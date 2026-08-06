@@ -221,6 +221,49 @@ select:focus, input:focus, textarea:focus {
 .row2 { display: flex; gap: 10px; }
 .row2 > .field { flex: 1; }
 
+/* Riga ripetibile (voci diario, tariffe tipo attività) */
+.row-card {
+  border: 1px dashed var(--court-blue-700);
+  border-radius: var(--radius);
+  padding: 16px 14px 4px;
+  margin-bottom: 14px;
+  position: relative;
+}
+.row-label {
+  font-family: 'Space Mono', monospace;
+  font-size: 0.7rem;
+  color: var(--chalk-grey);
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.row-remove {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  background: transparent;
+  border: none;
+  color: var(--chalk-grey-dim);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  padding: 4px;
+}
+.row-remove:hover { color: var(--danger); }
+.add-row-btn { margin-bottom: 16px; }
+
+.catalog-warning {
+  background: rgba(224,100,90,0.1);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  padding: 14px;
+  color: var(--line-white);
+  font-size: 0.85rem;
+  margin-bottom: 16px;
+}
+.catalog-warning a { text-decoration: underline; }
+
 .btn {
   display: inline-flex;
   align-items: center;

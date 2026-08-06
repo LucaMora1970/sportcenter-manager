@@ -66,6 +66,30 @@ service cloud.firestore {
       );
     }
 
+    // Configurazione (pannello "Configurazione"): tipi utenza, campi, tipi
+    // gruppo padel, tipi attività con tariffe. Lettura aperta a chiunque sia
+    // loggato (servono per i menu a tendina del diario), scrittura riservata
+    // a chi ha il permesso "config:gestisci".
+    match /tipiUtenza/{id} {
+      allow read: if isSignedIn();
+      allow write: if hasPermission("config:gestisci");
+    }
+
+    match /campi/{id} {
+      allow read: if isSignedIn();
+      allow write: if hasPermission("config:gestisci");
+    }
+
+    match /tipiGruppoPadel/{id} {
+      allow read: if isSignedIn();
+      allow write: if hasPermission("config:gestisci");
+    }
+
+    match /tipiAttivita/{id} {
+      allow read: if isSignedIn();
+      allow write: if hasPermission("config:gestisci");
+    }
+
     // Placeholder per collezioni future (corsi, prenotazioni_padel, camp, pagamenti):
     // aggiungere qui blocchi match dedicati man mano che si sviluppano le pagine,
     // seguendo lo stesso pattern basato su hasPermission().

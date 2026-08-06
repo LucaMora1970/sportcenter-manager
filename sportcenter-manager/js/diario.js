@@ -1,25 +1,28 @@
 // ============================================================
 // diario.js — inserimento e riepilogo voci del diario giornaliero
+// Richiede firebase-config.js, utils.js e auth.js già caricati.
 // ============================================================
 
-const DISCIPLINE = [
-  { id: "tennis", label: "Tennis" },
-  { id: "padel", label: "Padel" },
-  { id: "squash", label: "Squash" }
-];
-
-const TIPI_ATTIVITA = [
-  { id: "lezione_privata", label: "Lezione privata" },
-  { id: "corso", label: "Corso" },
-  { id: "camp", label: "Camp" },
-  { id: "manutenzione", label: "Manutenzione" },
-  { id: "amministrazione", label: "Amministrazione" },
-  { id: "altro", label: "Altro" }
-];
+// Etichette per voci storiche create prima dell'introduzione dei
+// tipi attività configurabili (vedi pannello Configurazione).
+const LEGACY_TIPI_ATTIVITA_LABELS = {
+  lezione_privata: "Lezione privata",
+  corso: "Corso",
+  camp: "Camp",
+  manutenzione: "Manutenzione",
+  amministrazione: "Amministrazione",
+  altro: "Altro"
+};
 
 let currentProfile = null;
 let viewingUserId = null; // uid di cui si sta visualizzando il diario
 let todayEntriesUnsub = null;
+
+let tipiAttivitaCache = [];
+let tipiUtenzaCache = [];
+let campiCache = [];
+let tipiGruppoPadelCache = [];
+let rowCounter = 0;
 
 function todayISO() {
   const d = new Date();
@@ -35,16 +38,152 @@ function calcOre(oraInizio, oraFine) {
   return Math.round((diff / 60) * 100) / 100;
 }
 
-function populateSelect(selectEl, options) {
-  selectEl.innerHTML = options.map(o => `<option value="${o.id}">${o.label}</option>`).join("");
+// ---------- Caricamento cataloghi (tipi attività, utenza, campi, gruppo padel) ----------
+
+async function loadCatalogs() {
+  const [taSnap, tuSnap, cSnap, tgSnap] = await Promise.all([
+    db.collection("tipiAttivita").where("attivo", "==", true).get(),
+    db.collection("tipiUtenza").where("attivo", "==", true).get(),
+    db.collection("campi").where("attivo", "==", true).get(),
+    db.collection("tipiGruppoPadel").where("attivo", "==", true).get()
+  ]);
+  tipiAttivitaCache = taSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  tipiUtenzaCache = tuSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  campiCache = cSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  tipiGruppoPadelCache = tgSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
+// ---------- Righe ripetibili del form ----------
+
+function rowHtml(rowId) {
+  return `
+    <div class="row-card entry-row" data-row-id="${rowId}">
+      <button type="button" class="row-remove" data-remove-row="${rowId}">Rimuovi</button>
+      <div class="row2">
+        <div class="field">
+          <label>Disciplina</label>
+          <select class="row-disciplina" required></select>
+        </div>
+        <div class="field">
+          <label>Tipo attività</label>
+          <select class="row-tipoattivita" required></select>
+        </div>
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label>Campo</label>
+          <select class="row-campo"></select>
+        </div>
+        <div class="field row-gruppo-field hidden">
+          <label>Tipo gruppo</label>
+          <select class="row-gruppo"></select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Tipo utenza</label>
+        <select class="row-utenza"></select>
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label>Ora inizio</label>
+          <input type="time" class="row-orainizio" required>
+        </div>
+        <div class="field">
+          <label>Ora fine</label>
+          <input type="time" class="row-orafine" required>
+        </div>
+      </div>
+      <div class="row2">
+        <div class="field" style="flex:0 0 100px;">
+          <label>Quantità</label>
+          <input type="number" class="row-quantita" min="1" value="1" required>
+        </div>
+        <div class="field">
+          <label>Note (opzionale)</label>
+          <input type="text" class="row-note" placeholder="es. nome allievo">
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function populateRowDependents(rowEl) {
+  const disciplina = rowEl.querySelector(".row-disciplina").value;
+
+  const tipiPerDisciplina = tipiAttivitaCache.filter(t => t.disciplina === disciplina);
+  populateSelect(
+    rowEl.querySelector(".row-tipoattivita"),
+    tipiPerDisciplina.map(t => ({ id: t.id, label: t.nome }))
+  );
+
+  const campiPerDisciplina = campiCache.filter(c => c.disciplina === disciplina);
+  populateSelect(
+    rowEl.querySelector(".row-campo"),
+    campiPerDisciplina.map(c => ({ id: c.numero, label: "Campo " + c.numero })),
+    "—"
+  );
+
+  const gruppoField = rowEl.querySelector(".row-gruppo-field");
+  const gruppoSelect = rowEl.querySelector(".row-gruppo");
+  if (disciplina === "padel" && tipiGruppoPadelCache.length > 0) {
+    gruppoField.classList.remove("hidden");
+    populateSelect(gruppoSelect, tipiGruppoPadelCache.map(g => ({ id: g.id, label: g.nome })), "—");
+  } else {
+    gruppoField.classList.add("hidden");
+    gruppoSelect.innerHTML = "";
+  }
+}
+
+function addRow() {
+  rowCounter++;
+  const container = document.getElementById("rows-container");
+  container.insertAdjacentHTML("beforeend", rowHtml(rowCounter));
+
+  const rowEl = container.querySelector(`[data-row-id="${rowCounter}"]`);
+  populateSelect(rowEl.querySelector(".row-disciplina"), DISCIPLINE);
+  populateSelect(rowEl.querySelector(".row-utenza"), tipiUtenzaCache.map(u => ({ id: u.id, label: u.nome })), "—");
+  populateRowDependents(rowEl);
+
+  rowEl.querySelector(".row-disciplina").addEventListener("change", () => populateRowDependents(rowEl));
+  updateRemoveButtons();
+}
+
+function updateRemoveButtons() {
+  const rows = document.querySelectorAll(".entry-row");
+  rows.forEach(r => {
+    r.querySelector(".row-remove").classList.toggle("hidden", rows.length <= 1);
+  });
+}
+
+function wireRowRemoval() {
+  document.getElementById("rows-container").addEventListener("click", (e) => {
+    if (e.target.matches("[data-remove-row]")) {
+      e.target.closest(".entry-row").remove();
+      updateRemoveButtons();
+    }
+  });
+}
+
+// ---------- Init form ----------
+
 function initForm() {
-  populateSelect(document.getElementById("disciplina"), DISCIPLINE);
-  populateSelect(document.getElementById("tipoAttivita"), TIPI_ATTIVITA);
   document.getElementById("data").value = todayISO();
 
+  if (tipiAttivitaCache.length === 0) {
+    document.getElementById("catalog-warning").classList.remove("hidden");
+    document.getElementById("entry-form").classList.add("hidden");
+    return;
+  }
+
+  addRow();
+  document.getElementById("add-row-btn").addEventListener("click", addRow);
+  wireRowRemoval();
   document.getElementById("entry-form").addEventListener("submit", onSubmitEntry);
+}
+
+function selectedLabel(selectEl) {
+  const opt = selectEl.options[selectEl.selectedIndex];
+  return opt ? opt.textContent : "";
 }
 
 async function onSubmitEntry(e) {
@@ -53,29 +192,59 @@ async function onSubmitEntry(e) {
   btn.disabled = true;
   btn.textContent = "Salvataggio…";
 
-  const oraInizio = document.getElementById("oraInizio").value;
-  const oraFine = document.getElementById("oraFine").value;
-
-  const entry = {
-    userId: currentProfile.uid,
-    userNome: currentProfile.nome,
-    data: document.getElementById("data").value,
-    disciplina: document.getElementById("disciplina").value,
-    tipoAttivita: document.getElementById("tipoAttivita").value,
-    oraInizio,
-    oraFine,
-    ore: calcOre(oraInizio, oraFine),
-    note: document.getElementById("note").value.trim(),
-    createdAt: firebase.firestore.FieldValue.serverTimestamp()
-  };
+  const dataVal = document.getElementById("data").value;
+  const rows = Array.from(document.querySelectorAll(".entry-row"));
+  const entriesToSave = [];
 
   try {
-    await db.collection("diario").add(entry);
-    document.getElementById("entry-form").reset();
-    document.getElementById("data").value = todayISO();
-    document.getElementById("oraInizio").value = "";
-    document.getElementById("oraFine").value = "";
-    document.getElementById("note").value = "";
+    rows.forEach(rowEl => {
+      const disciplina = rowEl.querySelector(".row-disciplina").value;
+      const tipoAttivitaSel = rowEl.querySelector(".row-tipoattivita");
+      const campoSel = rowEl.querySelector(".row-campo");
+      const utenzaSel = rowEl.querySelector(".row-utenza");
+      const gruppoSel = rowEl.querySelector(".row-gruppo");
+      const oraInizio = rowEl.querySelector(".row-orainizio").value;
+      const oraFine = rowEl.querySelector(".row-orafine").value;
+      const quantita = Math.max(1, parseInt(rowEl.querySelector(".row-quantita").value, 10) || 1);
+      const note = rowEl.querySelector(".row-note").value.trim();
+
+      const entry = {
+        userId: currentProfile.uid,
+        userNome: currentProfile.nome,
+        data: dataVal,
+        disciplina,
+        tipoAttivitaId: tipoAttivitaSel.value,
+        tipoAttivitaNome: selectedLabel(tipoAttivitaSel),
+        oraInizio,
+        oraFine,
+        ore: calcOre(oraInizio, oraFine),
+        note,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      };
+
+      if (campoSel.value) entry.campoNumero = campoSel.value;
+      if (utenzaSel.value) {
+        entry.tipoUtenzaId = utenzaSel.value;
+        entry.tipoUtenzaNome = selectedLabel(utenzaSel);
+      }
+      if (disciplina === "padel" && gruppoSel && gruppoSel.value) {
+        entry.tipoGruppoId = gruppoSel.value;
+        entry.tipoGruppoNome = selectedLabel(gruppoSel);
+      }
+
+      for (let i = 0; i < quantita; i++) entriesToSave.push(entry);
+    });
+
+    const batch = db.batch();
+    entriesToSave.forEach(entry => {
+      batch.set(db.collection("diario").doc(), entry);
+    });
+    await batch.commit();
+
+    document.getElementById("rows-container").innerHTML = "";
+    rowCounter = 0;
+    addRow();
+    document.getElementById("data").value = dataVal;
   } catch (err) {
     alert("Errore nel salvataggio: " + err.message);
   } finally {
@@ -84,11 +253,11 @@ async function onSubmitEntry(e) {
   }
 }
 
-function disciplinaLabel(id) {
-  return (DISCIPLINE.find(d => d.id === id) || {}).label || id;
-}
-function tipoLabel(id) {
-  return (TIPI_ATTIVITA.find(t => t.id === id) || {}).label || id;
+// ---------- Elenco voci di oggi ----------
+
+function tipoAttivitaLabelFor(entry) {
+  if (entry.tipoAttivitaNome) return entry.tipoAttivitaNome;
+  return LEGACY_TIPI_ATTIVITA_LABELS[entry.tipoAttivita] || entry.tipoAttivita || "—";
 }
 
 function renderEntries(entries) {
@@ -107,12 +276,20 @@ function renderEntries(entries) {
   let total = 0;
   list.innerHTML = entries.map(en => {
     total += en.ore || 0;
+
+    const metaParts = [];
+    if (en.campoNumero) metaParts.push("Campo " + en.campoNumero);
+    if (en.tipoUtenzaNome) metaParts.push(en.tipoUtenzaNome);
+    if (en.tipoGruppoNome) metaParts.push(en.tipoGruppoNome);
+    metaParts.push(`${en.oraInizio || "—"}–${en.oraFine || "—"}`);
+    if (en.note) metaParts.push(en.note);
+
     return `
       <div class="entry-card">
         <div class="entry-main">
           <span class="badge ${en.disciplina}">${disciplinaLabel(en.disciplina)}</span>
-          <div class="entry-tipo">${tipoLabel(en.tipoAttivita)}</div>
-          <div class="entry-meta">${en.oraInizio || "—"}–${en.oraFine || "—"}${en.note ? " · " + en.note : ""}</div>
+          <div class="entry-tipo">${escapeHtml(tipoAttivitaLabelFor(en))}</div>
+          <div class="entry-meta">${escapeHtml(metaParts.join(" · "))}</div>
         </div>
         <div class="entry-ore">${(en.ore || 0).toFixed(1)}h</div>
       </div>
@@ -142,7 +319,7 @@ function listenToday() {
     );
 }
 
-requireAuth((profile) => {
+requireAuth(async (profile) => {
   currentProfile = profile;
   viewingUserId = profile.uid;
 
@@ -153,6 +330,7 @@ requireAuth((profile) => {
     document.getElementById("admin-hint").classList.remove("hidden");
   }
 
+  await loadCatalogs();
   initForm();
   listenToday();
 });

@@ -29,38 +29,20 @@
 
     <!-- Form nuova voce -->
     <div class="section-title"><h2>Nuova voce</h2></div>
+
+    <div id="catalog-warning" class="catalog-warning hidden">
+      Nessun tipo attività configurato. Vai su <a href="configurazione.html">Config</a> per crearne almeno uno prima di registrare voci.
+    </div>
+
     <form id="entry-form">
-      <div class="row2">
-        <div class="field">
-          <label for="data">Data</label>
-          <input type="date" id="data" required>
-        </div>
-        <div class="field">
-          <label for="disciplina">Disciplina</label>
-          <select id="disciplina" required></select>
-        </div>
-      </div>
-
       <div class="field">
-        <label for="tipoAttivita">Tipo attività</label>
-        <select id="tipoAttivita" required></select>
+        <label for="data">Data</label>
+        <input type="date" id="data" required>
       </div>
 
-      <div class="row2">
-        <div class="field">
-          <label for="oraInizio">Ora inizio</label>
-          <input type="time" id="oraInizio" required>
-        </div>
-        <div class="field">
-          <label for="oraFine">Ora fine</label>
-          <input type="time" id="oraFine" required>
-        </div>
-      </div>
+      <div id="rows-container"></div>
 
-      <div class="field">
-        <label for="note">Note (opzionale)</label>
-        <input type="text" id="note" placeholder="es. nome allievo, campo, dettagli">
-      </div>
+      <button type="button" class="btn btn-ghost add-row-btn" id="add-row-btn">+ Aggiungi riga</button>
 
       <button type="submit" class="btn btn-primary" id="save-btn">Salva voce</button>
     </form>
@@ -82,6 +64,7 @@
     <a href="#" title="In arrivo">Prenotazioni</a>
     <a href="#" title="In arrivo">Camp</a>
     <a href="utenti.html">Team</a>
+    <a href="configurazione.html">Config</a>
     <a href="#" id="logout-link">Esci</a>
   </nav>
 
@@ -91,6 +74,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="js/firebase-config.js"></script>
+<script src="js/utils.js"></script>
 <script src="js/auth.js"></script>
 <script src="js/diario.js"></script>
 </body>
