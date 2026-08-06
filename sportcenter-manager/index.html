@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>sportcenter-manager — Accedi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app">
+  <div class="login-wrap">
+    <div class="login-hero">
+      <div class="display">Sportcenter<br>Manager</div>
+      <div class="tag">TENNIS · PADEL · SQUASH</div>
+    </div>
+
+    <form id="login-form">
+      <div class="field">
+        <label for="email">Email</label>
+        <input type="email" id="email" required autocomplete="username" placeholder="nome.cognome@circolo.ch">
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input type="password" id="password" required autocomplete="current-password" placeholder="••••••••">
+      </div>
+      <div class="error-msg" id="error-msg"></div>
+      <button type="submit" class="btn btn-primary" id="login-btn">Accedi</button>
+    </form>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/auth.js"></script>
+<script>
+  // Se già loggato, salta direttamente al diario
+  auth.onAuthStateChanged((user) => {
+    if (user) window.location.href = "diario.html";
+  });
+
+  const form = document.getElementById("login-form");
+  const errorMsg = document.getElementById("error-msg");
+  const btn = document.getElementById("login-btn");
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    errorMsg.textContent = "";
+    btn.disabled = true;
+    btn.textContent = "Accesso in corso…";
+
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value;
+
+    try {
+      await auth.signInWithEmailAndPassword(email, password);
+      window.location.href = "diario.html";
+    } catch (err) {
+      errorMsg.textContent = "Credenziali non valide. Riprova.";
+      btn.disabled = false;
+      btn.textContent = "Accedi";
+    }
+  });
+</script>
+</body>
+</html>

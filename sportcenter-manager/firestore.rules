@@ -1,0 +1,73 @@
+rules_version = '2';
+
+// ============================================================
+// sportcenter-manager — Security Rules
+//
+// Modello: ogni utente ha un documento in /users/{uid} con ruoloId.
+// Il ruolo (/roles/{ruoloId}) contiene un array "permessi" (stringhe),
+// oppure ["*"] per admin con accesso completo.
+//
+// Le rules leggono il documento utente/ruolo dell'utente autenticato
+// per decidere se un permesso è presente (get() dentro alle rules).
+// ============================================================
+
+function isSignedIn() {
+  return request.auth != null;
+}
+
+function userDoc() {
+  return get(/databases/$(database)/documents/users/$(request.auth.uid));
+}
+
+function roleDoc() {
+  return get(/databases/$(database)/documents/roles/$(userDoc().data.ruoloId));
+}
+
+function hasPermission(perm) {
+  return isSignedIn()
+    && userDoc().data.attivo != false
+    && (
+      roleDoc().data.permessi.hasAny([perm])
+      || roleDoc().data.permessi.hasAny(["*"])
+    );
+}
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Ogni utente può leggere il proprio profilo; l'admin (users:gestisci) tutti.
+    match /users/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || hasPermission("users:gestisci"));
+      allow write: if hasPermission("users:gestisci");
+    }
+
+    // I ruoli sono leggibili da chi è loggato (servono per calcolare i permessi),
+    // ma modificabili solo da chi gestisce i ruoli.
+    match /roles/{roleId} {
+      allow read: if isSignedIn();
+      allow write: if hasPermission("ruoli:gestisci");
+    }
+
+    // Diario giornaliero:
+    // - un dipendente può creare/leggere/modificare solo le proprie voci (userId == uid)
+    // - chi ha "diario:leggi_tutti" può leggere le voci di chiunque
+    // - chi ha "diario:gestisci_tutti" può anche modificare/cancellare voci altrui
+    match /diario/{entryId} {
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+
+      allow read: if isSignedIn() && (
+        resource.data.userId == request.auth.uid
+        || hasPermission("diario:leggi_tutti")
+      );
+
+      allow update, delete: if isSignedIn() && (
+        resource.data.userId == request.auth.uid
+        || hasPermission("diario:gestisci_tutti")
+      );
+    }
+
+    // Placeholder per collezioni future (corsi, prenotazioni_padel, camp, pagamenti):
+    // aggiungere qui blocchi match dedicati man mano che si sviluppano le pagine,
+    // seguendo lo stesso pattern basato su hasPermission().
+  }
+}
