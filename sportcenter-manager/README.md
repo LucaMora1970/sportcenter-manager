@@ -1,4 +1,4 @@
-# sportcenter-manager 
+# sportcenter-manager Luca
 
 Gestionale mobile-first per centro sportivo (tennis, padel, squash): diario ore
 dipendenti, corsi, camp, prenotazioni padel, amministrazione. Stack identico a
