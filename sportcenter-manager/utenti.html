@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Utenti e ruoli — sportcenter-manager</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <h1>Utenti</h1>
+    <div class="user-chip" id="user-chip">—</div>
+  </div>
+
+  <main>
+
+    <div id="access-denied" class="empty-state hidden">
+      <div class="display">Accesso non consentito</div>
+      <p>Questa sezione è riservata all'amministrazione.</p>
+    </div>
+
+    <div id="admin-content">
+
+      <!-- Elenco utenti -->
+      <div class="section-title"><h2>Team</h2></div>
+      <div id="users-list">
+        <div class="empty-state"><div class="display">Caricamento…</div></div>
+      </div>
+
+      <hr class="court-divider">
+
+      <!-- Nuovo utente -->
+      <div class="section-title"><h2>Nuovo utente</h2></div>
+      <form id="new-user-form">
+        <div class="field">
+          <label for="new-user-nome">Nome</label>
+          <input type="text" id="new-user-nome" required placeholder="Nome Cognome">
+        </div>
+        <div class="field">
+          <label for="new-user-email">Email</label>
+          <input type="email" id="new-user-email" required placeholder="nome.cognome@circolo.ch">
+        </div>
+        <div class="field">
+          <label for="new-user-password">Password iniziale</label>
+          <input type="text" id="new-user-password" required minlength="6" placeholder="almeno 6 caratteri">
+        </div>
+        <div class="field">
+          <label for="new-user-ruolo">Ruolo</label>
+          <select id="new-user-ruolo" required></select>
+        </div>
+        <div class="error-msg" id="new-user-error"></div>
+        <button type="submit" class="btn btn-primary" id="create-user-btn">Crea utente</button>
+      </form>
+
+      <hr class="court-divider">
+
+      <!-- Elenco ruoli -->
+      <div class="section-title"><h2>Ruoli e permessi</h2></div>
+      <div id="roles-list">
+        <div class="empty-state"><div class="display">Caricamento…</div></div>
+      </div>
+
+      <div class="section-title" style="margin-top:20px;"><h2>Nuovo ruolo</h2></div>
+      <form id="new-role-form">
+        <div class="field">
+          <label for="new-role-id">ID ruolo</label>
+          <input type="text" id="new-role-id" required placeholder="es. reception">
+        </div>
+        <div class="field">
+          <label for="new-role-permessi">Permessi (separati da virgola)</label>
+          <input type="text" id="new-role-permessi" placeholder="es. diario:scrivi_proprio, diario:leggi_tutti">
+        </div>
+        <div class="error-msg" id="new-role-error"></div>
+        <button type="submit" class="btn btn-primary" id="create-role-btn">Crea ruolo</button>
+      </form>
+
+    </div>
+
+  </main>
+
+  <nav class="bottom-nav">
+    <a href="diario.html">Diario</a>
+    <a href="#" title="In arrivo">Corsi</a>
+    <a href="#" title="In arrivo">Prenotazioni</a>
+    <a href="utenti.html" class="active">Team</a>
+    <a href="#" id="logout-link">Esci</a>
+  </nav>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/users.js"></script>
+</body>
+</html>
