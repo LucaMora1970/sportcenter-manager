@@ -37,7 +37,7 @@ function renderSimpleList(containerId, items, labelFn, metaFn, collectionName, r
         await db.collection(collectionName).doc(btn.dataset.id).update({ attivo: btn.dataset.attivo !== "true" });
         await reloadFn();
       } catch (err) {
-        alert("Errore: " + err.message);
+        showError(document.getElementById("config-list-error"), "Errore: " + err.message);
         btn.disabled = false;
       }
     });
@@ -72,7 +72,7 @@ async function onCreateTipoUtenza(e) {
     document.getElementById("new-tipoutenza-form").reset();
     await loadTipiUtenza();
   } catch (err) {
-    errorEl.textContent = "Errore: " + err.message;
+    showError(errorEl, "Errore: " + err.message);
   } finally {
     btn.disabled = false;
   }
@@ -106,7 +106,7 @@ async function onCreateCampo(e) {
     document.getElementById("new-campo-form").reset();
     await loadCampi();
   } catch (err) {
-    errorEl.textContent = "Errore: " + err.message;
+    showError(errorEl, "Errore: " + err.message);
   } finally {
     btn.disabled = false;
   }
@@ -139,7 +139,7 @@ async function onCreateTipoGruppoPadel(e) {
     document.getElementById("new-tipogruppopadel-form").reset();
     await loadTipiGruppoPadel();
   } catch (err) {
-    errorEl.textContent = "Errore: " + err.message;
+    showError(errorEl, "Errore: " + err.message);
   } finally {
     btn.disabled = false;
   }
@@ -254,7 +254,7 @@ async function onCreateTipoAttivita(e) {
     document.getElementById("prezzi-rows-container").innerHTML = "";
     await loadTipiAttivita();
   } catch (err) {
-    errorEl.textContent = "Errore: " + err.message;
+    showError(errorEl, "Errore: " + err.message);
   } finally {
     btn.disabled = false;
     btn.textContent = "Crea tipo attività";

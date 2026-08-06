@@ -94,7 +94,7 @@ async function onToggleActive(e) {
     await db.collection("users").doc(uid).update({ attivo: nuovoStato });
     await loadUsers();
   } catch (err) {
-    alert("Errore: " + err.message);
+    showError(document.getElementById("users-list-error"), "Errore: " + err.message);
     btn.disabled = false;
   }
 }
@@ -139,7 +139,7 @@ async function onCreateUser(e) {
     document.getElementById("new-user-form").reset();
     await loadUsers();
   } catch (err) {
-    errorEl.textContent = "Errore: " + err.message;
+    showError(errorEl, "Errore: " + err.message);
   } finally {
     btn.disabled = false;
     btn.textContent = "Crea utente";
@@ -199,7 +199,7 @@ async function onCreateRole(e) {
     await loadRoles();
     await populateRoleSelect();
   } catch (err) {
-    errorEl.textContent = "Errore: " + err.message;
+    showError(errorEl, "Errore: " + err.message);
   } finally {
     btn.disabled = false;
     btn.textContent = "Salva ruolo";

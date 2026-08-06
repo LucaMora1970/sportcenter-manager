@@ -185,6 +185,9 @@ async function onSubmitEntry(e) {
   btn.disabled = true;
   btn.textContent = "Salvataggio…";
 
+  const errorEl = document.getElementById("entry-form-error");
+  errorEl.innerHTML = "";
+
   const dataVal = document.getElementById("data").value;
   const rows = Array.from(document.querySelectorAll(".entry-row"));
 
@@ -242,7 +245,7 @@ async function onSubmitEntry(e) {
     addRow();
     document.getElementById("data").value = dataVal;
   } catch (err) {
-    alert("Errore nel salvataggio: " + err.message);
+    showError(errorEl, "Errore nel salvataggio: " + err.message);
   } finally {
     btn.disabled = false;
     btn.textContent = "Salva voce";

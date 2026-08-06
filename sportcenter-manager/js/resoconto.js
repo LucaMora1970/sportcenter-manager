@@ -94,6 +94,8 @@ async function calcola() {
   const dal = document.getElementById("dal").value;
   const al = document.getElementById("al").value;
   const btn = document.getElementById("calcola-btn");
+  const errorEl = document.getElementById("resoconto-error");
+  errorEl.innerHTML = "";
   btn.disabled = true;
   btn.textContent = "Calcolo…";
 
@@ -107,7 +109,7 @@ async function calcola() {
       renderDipendenti(tutti);
     }
   } catch (err) {
-    alert("Errore nel calcolo: " + err.message);
+    showError(errorEl, "Errore nel calcolo: " + err.message);
   } finally {
     btn.disabled = false;
     btn.textContent = "Calcola";
