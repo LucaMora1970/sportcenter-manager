@@ -11,29 +11,29 @@ rules_version = '2';
 // per decidere se un permesso è presente (get() dentro alle rules).
 // ============================================================
 
-function isSignedIn() {
-  return request.auth != null;
-}
-
-function userDoc() {
-  return get(/databases/$(database)/documents/users/$(request.auth.uid));
-}
-
-function roleDoc() {
-  return get(/databases/$(database)/documents/roles/$(userDoc().data.ruoloId));
-}
-
-function hasPermission(perm) {
-  return isSignedIn()
-    && userDoc().data.attivo != false
-    && (
-      roleDoc().data.permessi.hasAny([perm])
-      || roleDoc().data.permessi.hasAny(["*"])
-    );
-}
-
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function roleDoc() {
+      return get(/databases/$(database)/documents/roles/$(userDoc().data.ruoloId));
+    }
+
+    function hasPermission(perm) {
+      return isSignedIn()
+        && userDoc().data.attivo != false
+        && (
+          roleDoc().data.permessi.hasAny([perm])
+          || roleDoc().data.permessi.hasAny(["*"])
+        );
+    }
 
     // Ogni utente può leggere il proprio profilo; l'admin (users:gestisci) tutti.
     match /users/{userId} {
