@@ -30,6 +30,30 @@
 
       <div class="error-msg" id="config-list-error"></div>
 
+      <!-- Discipline -->
+      <div class="section-title"><h2>Discipline</h2></div>
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Voci selezionabili come disciplina nel diario. Tennis, Padel e Squash usano i campi; le altre (es. Preparatore atletico, Mental Coach) possono restare senza campo assegnato.</p>
+      <div id="discipline-list">
+        <div class="empty-state"><div class="display">Caricamento…</div></div>
+      </div>
+      <form id="new-disciplina-form">
+        <div class="row2">
+          <div class="field">
+            <label for="new-disciplina-id">ID disciplina</label>
+            <input type="text" id="new-disciplina-id" required placeholder="es. mental-coach">
+          </div>
+          <div class="field">
+            <label for="new-disciplina-nome">Nome</label>
+            <input type="text" id="new-disciplina-nome" required placeholder="es. Mental Coach">
+          </div>
+        </div>
+        <div class="error-msg" id="new-disciplina-error"></div>
+        <button type="submit" class="btn btn-ghost" id="create-disciplina-btn">+ Aggiungi disciplina</button>
+        <button type="button" class="btn btn-ghost hidden" id="cancel-edit-disciplina-btn" style="margin-top:10px;">Annulla modifica</button>
+      </form>
+
+      <hr class="court-divider">
+
       <!-- Tipi utenza -->
       <div class="section-title"><h2>Tipi utenza</h2></div>
       <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Categorie cliente usate per le tariffe (es. Socio, Non socio, Junior).</p>

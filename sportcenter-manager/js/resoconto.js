@@ -172,8 +172,9 @@ async function loadTutti(dal, al) {
     }
 
     if (tipoAttivitaDoc && tipoAttivitaDoc.retribuitoCollaboratore) {
-      if (utente && utente.tariffaOraria) {
-        const compenso = ore * utente.tariffaOraria;
+      const tariffaDisciplina = utente && utente.tariffeOrarie ? utente.tariffeOrarie[e.disciplina] : null;
+      if (tariffaDisciplina) {
+        const compenso = ore * tariffaDisciplina;
         perUtente[e.userId].compenso += compenso;
         totaleCompenso += compenso;
       } else {
@@ -289,7 +290,7 @@ async function calcola() {
 
       const compensoWarningEl = document.getElementById("compenso-warning");
       compensoWarningEl.textContent = tutti.vociSenzaCompenso > 0
-        ? `${tutti.vociSenzaCompenso} voci retribuibili ma senza tariffa oraria impostata sul collaboratore (escluse dal totale).`
+        ? `${tutti.vociSenzaCompenso} voci retribuibili ma senza tariffa oraria impostata sul collaboratore per quella disciplina (escluse dal totale).`
         : "";
     }
   } catch (err) {
@@ -300,7 +301,7 @@ async function calcola() {
   }
 }
 
-requireAuth((profile) => {
+requireAuth(async (profile) => {
   currentProfile = profile;
   document.getElementById("user-chip").textContent = profile.nome + (profile.ruoloNome ? " · " + profile.ruoloNome : "");
 
@@ -318,6 +319,7 @@ requireAuth((profile) => {
     calcola();
   });
 
+  await loadDiscipline();
   calcola();
 });
 

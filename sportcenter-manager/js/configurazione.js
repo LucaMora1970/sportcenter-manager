@@ -11,6 +11,17 @@ let prezzoRowCounter = 0;
 let editingTipoAttivitaId = null;
 let editingTipoUtenzaId = null;
 let editingCampoId = null;
+let editingDisciplinaId = null;
+
+const DEFAULT_DISCIPLINE_SEED = [
+  { id: "tennis", nome: "Tennis" },
+  { id: "padel", nome: "Padel" },
+  { id: "squash", nome: "Squash" },
+  { id: "preparatore-atletico", nome: "Preparatore atletico" },
+  { id: "sparring", nome: "Sparring" },
+  { id: "mental-coach", nome: "Mental Coach" },
+  { id: "official", nome: "Official" }
+];
 
 const POSIZIONI_CAMPO = [
   { id: "interno", label: "Interno" },
@@ -81,6 +92,86 @@ function renderSimpleList(containerId, items, labelFn, metaFn, collectionName, r
         onEdit(item);
       });
     });
+  }
+}
+
+// ---------- Discipline ----------
+
+// Crea i valori di default solo se la collection è ancora vuota (prima
+// attivazione), preservando gli ID storici tennis/padel/squash così le
+// voci diario, i colori dei badge e le tariffe già impostate continuano
+// a funzionare senza rotture.
+async function seedDisciplineIfEmpty() {
+  const snap = await db.collection("discipline").limit(1).get();
+  if (!snap.empty) return;
+
+  const batch = db.batch();
+  DEFAULT_DISCIPLINE_SEED.forEach(d => {
+    batch.set(db.collection("discipline").doc(d.id), { nome: d.nome, attivo: true });
+  });
+  await batch.commit();
+}
+
+async function loadDisciplineList() {
+  const list = document.getElementById("discipline-list");
+  list.innerHTML = `<div class="empty-state"><div class="display">Caricamento…</div></div>`;
+
+  const snap = await db.collection("discipline").orderBy("nome").get();
+  const discipline = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  renderSimpleList("discipline-list", discipline, it => it.nome, it => it.id, "discipline", loadDisciplineList, startEditDisciplina);
+}
+
+function refreshDisciplinaSelects() {
+  populateSelect(document.getElementById("new-campo-disciplina"), DISCIPLINE);
+  populateSelect(document.getElementById("new-tipoattivita-disciplina"), DISCIPLINE);
+  populateSelect(document.getElementById("new-quotacampo-disciplina"), DISCIPLINE);
+}
+
+function startEditDisciplina(item) {
+  editingDisciplinaId = item.id;
+  document.getElementById("new-disciplina-id").value = item.id;
+  document.getElementById("new-disciplina-id").disabled = true;
+  document.getElementById("new-disciplina-nome").value = item.nome || "";
+  document.getElementById("create-disciplina-btn").textContent = "Salva modifiche";
+  document.getElementById("cancel-edit-disciplina-btn").classList.remove("hidden");
+  document.getElementById("new-disciplina-form").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function cancelEditDisciplina() {
+  editingDisciplinaId = null;
+  document.getElementById("new-disciplina-form").reset();
+  document.getElementById("new-disciplina-id").disabled = false;
+  document.getElementById("create-disciplina-btn").textContent = "+ Aggiungi disciplina";
+  document.getElementById("cancel-edit-disciplina-btn").classList.add("hidden");
+}
+
+async function onCreateDisciplina(e) {
+  e.preventDefault();
+  const btn = document.getElementById("create-disciplina-btn");
+  const errorEl = document.getElementById("new-disciplina-error");
+  errorEl.textContent = "";
+  btn.disabled = true;
+
+  const id = document.getElementById("new-disciplina-id").value.trim();
+  const nome = document.getElementById("new-disciplina-nome").value.trim();
+
+  try {
+    if (!nome) throw new Error("Inserisci un nome.");
+    if (editingDisciplinaId) {
+      await db.collection("discipline").doc(editingDisciplinaId).update({ nome });
+    } else {
+      if (!id) throw new Error("Inserisci un ID disciplina (es. mental-coach).");
+      await db.collection("discipline").doc(id).set({ nome, attivo: true });
+    }
+    cancelEditDisciplina();
+    await loadDisciplineList();
+    await loadDiscipline();
+    refreshDisciplinaSelects();
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+  } finally {
+    btn.disabled = false;
   }
 }
 
@@ -529,12 +620,17 @@ requireAuth(async (profile) => {
     return;
   }
 
+  await seedDisciplineIfEmpty();
+  await loadDiscipline();
+
   populateSelect(document.getElementById("new-campo-disciplina"), DISCIPLINE);
   populateSelect(document.getElementById("new-campo-posizione"), POSIZIONI_CAMPO);
   populateSelect(document.getElementById("new-tipoattivita-disciplina"), DISCIPLINE);
   populateSelect(document.getElementById("new-quotacampo-disciplina"), DISCIPLINE);
   populateSelect(document.getElementById("new-quotacampo-posizione"), POSIZIONI_CAMPO, "— tutti —");
 
+  document.getElementById("new-disciplina-form").addEventListener("submit", onCreateDisciplina);
+  document.getElementById("cancel-edit-disciplina-btn").addEventListener("click", cancelEditDisciplina);
   document.getElementById("new-tipoutenza-form").addEventListener("submit", onCreateTipoUtenza);
   document.getElementById("cancel-edit-tipoutenza-btn").addEventListener("click", cancelEditTipoUtenza);
   document.getElementById("new-campo-form").addEventListener("submit", onCreateCampo);
@@ -548,6 +644,7 @@ requireAuth(async (profile) => {
   syncQuotaCampoPadelFields();
   wirePrezzoRowRemoval();
 
+  await loadDisciplineList();
   await loadTipiUtenza();
   await loadCampi();
   await loadTipiGruppoPadel();

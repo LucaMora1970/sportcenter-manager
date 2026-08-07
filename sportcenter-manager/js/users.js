@@ -19,6 +19,21 @@ function permessoLabel(id) {
   return (KNOWN_PERMISSIONS.find(p => p.id === id) || {}).label || id;
 }
 
+function tariffeSummary(u) {
+  const t = u.tariffeOrarie || {};
+  return DISCIPLINE
+    .filter(d => t[d.id])
+    .map(d => `${d.label} CHF${t[d.id].toFixed(2)}/ora`)
+    .join(", ");
+}
+
+function renderNewUserTariffeFields() {
+  const container = document.getElementById("new-user-tariffe-container");
+  container.innerHTML = DISCIPLINE.map(d => `
+    <input type="number" class="new-user-tariffa-input" min="0" step="0.5" placeholder="${escapeHtml(d.label)}" data-disciplina="${d.id}">
+  `).join("");
+}
+
 function getCheckedPermessi() {
   return Array.from(document.querySelectorAll("#new-role-permessi-list input[type=checkbox]:checked")).map(cb => cb.value);
 }
@@ -67,13 +82,16 @@ async function loadUsers() {
 
   list.innerHTML = users.map(u => {
     const roleLabel = u.ruoloNome || u.ruoloId || "—";
+    const tariffe = tariffeSummary(u);
     return `
       <div class="entry-card" data-uid="${u.id}">
         <div class="entry-main">
           <div class="entry-tipo">${escapeHtml(u.nome || u.id)}</div>
-          <div class="entry-meta">${escapeHtml(u.email || "")} · ${escapeHtml(roleLabel)}${u.soggettoQuotaCampo ? " · quota campo" : ""}${u.tariffaOraria ? ` · CHF ${u.tariffaOraria.toFixed(2)}/ora` : ""}</div>
+          <div class="entry-meta">${escapeHtml(u.email || "")} · ${escapeHtml(roleLabel)}${u.soggettoQuotaCampo ? " · quota campo" : ""}${tariffe ? " · " + escapeHtml(tariffe) : ""}</div>
           <div class="user-tariffa-row">
-            <input type="number" class="user-tariffa-input" min="0" step="0.5" placeholder="Tariffa CHF/ora" value="${u.tariffaOraria || ""}" data-uid="${u.id}">
+            ${DISCIPLINE.map(d => `
+              <input type="number" class="user-tariffa-input" min="0" step="0.5" placeholder="${d.label}" value="${(u.tariffeOrarie && u.tariffeOrarie[d.id]) || ""}" data-uid="${u.id}" data-disciplina="${d.id}">
+            `).join("")}
             <button class="btn btn-ghost save-tariffa-btn" data-uid="${u.id}">Salva</button>
           </div>
         </div>
@@ -131,11 +149,15 @@ async function onToggleQuotaCampo(e) {
 async function onSaveTariffa(e) {
   const btn = e.currentTarget;
   const uid = btn.dataset.uid;
-  const input = document.querySelector(`.user-tariffa-input[data-uid="${uid}"]`);
-  const tariffaOraria = parseFloat(input.value) || 0;
+  const inputs = document.querySelectorAll(`.user-tariffa-input[data-uid="${uid}"]`);
+  const tariffeOrarie = {};
+  inputs.forEach(input => {
+    const val = parseFloat(input.value) || 0;
+    if (val > 0) tariffeOrarie[input.dataset.disciplina] = val;
+  });
   btn.disabled = true;
   try {
-    await db.collection("users").doc(uid).update({ tariffaOraria });
+    await db.collection("users").doc(uid).update({ tariffeOrarie });
     await loadUsers();
   } catch (err) {
     showError(document.getElementById("users-list-error"), "Errore: " + err.message);
@@ -163,7 +185,12 @@ async function onCreateUser(e) {
   const password = document.getElementById("new-user-password").value;
   const ruoloId = document.getElementById("new-user-ruolo").value;
   const soggettoQuotaCampo = document.getElementById("new-user-quotacampo").checked;
-  const tariffaOraria = parseFloat(document.getElementById("new-user-tariffa").value) || 0;
+
+  const tariffeOrarie = {};
+  document.querySelectorAll(".new-user-tariffa-input").forEach(input => {
+    const val = parseFloat(input.value) || 0;
+    if (val > 0) tariffeOrarie[input.dataset.disciplina] = val;
+  });
 
   try {
     const secondaryAuth = getSecondaryAuth();
@@ -179,7 +206,7 @@ async function onCreateUser(e) {
       ruoloNome: ruoloId,
       attivo: true,
       soggettoQuotaCampo,
-      tariffaOraria
+      tariffeOrarie
     });
 
     await secondaryAuth.signOut();
@@ -269,6 +296,9 @@ requireAuth(async (profile) => {
   document.getElementById("new-user-form").addEventListener("submit", onCreateUser);
   document.getElementById("new-role-form").addEventListener("submit", onCreateRole);
   document.getElementById("perm-admin").addEventListener("change", syncAdminExclusive);
+
+  await loadDiscipline();
+  renderNewUserTariffeFields();
 
   await populateRoleSelect();
   await loadUsers();

@@ -327,6 +327,7 @@ requireAuth(async (profile) => {
     document.getElementById("admin-hint").classList.remove("hidden");
   }
 
+  await loadDiscipline();
   await loadCatalogs();
   initForm();
   listenToday();

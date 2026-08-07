@@ -2,11 +2,18 @@
 // utils.js — costanti e helper condivisi tra le pagine
 // ============================================================
 
-const DISCIPLINE = [
-  { id: "tennis", label: "Tennis" },
-  { id: "padel", label: "Padel" },
-  { id: "squash", label: "Squash" }
-];
+// Popolata da loadDiscipline() a ogni caricamento pagina (collection
+// Firestore "discipline", configurabile da Configurazione). Ogni pagina
+// che la usa deve chiamare `await loadDiscipline()` prima di usarla.
+let DISCIPLINE = [];
+
+async function loadDiscipline() {
+  const snap = await db.collection("discipline").get();
+  DISCIPLINE = snap.docs
+    .map(d => ({ id: d.id, label: d.data().nome, attivo: d.data().attivo }))
+    .filter(d => d.attivo !== false)
+    .sort((a, b) => a.label.localeCompare(b.label));
+}
 
 function disciplinaLabel(id) {
   return (DISCIPLINE.find(d => d.id === id) || {}).label || id;
