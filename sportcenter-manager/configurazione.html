@@ -39,7 +39,8 @@
           <input type="text" id="new-tipoutenza-nome" required placeholder="es. Socio">
         </div>
         <div class="error-msg" id="new-tipoutenza-error"></div>
-        <button type="submit" class="btn btn-ghost">+ Aggiungi tipo utenza</button>
+        <button type="submit" class="btn btn-ghost" id="create-tipoutenza-btn">+ Aggiungi tipo utenza</button>
+        <button type="button" class="btn btn-ghost hidden" id="cancel-edit-tipoutenza-btn" style="margin-top:10px;">Annulla modifica</button>
       </form>
 
       <hr class="court-divider">
@@ -66,7 +67,8 @@
           <select id="new-campo-posizione" required></select>
         </div>
         <div class="error-msg" id="new-campo-error"></div>
-        <button type="submit" class="btn btn-ghost">+ Aggiungi campo</button>
+        <button type="submit" class="btn btn-ghost" id="create-campo-btn">+ Aggiungi campo</button>
+        <button type="button" class="btn btn-ghost hidden" id="cancel-edit-campo-btn" style="margin-top:10px;">Annulla modifica</button>
       </form>
 
       <hr class="court-divider">

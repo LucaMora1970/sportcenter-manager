@@ -90,7 +90,9 @@ function populateRowDependents(rowEl) {
     tipiPerDisciplina.map(t => ({ id: t.id, label: t.nome }))
   );
 
-  const campiPerDisciplina = campiCache.filter(c => c.disciplina === disciplina);
+  const campiPerDisciplina = campiCache
+    .filter(c => c.disciplina === disciplina)
+    .sort((a, b) => (a.numero || "").localeCompare(b.numero || "", undefined, { numeric: true }));
   populateSelect(
     rowEl.querySelector(".row-campo"),
     campiPerDisciplina.map(c => ({ id: c.numero, label: "Campo " + c.numero })),

@@ -283,6 +283,16 @@ select:focus, input:focus, textarea:focus {
 .row-remove:hover { color: var(--danger); }
 .add-row-btn { margin-bottom: 16px; }
 
+/* Nr. ore nel diario: inserimento libero, senza frecce incremento/decremento */
+.row-nrore {
+  -moz-appearance: textfield;
+}
+.row-nrore::-webkit-outer-spin-button,
+.row-nrore::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
 .catalog-warning {
   background: rgba(224,100,90,0.1);
   border: 1px solid var(--danger);
