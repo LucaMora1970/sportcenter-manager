@@ -293,6 +293,7 @@ function entryRowHtml(en) {
   const metaParts = [];
   if (en.campoNumero) metaParts.push("Campo " + en.campoNumero);
   if (en.tipoGruppoNome) metaParts.push(en.tipoGruppoNome);
+  if (en.allievoNome) metaParts.push("Allievo: " + en.allievoNome);
   if (en.oraInizio || en.oraFine) metaParts.push(`${en.oraInizio || "—"}–${en.oraFine || "—"}`);
   if (en.note) metaParts.push(en.note);
 
@@ -343,6 +344,7 @@ function stampaReportDipendente(uid) {
         <td>${escapeHtml(disciplinaLabel(en.disciplina))}</td>
         <td>${escapeHtml(tipoAttivitaLabelFor(en))}</td>
         <td>${en.campoNumero ? escapeHtml(String(en.campoNumero)) : "—"}</td>
+        <td>${escapeHtml(en.allievoNome || "—")}</td>
         <td>${en.oraInizio || "—"}–${en.oraFine || "—"}</td>
         <td>${(en.ore || 0).toFixed(2)}</td>
         <td>${escapeHtml(en.note || "")}</td>
@@ -359,7 +361,7 @@ function stampaReportDipendente(uid) {
     <p>Periodo: ${formatDataBreve(ultimoPeriodo.dal)} – ${formatDataBreve(ultimoPeriodo.al)}</p>
     <table>
       <thead>
-        <tr><th>Data</th><th>Disciplina</th><th>Tipo attività</th><th>Campo</th><th>Orario</th><th>Ore</th><th>Note</th></tr>
+        <tr><th>Data</th><th>Disciplina</th><th>Tipo attività</th><th>Campo</th><th>Allievo</th><th>Orario</th><th>Ore</th><th>Note</th></tr>
       </thead>
       <tbody>${righe}</tbody>
     </table>

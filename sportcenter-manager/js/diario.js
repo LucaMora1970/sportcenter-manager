@@ -10,6 +10,7 @@ let todayEntriesUnsub = null;
 let tipiAttivitaCache = [];
 let campiCache = [];
 let tipiGruppoPadelCache = [];
+let allieviCache = [];
 let rowCounter = 0;
 
 function todayISO() {
@@ -20,14 +21,16 @@ function todayISO() {
 // ---------- Caricamento cataloghi (tipi attività, campi, gruppo padel) ----------
 
 async function loadCatalogs() {
-  const [taSnap, cSnap, tgSnap] = await Promise.all([
+  const [taSnap, cSnap, tgSnap, alSnap] = await Promise.all([
     db.collection("tipiAttivita").where("attivo", "==", true).get(),
     db.collection("campi").where("attivo", "==", true).get(),
-    db.collection("tipiGruppoPadel").where("attivo", "==", true).get()
+    db.collection("tipiGruppoPadel").where("attivo", "==", true).get(),
+    db.collection("allievi").where("attivo", "==", true).get()
   ]);
   tipiAttivitaCache = taSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   campiCache = cSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   tipiGruppoPadelCache = tgSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  allieviCache = alSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.nome || "").localeCompare(b.nome || ""));
 }
 
 // ---------- Righe ripetibili del form ----------
@@ -55,6 +58,13 @@ function rowHtml(rowId) {
           <label>Tipo gruppo</label>
           <select class="row-gruppo"></select>
         </div>
+      </div>
+      <div class="field row-allievo-field hidden">
+        <label>Allievo</label>
+        <select class="row-allievo">
+          <option value="">—</option>
+        </select>
+        <input type="text" class="row-allievo-nuovo hidden" placeholder="Nome allievo" style="margin-top:8px;">
       </div>
       <div class="row2">
         <div class="field row-nrore-field" style="flex:0 0 110px;">
@@ -137,6 +147,33 @@ function populateRowDependents(rowEl) {
   }
 }
 
+// Alcuni tipi attività (es. Sparring) richiedono il nome dell'allievo
+// per la fatturazione. Il campo compare solo quando il tipo attività
+// selezionato ha il flag richiedeAllievo, e permette di scegliere un
+// allievo esistente o aggiungerne uno nuovo al volo.
+function syncAllievoField(rowEl) {
+  const tipoAttivitaSel = rowEl.querySelector(".row-tipoattivita");
+  const tipo = tipiAttivitaCache.find(t => t.id === tipoAttivitaSel.value);
+  const field = rowEl.querySelector(".row-allievo-field");
+  const select = rowEl.querySelector(".row-allievo");
+  const nuovoInput = rowEl.querySelector(".row-allievo-nuovo");
+
+  if (tipo && tipo.richiedeAllievo) {
+    field.classList.remove("hidden");
+    select.required = true;
+    select.innerHTML = `<option value="">—</option>` +
+      allieviCache.map(a => `<option value="${a.id}">${escapeHtml(a.nome)}</option>`).join("") +
+      `<option value="__new__">+ Nuovo allievo…</option>`;
+  } else {
+    field.classList.add("hidden");
+    select.required = false;
+    select.value = "";
+    nuovoInput.classList.add("hidden");
+    nuovoInput.required = false;
+    nuovoInput.value = "";
+  }
+}
+
 function addRow() {
   rowCounter++;
   const container = document.getElementById("rows-container");
@@ -145,8 +182,26 @@ function addRow() {
   const rowEl = container.querySelector(`[data-row-id="${rowCounter}"]`);
   populateSelect(rowEl.querySelector(".row-disciplina"), DISCIPLINE);
   populateRowDependents(rowEl);
+  syncAllievoField(rowEl);
 
-  rowEl.querySelector(".row-disciplina").addEventListener("change", () => populateRowDependents(rowEl));
+  rowEl.querySelector(".row-disciplina").addEventListener("change", () => {
+    populateRowDependents(rowEl);
+    syncAllievoField(rowEl);
+  });
+  rowEl.querySelector(".row-tipoattivita").addEventListener("change", () => syncAllievoField(rowEl));
+  rowEl.querySelector(".row-allievo").addEventListener("change", (e) => {
+    const nuovoInput = rowEl.querySelector(".row-allievo-nuovo");
+    if (e.target.value === "__new__") {
+      nuovoInput.classList.remove("hidden");
+      nuovoInput.required = true;
+      nuovoInput.focus();
+    } else {
+      nuovoInput.classList.add("hidden");
+      nuovoInput.required = false;
+      nuovoInput.value = "";
+    }
+  });
+
   updateRemoveButtons();
 }
 
@@ -201,7 +256,8 @@ async function onSubmitEntry(e) {
   const rows = Array.from(document.querySelectorAll(".entry-row"));
 
   try {
-    const entries = rows.map(rowEl => {
+    const entries = [];
+    for (const rowEl of rows) {
       const disciplina = rowEl.querySelector(".row-disciplina").value;
       const tipoAttivitaSel = rowEl.querySelector(".row-tipoattivita");
       const campoSel = rowEl.querySelector(".row-campo");
@@ -240,8 +296,26 @@ async function onSubmitEntry(e) {
         entry.tipoGruppoNome = selectedLabel(gruppoSel);
       }
 
-      return entry;
-    });
+      const tipo = tipiAttivitaCache.find(t => t.id === tipoAttivitaSel.value);
+      if (tipo && tipo.richiedeAllievo) {
+        const allievoSel = rowEl.querySelector(".row-allievo");
+        if (allievoSel.value === "__new__") {
+          const nomeNuovo = rowEl.querySelector(".row-allievo-nuovo").value.trim();
+          if (!nomeNuovo) throw new Error("Inserisci il nome del nuovo allievo.");
+          const ref = await db.collection("allievi").add({ nome: nomeNuovo, attivo: true });
+          allieviCache.push({ id: ref.id, nome: nomeNuovo, attivo: true });
+          entry.allievoId = ref.id;
+          entry.allievoNome = nomeNuovo;
+        } else if (allievoSel.value) {
+          entry.allievoId = allievoSel.value;
+          entry.allievoNome = selectedLabel(allievoSel);
+        } else {
+          throw new Error("Seleziona o inserisci il nome dell'allievo.");
+        }
+      }
+
+      entries.push(entry);
+    }
 
     const batch = db.batch();
     entries.forEach(entry => {
@@ -284,6 +358,7 @@ function renderEntries(entries) {
     if (en.campoNumero) metaParts.push("Campo " + en.campoNumero);
     if (en.tipoUtenzaNome) metaParts.push(en.tipoUtenzaNome);
     if (en.tipoGruppoNome) metaParts.push(en.tipoGruppoNome);
+    if (en.allievoNome) metaParts.push("Allievo: " + en.allievoNome);
     if (en.oraInizio || en.oraFine) metaParts.push(`${en.oraInizio || "—"}–${en.oraFine || "—"}`);
     if (en.note) metaParts.push(en.note);
 

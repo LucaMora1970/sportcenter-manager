@@ -97,6 +97,15 @@ service cloud.firestore {
       allow write: if hasPermission("config:gestisci");
     }
 
+    // Allievi: anagrafica nomi per la fatturazione (es. sparring). Chiunque
+    // loggato può leggerli e crearne di nuovi al volo dal diario; solo
+    // config:gestisci può rinominarli/disattivarli/eliminarli.
+    match /allievi/{id} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if hasPermission("config:gestisci");
+    }
+
     // Discipline (tennis, padel, squash, e altre configurabili come
     // preparatore atletico, sparring, mental coach...). Lettura per
     // chiunque loggato, scrittura riservata a config:gestisci.

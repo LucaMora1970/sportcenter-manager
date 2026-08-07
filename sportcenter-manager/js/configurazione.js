@@ -12,6 +12,7 @@ let editingTipoAttivitaId = null;
 let editingTipoUtenzaId = null;
 let editingCampoId = null;
 let editingDisciplinaId = null;
+let editingAllievoId = null;
 
 const DEFAULT_DISCIPLINE_SEED = [
   { id: "tennis", nome: "Tennis", ordine: 0 },
@@ -220,6 +221,58 @@ async function onCreateDisciplina(e) {
     await loadDisciplineList();
     await loadDiscipline();
     refreshDisciplinaSelects();
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ---------- Allievi ----------
+
+async function loadAllievi() {
+  const list = document.getElementById("allievi-list");
+  list.innerHTML = `<div class="empty-state"><div class="display">Caricamento…</div></div>`;
+
+  const snap = await db.collection("allievi").orderBy("nome").get();
+  const allievi = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  renderSimpleList("allievi-list", allievi, it => it.nome, () => "", "allievi", loadAllievi, startEditAllievo);
+}
+
+function startEditAllievo(item) {
+  editingAllievoId = item.id;
+  document.getElementById("new-allievo-nome").value = item.nome || "";
+  document.getElementById("create-allievo-btn").textContent = "Salva modifiche";
+  document.getElementById("cancel-edit-allievo-btn").classList.remove("hidden");
+  document.getElementById("new-allievo-form").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function cancelEditAllievo() {
+  editingAllievoId = null;
+  document.getElementById("new-allievo-form").reset();
+  document.getElementById("create-allievo-btn").textContent = "+ Aggiungi allievo";
+  document.getElementById("cancel-edit-allievo-btn").classList.add("hidden");
+}
+
+async function onCreateAllievo(e) {
+  e.preventDefault();
+  const btn = document.getElementById("create-allievo-btn");
+  const errorEl = document.getElementById("new-allievo-error");
+  errorEl.textContent = "";
+  btn.disabled = true;
+
+  const nome = document.getElementById("new-allievo-nome").value.trim();
+
+  try {
+    if (!nome) throw new Error("Inserisci un nome.");
+    if (editingAllievoId) {
+      await db.collection("allievi").doc(editingAllievoId).update({ nome });
+    } else {
+      await db.collection("allievi").add({ nome, attivo: true });
+    }
+    cancelEditAllievo();
+    await loadAllievi();
   } catch (err) {
     showError(errorEl, "Errore: " + err.message);
   } finally {
@@ -492,7 +545,7 @@ function renderTipiAttivitaList() {
     <div class="entry-card" data-id="${it.id}">
       <div class="entry-main">
         <div class="entry-tipo">${escapeHtml(it.nome)}</div>
-        <div class="entry-meta">${escapeHtml(disciplinaLabel(it.disciplina))} · ordine ${it.ordine != null ? it.ordine : "—"} · ${(it.prezzi || []).length} tariffe${it.soggettoQuotaCampo ? " · quota campo" : ""}${it.retribuitoCollaboratore ? " · compenso" : ""}</div>
+        <div class="entry-meta">${escapeHtml(disciplinaLabel(it.disciplina))} · ordine ${it.ordine != null ? it.ordine : "—"} · ${(it.prezzi || []).length} tariffe${it.soggettoQuotaCampo ? " · quota campo" : ""}${it.retribuitoCollaboratore ? " · compenso" : ""}${it.richiedeAllievo ? " · richiede allievo" : ""}</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;">
         <button class="btn btn-ghost edit-tipoattivita-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${it.id}">Modifica</button>
@@ -547,6 +600,7 @@ function startEditTipoAttivita(tipo) {
   document.getElementById("new-tipoattivita-ordine").value = tipo.ordine != null ? tipo.ordine : "";
   document.getElementById("new-tipoattivita-quotacampo").checked = !!tipo.soggettoQuotaCampo;
   document.getElementById("new-tipoattivita-retribuito").checked = !!tipo.retribuitoCollaboratore;
+  document.getElementById("new-tipoattivita-richiedeallievo").checked = !!tipo.richiedeAllievo;
 
   document.getElementById("prezzi-rows-container").innerHTML = "";
   (tipo.prezzi || []).forEach(p => addPrezzoRow(p));
@@ -581,6 +635,7 @@ async function onCreateTipoAttivita(e) {
   const ordine = ordineRaw !== "" ? parseInt(ordineRaw, 10) : 99;
   const soggettoQuotaCampo = document.getElementById("new-tipoattivita-quotacampo").checked;
   const retribuitoCollaboratore = document.getElementById("new-tipoattivita-retribuito").checked;
+  const richiedeAllievo = document.getElementById("new-tipoattivita-richiedeallievo").checked;
 
   const prezzi = [];
   document.querySelectorAll(".prezzo-row").forEach(row => {
@@ -600,9 +655,9 @@ async function onCreateTipoAttivita(e) {
   try {
     if (!nome) throw new Error("Inserisci un nome.");
     if (editingTipoAttivitaId) {
-      await db.collection("tipiAttivita").doc(editingTipoAttivitaId).update({ nome, disciplina, ordine, soggettoQuotaCampo, retribuitoCollaboratore, prezzi });
+      await db.collection("tipiAttivita").doc(editingTipoAttivitaId).update({ nome, disciplina, ordine, soggettoQuotaCampo, retribuitoCollaboratore, richiedeAllievo, prezzi });
     } else {
-      await db.collection("tipiAttivita").add({ nome, disciplina, ordine, soggettoQuotaCampo, retribuitoCollaboratore, attivo: true, prezzi });
+      await db.collection("tipiAttivita").add({ nome, disciplina, ordine, soggettoQuotaCampo, retribuitoCollaboratore, richiedeAllievo, attivo: true, prezzi });
     }
     cancelEditTipoAttivita();
     await loadTipiAttivita();
@@ -711,6 +766,8 @@ requireAuth(async (profile) => {
 
   document.getElementById("new-disciplina-form").addEventListener("submit", onCreateDisciplina);
   document.getElementById("cancel-edit-disciplina-btn").addEventListener("click", cancelEditDisciplina);
+  document.getElementById("new-allievo-form").addEventListener("submit", onCreateAllievo);
+  document.getElementById("cancel-edit-allievo-btn").addEventListener("click", cancelEditAllievo);
   document.getElementById("new-tipoutenza-form").addEventListener("submit", onCreateTipoUtenza);
   document.getElementById("cancel-edit-tipoutenza-btn").addEventListener("click", cancelEditTipoUtenza);
   document.getElementById("new-campo-form").addEventListener("submit", onCreateCampo);
@@ -725,6 +782,7 @@ requireAuth(async (profile) => {
   wirePrezzoRowRemoval();
 
   await loadDisciplineList();
+  await loadAllievi();
   await loadTipiUtenza();
   await loadCampi();
   await loadTipiGruppoPadel();

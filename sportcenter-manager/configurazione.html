@@ -58,6 +58,24 @@
 
       <hr class="court-divider">
 
+      <!-- Allievi -->
+      <div class="section-title"><h2>Allievi</h2></div>
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Anagrafica nomi per la fatturazione (es. sparring). Chiunque inserisca il diario può aggiungerne di nuovi al volo; qui puoi rinominarli o disattivarli.</p>
+      <div id="allievi-list">
+        <div class="empty-state"><div class="display">Caricamento…</div></div>
+      </div>
+      <form id="new-allievo-form">
+        <div class="field">
+          <label for="new-allievo-nome">Nome</label>
+          <input type="text" id="new-allievo-nome" required placeholder="es. Mario Rossi">
+        </div>
+        <div class="error-msg" id="new-allievo-error"></div>
+        <button type="submit" class="btn btn-ghost" id="create-allievo-btn">+ Aggiungi allievo</button>
+        <button type="button" class="btn btn-ghost hidden" id="cancel-edit-allievo-btn" style="margin-top:10px;">Annulla modifica</button>
+      </form>
+
+      <hr class="court-divider">
+
       <!-- Tipi utenza -->
       <div class="section-title"><h2>Tipi utenza</h2></div>
       <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Categorie cliente usate per le tariffe (es. Socio, Non socio, Junior).</p>
@@ -154,6 +172,11 @@
         <div class="checkbox-row" style="margin-bottom:16px;">
           <input type="checkbox" id="new-tipoattivita-retribuito">
           <label for="new-tipoattivita-retribuito">Retribuito al collaboratore (il circolo paga un compenso, es. Scuola tennis, Corsi, Sparring)</label>
+        </div>
+
+        <div class="checkbox-row" style="margin-bottom:16px;">
+          <input type="checkbox" id="new-tipoattivita-richiedeallievo">
+          <label for="new-tipoattivita-richiedeallievo">Richiede nome allievo (per fatturazione, es. Sparring)</label>
         </div>
 
         <div id="prezzi-rows-container"></div>
