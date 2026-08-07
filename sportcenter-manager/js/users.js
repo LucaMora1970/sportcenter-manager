@@ -66,6 +66,13 @@ function getSecondaryAuth() {
   return secondaryApp.auth();
 }
 
+// Password iniziale mai comunicata a nessuno: l'account viene creato con
+// questo valore casuale ma il collaboratore imposta la propria password
+// reale tramite l'email di reset inviata subito dopo la creazione.
+function generateRandomPassword() {
+  return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+}
+
 // ---------- Utenti ----------
 
 async function loadUsers() {
@@ -102,6 +109,9 @@ async function loadUsers() {
           <button class="btn btn-ghost toggle-quotacampo-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-uid="${u.id}" data-quotacampo="${!!u.soggettoQuotaCampo}">
             ${u.soggettoQuotaCampo ? "Quota: sì" : "Quota: no"}
           </button>
+          <button class="btn btn-ghost send-reset-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-email="${escapeHtml(u.email || "")}">
+            Reset password
+          </button>
         </div>
       </div>
     `;
@@ -116,6 +126,30 @@ async function loadUsers() {
   list.querySelectorAll(".save-tariffa-btn").forEach(btn => {
     btn.addEventListener("click", onSaveTariffa);
   });
+  list.querySelectorAll(".send-reset-btn").forEach(btn => {
+    btn.addEventListener("click", onSendPasswordReset);
+  });
+}
+
+async function onSendPasswordReset(e) {
+  const btn = e.currentTarget;
+  const email = btn.dataset.email;
+  if (!email) return;
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Invio…";
+  try {
+    await auth.sendPasswordResetEmail(email);
+    btn.textContent = "Email inviata";
+    setTimeout(() => {
+      btn.textContent = originalText;
+      btn.disabled = false;
+    }, 3000);
+  } catch (err) {
+    showError(document.getElementById("users-list-error"), "Errore: " + err.message);
+    btn.textContent = originalText;
+    btn.disabled = false;
+  }
 }
 
 async function onToggleActive(e) {
@@ -182,7 +216,6 @@ async function onCreateUser(e) {
 
   const nome = document.getElementById("new-user-nome").value.trim();
   const email = document.getElementById("new-user-email").value.trim();
-  const password = document.getElementById("new-user-password").value;
   const ruoloId = document.getElementById("new-user-ruolo").value;
   const soggettoQuotaCampo = document.getElementById("new-user-quotacampo").checked;
 
@@ -194,10 +227,8 @@ async function onCreateUser(e) {
 
   try {
     const secondaryAuth = getSecondaryAuth();
-    const cred = await secondaryAuth.createUserWithEmailAndPassword(email, password);
+    const cred = await secondaryAuth.createUserWithEmailAndPassword(email, generateRandomPassword());
     const uid = cred.user.uid;
-
-    const role = rolesCache.find(r => r.id === ruoloId);
 
     await db.collection("users").doc(uid).set({
       nome,
@@ -210,6 +241,7 @@ async function onCreateUser(e) {
     });
 
     await secondaryAuth.signOut();
+    await auth.sendPasswordResetEmail(email);
 
     document.getElementById("new-user-form").reset();
     await loadUsers();
