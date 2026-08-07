@@ -5,7 +5,7 @@ dipendenti, configurazione tariffe e quote campo, resoconti per periodo con
 costi. HTML/CSS/JS puro (nessun build step) + Firebase (Firestore + Auth),
 hosting su GitHub Pages.
 
-Questa istanza è personalizzata per: **NOME CIRCOLO** (vedi `index.html`).
+Questa istanza è personalizzata per: **TC Mendrisio** (vedi `index.html`).
 
 ## Stato attuale
 - [x] Login (Firebase Authentication — Email/Password)
