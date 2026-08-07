@@ -71,7 +71,11 @@ async function loadUsers() {
       <div class="entry-card" data-uid="${u.id}">
         <div class="entry-main">
           <div class="entry-tipo">${escapeHtml(u.nome || u.id)}</div>
-          <div class="entry-meta">${escapeHtml(u.email || "")} · ${escapeHtml(roleLabel)}${u.soggettoQuotaCampo ? " · quota campo" : ""}</div>
+          <div class="entry-meta">${escapeHtml(u.email || "")} · ${escapeHtml(roleLabel)}${u.soggettoQuotaCampo ? " · quota campo" : ""}${u.tariffaOraria ? ` · CHF ${u.tariffaOraria.toFixed(2)}/ora` : ""}</div>
+          <div class="user-tariffa-row">
+            <input type="number" class="user-tariffa-input" min="0" step="0.5" placeholder="Tariffa CHF/ora" value="${u.tariffaOraria || ""}" data-uid="${u.id}">
+            <button class="btn btn-ghost save-tariffa-btn" data-uid="${u.id}">Salva</button>
+          </div>
         </div>
         <div style="display:flex;flex-direction:column;gap:6px;">
           <button class="btn btn-ghost toggle-active-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-uid="${u.id}" data-attivo="${u.attivo !== false}">
@@ -90,6 +94,9 @@ async function loadUsers() {
   });
   list.querySelectorAll(".toggle-quotacampo-btn").forEach(btn => {
     btn.addEventListener("click", onToggleQuotaCampo);
+  });
+  list.querySelectorAll(".save-tariffa-btn").forEach(btn => {
+    btn.addEventListener("click", onSaveTariffa);
   });
 }
 
@@ -121,6 +128,21 @@ async function onToggleQuotaCampo(e) {
   }
 }
 
+async function onSaveTariffa(e) {
+  const btn = e.currentTarget;
+  const uid = btn.dataset.uid;
+  const input = document.querySelector(`.user-tariffa-input[data-uid="${uid}"]`);
+  const tariffaOraria = parseFloat(input.value) || 0;
+  btn.disabled = true;
+  try {
+    await db.collection("users").doc(uid).update({ tariffaOraria });
+    await loadUsers();
+  } catch (err) {
+    showError(document.getElementById("users-list-error"), "Errore: " + err.message);
+    btn.disabled = false;
+  }
+}
+
 async function populateRoleSelect() {
   const select = document.getElementById("new-user-ruolo");
   const snap = await db.collection("roles").get();
@@ -141,6 +163,7 @@ async function onCreateUser(e) {
   const password = document.getElementById("new-user-password").value;
   const ruoloId = document.getElementById("new-user-ruolo").value;
   const soggettoQuotaCampo = document.getElementById("new-user-quotacampo").checked;
+  const tariffaOraria = parseFloat(document.getElementById("new-user-tariffa").value) || 0;
 
   try {
     const secondaryAuth = getSecondaryAuth();
@@ -155,7 +178,8 @@ async function onCreateUser(e) {
       ruoloId,
       ruoloNome: ruoloId,
       attivo: true,
-      soggettoQuotaCampo
+      soggettoQuotaCampo,
+      tariffaOraria
     });
 
     await secondaryAuth.signOut();

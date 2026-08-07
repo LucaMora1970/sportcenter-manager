@@ -4,7 +4,9 @@
 // diario:leggi_tutti, per dipendente e per tipo di attività con
 // cumulo dei costi (in base alle tariffe configurate), quota campo
 // dovuta al circolo dai collaboratori/tipi attività marcati come
-// soggetti, e totale complessivo.
+// soggetti, compenso dovuto ai collaboratori (tariffa oraria per
+// utente sui tipi attività marcati come retribuibili), e totale
+// complessivo.
 // Richiede firebase-config.js, utils.js e auth.js già caricati.
 // ============================================================
 
@@ -132,14 +134,16 @@ async function loadTutti(dal, al) {
   let totaleOre = 0;
   let totaleCosto = 0;
   let totaleQuotaCampo = 0;
+  let totaleCompenso = 0;
   let vociSenzaTariffa = 0;
   let vociSenzaQuotaCampo = 0;
+  let vociSenzaCompenso = 0;
 
   entries.forEach(e => {
     const ore = e.ore || 0;
     totaleOre += ore;
 
-    if (!perUtente[e.userId]) perUtente[e.userId] = { nome: e.userNome || e.userId, totale: 0, quotaCampo: 0 };
+    if (!perUtente[e.userId]) perUtente[e.userId] = { nome: e.userNome || e.userId, totale: 0, quotaCampo: 0, compenso: 0 };
     perUtente[e.userId].totale += ore;
 
     const tipoKey = e.tipoAttivitaId || ("legacy:" + (e.tipoAttivita || "altro"));
@@ -166,6 +170,16 @@ async function loadTutti(dal, al) {
         vociSenzaQuotaCampo++;
       }
     }
+
+    if (tipoAttivitaDoc && tipoAttivitaDoc.retribuitoCollaboratore) {
+      if (utente && utente.tariffaOraria) {
+        const compenso = ore * utente.tariffaOraria;
+        perUtente[e.userId].compenso += compenso;
+        totaleCompenso += compenso;
+      } else {
+        vociSenzaCompenso++;
+      }
+    }
   });
 
   return {
@@ -174,8 +188,10 @@ async function loadTutti(dal, al) {
     totaleOre,
     totaleCosto,
     totaleQuotaCampo,
+    totaleCompenso,
     vociSenzaTariffa,
-    vociSenzaQuotaCampo
+    vociSenzaQuotaCampo,
+    vociSenzaCompenso
   };
 }
 
@@ -210,7 +226,8 @@ function renderDipendenti(lista) {
     <div class="entry-card">
       <div class="entry-main">
         <div class="entry-tipo">${escapeHtml(d.nome)}</div>
-        ${d.quotaCampo > 0 ? `<div class="entry-meta">Quota campo: CHF ${d.quotaCampo.toFixed(2)}</div>` : ""}
+        ${d.quotaCampo > 0 ? `<div class="entry-meta">Quota campo dovuta: CHF ${d.quotaCampo.toFixed(2)}</div>` : ""}
+        ${d.compenso > 0 ? `<div class="entry-meta">Compenso dovuto: CHF ${d.compenso.toFixed(2)}</div>` : ""}
       </div>
       <div class="entry-ore">${d.totale.toFixed(1)}h</div>
     </div>
@@ -258,6 +275,7 @@ async function calcola() {
       document.getElementById("totale-complessivo-ore").innerHTML = `${tutti.totaleOre.toFixed(1)}<small>h</small>`;
       document.getElementById("totale-complessivo-costo").textContent = `CHF ${tutti.totaleCosto.toFixed(2)}`;
       document.getElementById("totale-quotacampo").textContent = `CHF ${tutti.totaleQuotaCampo.toFixed(2)}`;
+      document.getElementById("totale-compenso").textContent = `CHF ${tutti.totaleCompenso.toFixed(2)}`;
 
       const warningEl = document.getElementById("tariffe-warning");
       warningEl.textContent = tutti.vociSenzaTariffa > 0
@@ -267,6 +285,11 @@ async function calcola() {
       const quotaWarningEl = document.getElementById("quotacampo-warning");
       quotaWarningEl.textContent = tutti.vociSenzaQuotaCampo > 0
         ? `${tutti.vociSenzaQuotaCampo} voci soggette a quota campo ma senza tariffa corrispondente (escluse dal totale).`
+        : "";
+
+      const compensoWarningEl = document.getElementById("compenso-warning");
+      compensoWarningEl.textContent = tutti.vociSenzaCompenso > 0
+        ? `${tutti.vociSenzaCompenso} voci retribuibili ma senza tariffa oraria impostata sul collaboratore (escluse dal totale).`
         : "";
     }
   } catch (err) {

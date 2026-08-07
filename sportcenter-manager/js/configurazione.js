@@ -324,7 +324,7 @@ function renderTipiAttivitaList() {
     <div class="entry-card" data-id="${it.id}">
       <div class="entry-main">
         <div class="entry-tipo">${escapeHtml(it.nome)}</div>
-        <div class="entry-meta">${escapeHtml(disciplinaLabel(it.disciplina))} · ${(it.prezzi || []).length} tariffe${it.soggettoQuotaCampo ? " · quota campo" : ""}</div>
+        <div class="entry-meta">${escapeHtml(disciplinaLabel(it.disciplina))} · ${(it.prezzi || []).length} tariffe${it.soggettoQuotaCampo ? " · quota campo" : ""}${it.retribuitoCollaboratore ? " · compenso" : ""}</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;">
         <button class="btn btn-ghost edit-tipoattivita-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${it.id}">Modifica</button>
@@ -377,6 +377,7 @@ function startEditTipoAttivita(tipo) {
   document.getElementById("new-tipoattivita-nome").value = tipo.nome || "";
   document.getElementById("new-tipoattivita-disciplina").value = tipo.disciplina || "";
   document.getElementById("new-tipoattivita-quotacampo").checked = !!tipo.soggettoQuotaCampo;
+  document.getElementById("new-tipoattivita-retribuito").checked = !!tipo.retribuitoCollaboratore;
 
   document.getElementById("prezzi-rows-container").innerHTML = "";
   (tipo.prezzi || []).forEach(p => addPrezzoRow(p));
@@ -408,6 +409,7 @@ async function onCreateTipoAttivita(e) {
   const nome = document.getElementById("new-tipoattivita-nome").value.trim();
   const disciplina = document.getElementById("new-tipoattivita-disciplina").value;
   const soggettoQuotaCampo = document.getElementById("new-tipoattivita-quotacampo").checked;
+  const retribuitoCollaboratore = document.getElementById("new-tipoattivita-retribuito").checked;
 
   const prezzi = [];
   document.querySelectorAll(".prezzo-row").forEach(row => {
@@ -427,9 +429,9 @@ async function onCreateTipoAttivita(e) {
   try {
     if (!nome) throw new Error("Inserisci un nome.");
     if (editingTipoAttivitaId) {
-      await db.collection("tipiAttivita").doc(editingTipoAttivitaId).update({ nome, disciplina, soggettoQuotaCampo, prezzi });
+      await db.collection("tipiAttivita").doc(editingTipoAttivitaId).update({ nome, disciplina, soggettoQuotaCampo, retribuitoCollaboratore, prezzi });
     } else {
-      await db.collection("tipiAttivita").add({ nome, disciplina, soggettoQuotaCampo, attivo: true, prezzi });
+      await db.collection("tipiAttivita").add({ nome, disciplina, soggettoQuotaCampo, retribuitoCollaboratore, attivo: true, prezzi });
     }
     cancelEditTipoAttivita();
     await loadTipiAttivita();

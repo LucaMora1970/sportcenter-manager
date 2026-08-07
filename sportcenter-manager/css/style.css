@@ -98,6 +98,15 @@ a { color: var(--ball); }
 }
 .topbar-link:hover { color: var(--ball); border-color: var(--ball); }
 
+/* Tariffa oraria inline nella scheda utente (Team) */
+.user-tariffa-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.user-tariffa-row input[type=number] { flex: 1; }
+.user-tariffa-row button { width: auto; padding: 8px 12px; font-size: 0.7rem; }
+
 main {
   flex: 1;
   padding: var(--gap);
