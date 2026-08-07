@@ -12,6 +12,15 @@ function disciplinaLabel(id) {
   return (DISCIPLINE.find(d => d.id === id) || {}).label || id;
 }
 
+function calcOre(oraInizio, oraFine) {
+  if (!oraInizio || !oraFine) return 0;
+  const [h1, m1] = oraInizio.split(":").map(Number);
+  const [h2, m2] = oraFine.split(":").map(Number);
+  let diff = (h2 * 60 + m2) - (h1 * 60 + m1);
+  if (diff < 0) diff += 24 * 60; // turno a cavallo di mezzanotte, caso raro
+  return Math.round((diff / 60) * 100) / 100;
+}
+
 // Etichette per voci diario create prima dell'introduzione dei tipi
 // attività configurabili (vedi pannello Configurazione).
 const LEGACY_TIPI_ATTIVITA_LABELS = {

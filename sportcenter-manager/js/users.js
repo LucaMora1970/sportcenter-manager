@@ -71,17 +71,25 @@ async function loadUsers() {
       <div class="entry-card" data-uid="${u.id}">
         <div class="entry-main">
           <div class="entry-tipo">${escapeHtml(u.nome || u.id)}</div>
-          <div class="entry-meta">${escapeHtml(u.email || "")} · ${escapeHtml(roleLabel)}</div>
+          <div class="entry-meta">${escapeHtml(u.email || "")} · ${escapeHtml(roleLabel)}${u.soggettoQuotaCampo ? " · quota campo" : ""}</div>
         </div>
-        <button class="btn btn-ghost toggle-active-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-uid="${u.id}" data-attivo="${u.attivo !== false}">
-          ${u.attivo !== false ? "Attivo" : "Disattivato"}
-        </button>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <button class="btn btn-ghost toggle-active-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-uid="${u.id}" data-attivo="${u.attivo !== false}">
+            ${u.attivo !== false ? "Attivo" : "Disattivato"}
+          </button>
+          <button class="btn btn-ghost toggle-quotacampo-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-uid="${u.id}" data-quotacampo="${!!u.soggettoQuotaCampo}">
+            ${u.soggettoQuotaCampo ? "Quota: sì" : "Quota: no"}
+          </button>
+        </div>
       </div>
     `;
   }).join("");
 
   list.querySelectorAll(".toggle-active-btn").forEach(btn => {
     btn.addEventListener("click", onToggleActive);
+  });
+  list.querySelectorAll(".toggle-quotacampo-btn").forEach(btn => {
+    btn.addEventListener("click", onToggleQuotaCampo);
   });
 }
 
@@ -92,6 +100,20 @@ async function onToggleActive(e) {
   btn.disabled = true;
   try {
     await db.collection("users").doc(uid).update({ attivo: nuovoStato });
+    await loadUsers();
+  } catch (err) {
+    showError(document.getElementById("users-list-error"), "Errore: " + err.message);
+    btn.disabled = false;
+  }
+}
+
+async function onToggleQuotaCampo(e) {
+  const btn = e.currentTarget;
+  const uid = btn.dataset.uid;
+  const nuovoStato = btn.dataset.quotacampo !== "true";
+  btn.disabled = true;
+  try {
+    await db.collection("users").doc(uid).update({ soggettoQuotaCampo: nuovoStato });
     await loadUsers();
   } catch (err) {
     showError(document.getElementById("users-list-error"), "Errore: " + err.message);
@@ -118,6 +140,7 @@ async function onCreateUser(e) {
   const email = document.getElementById("new-user-email").value.trim();
   const password = document.getElementById("new-user-password").value;
   const ruoloId = document.getElementById("new-user-ruolo").value;
+  const soggettoQuotaCampo = document.getElementById("new-user-quotacampo").checked;
 
   try {
     const secondaryAuth = getSecondaryAuth();
@@ -131,7 +154,8 @@ async function onCreateUser(e) {
       email,
       ruoloId,
       ruoloNome: ruoloId,
-      attivo: true
+      attivo: true,
+      soggettoQuotaCampo
     });
 
     await secondaryAuth.signOut();

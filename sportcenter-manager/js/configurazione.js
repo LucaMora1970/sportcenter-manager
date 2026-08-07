@@ -10,6 +10,15 @@ let tipiAttivitaCache = [];
 let prezzoRowCounter = 0;
 let editingTipoAttivitaId = null;
 
+const POSIZIONI_CAMPO = [
+  { id: "interno", label: "Interno" },
+  { id: "esterno", label: "Esterno" }
+];
+
+function posizioneLabel(id) {
+  return (POSIZIONI_CAMPO.find(p => p.id === id) || {}).label || id;
+}
+
 // ---------- Helper lista generica con toggle attivo ----------
 
 function renderSimpleList(containerId, items, labelFn, metaFn, collectionName, reloadFn) {
@@ -89,7 +98,14 @@ async function loadCampi() {
   const snap = await db.collection("campi").orderBy("numero").get();
   const campi = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-  renderSimpleList("campi-list", campi, it => "Campo " + it.numero, it => disciplinaLabel(it.disciplina), "campi", loadCampi);
+  renderSimpleList(
+    "campi-list",
+    campi,
+    it => "Campo " + it.numero,
+    it => `${disciplinaLabel(it.disciplina)} · ${posizioneLabel(it.posizione)}`,
+    "campi",
+    loadCampi
+  );
 }
 
 async function onCreateCampo(e) {
@@ -101,10 +117,11 @@ async function onCreateCampo(e) {
 
   const numero = document.getElementById("new-campo-numero").value.trim();
   const disciplina = document.getElementById("new-campo-disciplina").value;
+  const posizione = document.getElementById("new-campo-posizione").value;
 
   try {
     if (!numero) throw new Error("Inserisci un numero campo.");
-    await db.collection("campi").add({ numero, disciplina, attivo: true });
+    await db.collection("campi").add({ numero, disciplina, posizione, attivo: true });
     document.getElementById("new-campo-form").reset();
     await loadCampi();
   } catch (err) {
@@ -236,7 +253,7 @@ function renderTipiAttivitaList() {
     <div class="entry-card" data-id="${it.id}">
       <div class="entry-main">
         <div class="entry-tipo">${escapeHtml(it.nome)}</div>
-        <div class="entry-meta">${escapeHtml(disciplinaLabel(it.disciplina))} · ${(it.prezzi || []).length} tariffe</div>
+        <div class="entry-meta">${escapeHtml(disciplinaLabel(it.disciplina))} · ${(it.prezzi || []).length} tariffe${it.soggettoQuotaCampo ? " · quota campo" : ""}</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;">
         <button class="btn btn-ghost edit-tipoattivita-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${it.id}">Modifica</button>
@@ -273,6 +290,7 @@ function startEditTipoAttivita(tipo) {
 
   document.getElementById("new-tipoattivita-nome").value = tipo.nome || "";
   document.getElementById("new-tipoattivita-disciplina").value = tipo.disciplina || "";
+  document.getElementById("new-tipoattivita-quotacampo").checked = !!tipo.soggettoQuotaCampo;
 
   document.getElementById("prezzi-rows-container").innerHTML = "";
   (tipo.prezzi || []).forEach(p => addPrezzoRow(p));
@@ -303,6 +321,7 @@ async function onCreateTipoAttivita(e) {
 
   const nome = document.getElementById("new-tipoattivita-nome").value.trim();
   const disciplina = document.getElementById("new-tipoattivita-disciplina").value;
+  const soggettoQuotaCampo = document.getElementById("new-tipoattivita-quotacampo").checked;
 
   const prezzi = [];
   document.querySelectorAll(".prezzo-row").forEach(row => {
@@ -322,9 +341,9 @@ async function onCreateTipoAttivita(e) {
   try {
     if (!nome) throw new Error("Inserisci un nome.");
     if (editingTipoAttivitaId) {
-      await db.collection("tipiAttivita").doc(editingTipoAttivitaId).update({ nome, disciplina, prezzi });
+      await db.collection("tipiAttivita").doc(editingTipoAttivitaId).update({ nome, disciplina, soggettoQuotaCampo, prezzi });
     } else {
-      await db.collection("tipiAttivita").add({ nome, disciplina, attivo: true, prezzi });
+      await db.collection("tipiAttivita").add({ nome, disciplina, soggettoQuotaCampo, attivo: true, prezzi });
     }
     cancelEditTipoAttivita();
     await loadTipiAttivita();
@@ -333,6 +352,80 @@ async function onCreateTipoAttivita(e) {
   } finally {
     btn.disabled = false;
     btn.textContent = editingTipoAttivitaId ? "Salva modifiche" : "Crea tipo attività";
+  }
+}
+
+// ---------- Quote campo ----------
+
+function quotaCampoLabel(it) {
+  return `${disciplinaLabel(it.disciplina)} · ${it.posizione ? posizioneLabel(it.posizione) : "Tutti i campi"}`;
+}
+
+function quotaCampoMeta(it) {
+  const parts = [];
+  if (it.periodoInizio || it.periodoFine) {
+    parts.push(`${it.periodoInizio || "…"} → ${it.periodoFine || "…"}`);
+  }
+  if (it.disciplina === "padel") {
+    parts.push((it.durataMinuti || "—") + " min");
+    parts.push(it.fasciaOraria === "dopo_17" ? "dopo le 17:00" : "prima delle 17:00");
+    parts.push("CHF " + (it.importo || 0).toFixed(2) + " a lezione");
+  } else {
+    parts.push("CHF " + (it.importo || 0).toFixed(2) + "/ora");
+  }
+  return parts.join(" · ");
+}
+
+async function loadQuoteCampo() {
+  const list = document.getElementById("quotecampo-list");
+  list.innerHTML = `<div class="empty-state"><div class="display">Caricamento…</div></div>`;
+
+  const snap = await db.collection("quoteCampo").get();
+  const quote = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  renderSimpleList("quotecampo-list", quote, quotaCampoLabel, quotaCampoMeta, "quoteCampo", loadQuoteCampo);
+}
+
+function syncQuotaCampoPadelFields() {
+  const isPadel = document.getElementById("new-quotacampo-disciplina").value === "padel";
+  document.getElementById("quotacampo-padel-fields").classList.toggle("hidden", !isPadel);
+  document.getElementById("quotacampo-importo-label").textContent = isPadel ? "Importo (CHF a lezione)" : "Importo (CHF/ora)";
+}
+
+async function onCreateQuotaCampo(e) {
+  e.preventDefault();
+  const btn = e.target.querySelector("button[type=submit]");
+  const errorEl = document.getElementById("new-quotacampo-error");
+  errorEl.textContent = "";
+  btn.disabled = true;
+
+  const disciplina = document.getElementById("new-quotacampo-disciplina").value;
+  const importoRaw = document.getElementById("new-quotacampo-importo").value;
+
+  const quota = {
+    disciplina,
+    posizione: document.getElementById("new-quotacampo-posizione").value || null,
+    periodoInizio: document.getElementById("new-quotacampo-dal").value || null,
+    periodoFine: document.getElementById("new-quotacampo-al").value || null,
+    importo: parseFloat(importoRaw),
+    attivo: true
+  };
+
+  if (disciplina === "padel") {
+    quota.durataMinuti = parseInt(document.getElementById("new-quotacampo-durata").value, 10);
+    quota.fasciaOraria = document.getElementById("new-quotacampo-fascia").value;
+  }
+
+  try {
+    if (!importoRaw) throw new Error("Inserisci un importo.");
+    await db.collection("quoteCampo").add(quota);
+    document.getElementById("new-quotacampo-form").reset();
+    syncQuotaCampoPadelFields();
+    await loadQuoteCampo();
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+  } finally {
+    btn.disabled = false;
   }
 }
 
@@ -349,7 +442,10 @@ requireAuth(async (profile) => {
   }
 
   populateSelect(document.getElementById("new-campo-disciplina"), DISCIPLINE);
+  populateSelect(document.getElementById("new-campo-posizione"), POSIZIONI_CAMPO);
   populateSelect(document.getElementById("new-tipoattivita-disciplina"), DISCIPLINE);
+  populateSelect(document.getElementById("new-quotacampo-disciplina"), DISCIPLINE);
+  populateSelect(document.getElementById("new-quotacampo-posizione"), POSIZIONI_CAMPO, "— tutti —");
 
   document.getElementById("new-tipoutenza-form").addEventListener("submit", onCreateTipoUtenza);
   document.getElementById("new-campo-form").addEventListener("submit", onCreateCampo);
@@ -357,12 +453,16 @@ requireAuth(async (profile) => {
   document.getElementById("new-tipoattivita-form").addEventListener("submit", onCreateTipoAttivita);
   document.getElementById("add-prezzo-row-btn").addEventListener("click", () => addPrezzoRow());
   document.getElementById("cancel-edit-tipoattivita-btn").addEventListener("click", cancelEditTipoAttivita);
+  document.getElementById("new-quotacampo-form").addEventListener("submit", onCreateQuotaCampo);
+  document.getElementById("new-quotacampo-disciplina").addEventListener("change", syncQuotaCampoPadelFields);
+  syncQuotaCampoPadelFields();
   wirePrezzoRowRemoval();
 
   await loadTipiUtenza();
   await loadCampi();
   await loadTipiGruppoPadel();
   await loadTipiAttivita();
+  await loadQuoteCampo();
 });
 
 document.getElementById("logout-link").addEventListener("click", (e) => {

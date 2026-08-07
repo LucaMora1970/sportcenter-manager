@@ -61,6 +61,10 @@
             <select id="new-campo-disciplina" required></select>
           </div>
         </div>
+        <div class="field">
+          <label for="new-campo-posizione">Posizione</label>
+          <select id="new-campo-posizione" required></select>
+        </div>
         <div class="error-msg" id="new-campo-error"></div>
         <button type="submit" class="btn btn-ghost">+ Aggiungi campo</button>
       </form>
@@ -104,12 +108,70 @@
           </div>
         </div>
 
+        <div class="checkbox-row" style="margin-bottom:16px;">
+          <input type="checkbox" id="new-tipoattivita-quotacampo">
+          <label for="new-tipoattivita-quotacampo">Soggetto a quota campo (il collaboratore deve una quota al circolo)</label>
+        </div>
+
         <div id="prezzi-rows-container"></div>
         <button type="button" class="btn btn-ghost add-row-btn" id="add-prezzo-row-btn">+ Aggiungi tariffa</button>
 
         <div class="error-msg" id="new-tipoattivita-error"></div>
         <button type="submit" class="btn btn-primary" id="create-tipoattivita-btn">Crea tipo attività</button>
         <button type="button" class="btn btn-ghost hidden" id="cancel-edit-tipoattivita-btn" style="margin-top:10px;">Annulla modifica</button>
+      </form>
+
+      <hr class="court-divider">
+
+      <!-- Quote campo -->
+      <div class="section-title"><h2>Quote campo</h2></div>
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Importo dovuto dal collaboratore al circolo per l'uso del campo, in base a disciplina, posizione e periodo (per il padel anche durata lezione e fascia oraria).</p>
+      <div id="quotecampo-list">
+        <div class="empty-state"><div class="display">Caricamento…</div></div>
+      </div>
+      <form id="new-quotacampo-form">
+        <div class="row2">
+          <div class="field">
+            <label for="new-quotacampo-disciplina">Disciplina</label>
+            <select id="new-quotacampo-disciplina" required></select>
+          </div>
+          <div class="field">
+            <label for="new-quotacampo-posizione">Posizione campo</label>
+            <select id="new-quotacampo-posizione"></select>
+          </div>
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label for="new-quotacampo-dal">Dal</label>
+            <input type="date" id="new-quotacampo-dal">
+          </div>
+          <div class="field">
+            <label for="new-quotacampo-al">Al</label>
+            <input type="date" id="new-quotacampo-al">
+          </div>
+        </div>
+        <div class="row2 hidden" id="quotacampo-padel-fields">
+          <div class="field">
+            <label for="new-quotacampo-durata">Durata lezione</label>
+            <select id="new-quotacampo-durata">
+              <option value="60">60 minuti</option>
+              <option value="90">90 minuti</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="new-quotacampo-fascia">Fascia oraria</label>
+            <select id="new-quotacampo-fascia">
+              <option value="prima_17">Prima delle 17:00</option>
+              <option value="dopo_17">Dalle 17:00 in poi</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label for="new-quotacampo-importo" id="quotacampo-importo-label">Importo (CHF/ora)</label>
+          <input type="number" id="new-quotacampo-importo" min="0" step="0.05" required placeholder="es. 12">
+        </div>
+        <div class="error-msg" id="new-quotacampo-error"></div>
+        <button type="submit" class="btn btn-ghost">+ Aggiungi quota campo</button>
       </form>
 
     </div>

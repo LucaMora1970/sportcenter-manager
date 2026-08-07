@@ -90,6 +90,15 @@ service cloud.firestore {
       allow write: if hasPermission("config:gestisci");
     }
 
+    // Quote campo: importo dovuto dal collaboratore al circolo per l'uso
+    // del campo, in base a disciplina/posizione/periodo (e per il padel
+    // durata+fascia oraria). Stesso pattern di lettura/scrittura delle
+    // altre collection di configurazione.
+    match /quoteCampo/{id} {
+      allow read: if isSignedIn();
+      allow write: if hasPermission("config:gestisci");
+    }
+
     // Placeholder per collezioni future (corsi, prenotazioni_padel, camp, pagamenti):
     // aggiungere qui blocchi match dedicati man mano che si sviluppano le pagine,
     // seguendo lo stesso pattern basato su hasPermission().

@@ -17,15 +17,6 @@ function todayISO() {
   return d.toISOString().slice(0, 10);
 }
 
-function calcOre(oraInizio, oraFine) {
-  if (!oraInizio || !oraFine) return 0;
-  const [h1, m1] = oraInizio.split(":").map(Number);
-  const [h2, m2] = oraFine.split(":").map(Number);
-  let diff = (h2 * 60 + m2) - (h1 * 60 + m1);
-  if (diff < 0) diff += 24 * 60; // turno a cavallo di mezzanotte, caso raro
-  return Math.round((diff / 60) * 100) / 100;
-}
-
 // ---------- Caricamento cataloghi (tipi attività, campi, gruppo padel) ----------
 
 async function loadCatalogs() {
@@ -66,7 +57,7 @@ function rowHtml(rowId) {
         </div>
       </div>
       <div class="row2">
-        <div class="field" style="flex:0 0 110px;">
+        <div class="field row-nrore-field" style="flex:0 0 110px;">
           <label>Nr. ore</label>
           <input type="number" class="row-nrore" min="0" step="0.25" placeholder="es. 1.5">
         </div>
@@ -75,7 +66,7 @@ function rowHtml(rowId) {
           <input type="text" class="row-note" placeholder="es. nome allievo">
         </div>
       </div>
-      <div class="row-label">oppure specifica gli orari</div>
+      <div class="row-label row-orari-hint">oppure specifica gli orari</div>
       <div class="row2">
         <div class="field">
           <label>Ora inizio</label>
@@ -114,6 +105,27 @@ function populateRowDependents(rowEl) {
   } else {
     gruppoField.classList.add("hidden");
     gruppoSelect.innerHTML = "";
+  }
+
+  // Per il padel serve l'orario esatto (durata 60/90 min e fascia oraria
+  // per la quota campo), quindi si nasconde "Nr. ore" e si richiedono
+  // ora inizio/fine invece di lasciarli come alternativa opzionale.
+  const nrOreField = rowEl.querySelector(".row-nrore-field");
+  const orariHint = rowEl.querySelector(".row-orari-hint");
+  const oraInizioInput = rowEl.querySelector(".row-orainizio");
+  const oraFineInput = rowEl.querySelector(".row-orafine");
+
+  if (disciplina === "padel") {
+    nrOreField.classList.add("hidden");
+    rowEl.querySelector(".row-nrore").value = "";
+    orariHint.classList.add("hidden");
+    oraInizioInput.required = true;
+    oraFineInput.required = true;
+  } else {
+    nrOreField.classList.remove("hidden");
+    orariHint.classList.remove("hidden");
+    oraInizioInput.required = false;
+    oraFineInput.required = false;
   }
 }
 
