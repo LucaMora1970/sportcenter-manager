@@ -12,7 +12,8 @@ const KNOWN_PERMISSIONS = [
   { id: "diario:gestisci_tutti", label: "Diario: modificare/cancellare le voci di tutti" },
   { id: "users:gestisci", label: "Gestire utenti" },
   { id: "ruoli:gestisci", label: "Gestire ruoli e permessi" },
-  { id: "config:gestisci", label: "Gestire configurazione (tipi attività, tariffe, campi)" }
+  { id: "config:gestisci", label: "Gestire configurazione (tipi attività, tariffe, campi)" },
+  { id: "vendite:gestisci", label: "Gestire vendite (Cassa: registrare e vedere il riepilogo)" }
 ];
 
 function permessoLabel(id) {

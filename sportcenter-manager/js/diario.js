@@ -369,12 +369,28 @@ function renderEntries(entries) {
           <div class="entry-tipo">${escapeHtml(tipoAttivitaLabelFor(en))}</div>
           <div class="entry-meta">${escapeHtml(metaParts.join(" · "))}</div>
         </div>
-        <div class="entry-ore">${(en.ore || 0).toFixed(1)}h</div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
+          <div class="entry-ore">${(en.ore || 0).toFixed(1)}h</div>
+          <button type="button" class="btn btn-danger delete-entry-btn" style="width:auto;padding:6px 10px;font-size:0.65rem;" data-id="${en.id}">Elimina</button>
+        </div>
       </div>
     `;
   }).join("");
 
   totalEl.textContent = total.toFixed(1);
+
+  list.querySelectorAll(".delete-entry-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      if (!confirm("Eliminare questa voce? L'operazione non è reversibile.")) return;
+      btn.disabled = true;
+      try {
+        await db.collection("diario").doc(btn.dataset.id).delete();
+      } catch (err) {
+        showError(document.getElementById("entry-form-error"), "Errore nell'eliminazione: " + err.message);
+        btn.disabled = false;
+      }
+    });
+  });
 }
 
 function listenToday() {

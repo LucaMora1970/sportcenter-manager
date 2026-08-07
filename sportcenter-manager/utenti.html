@@ -106,6 +106,10 @@
               <input type="checkbox" id="perm-config" value="config:gestisci">
               <label for="perm-config">Gestire configurazione (tipi attività, tariffe, campi)</label>
             </div>
+            <div class="checkbox-row">
+              <input type="checkbox" id="perm-vendite" value="vendite:gestisci">
+              <label for="perm-vendite">Gestire vendite (Cassa: registrare e vedere il riepilogo)</label>
+            </div>
           </div>
         </div>
         <div class="error-msg" id="new-role-error"></div>
@@ -119,6 +123,7 @@
   <nav class="bottom-nav">
     <a href="diario.html">Diario</a>
     <a href="resoconto.html">Resoconto</a>
+    <a href="cassa.html">Cassa</a>
     <a href="#" title="In arrivo">Corsi</a>
     <a href="#" title="In arrivo">Prenotazioni</a>
     <a href="#" title="In arrivo">Camp</a>
@@ -126,6 +131,10 @@
     <a href="configurazione.html">Config</a>
     <a href="#" id="logout-link">Esci</a>
   </nav>
+
+  <script>
+    document.querySelector(".bottom-nav a.active")?.scrollIntoView({ inline: "center", block: "nearest" });
+  </script>
 
 </div>
 

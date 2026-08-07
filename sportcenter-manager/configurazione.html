@@ -240,6 +240,30 @@
         <button type="submit" class="btn btn-ghost">+ Aggiungi quota campo</button>
       </form>
 
+      <hr class="court-divider">
+
+      <!-- Articoli (Cassa/Bar) -->
+      <div class="section-title"><h2>Articoli (Cassa)</h2></div>
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Catalogo articoli in vendita alla Cassa (palline, noleggi, ore campo, tornei...), con prezzo di default modificabile al momento della vendita.</p>
+      <div id="articoli-list">
+        <div class="empty-state"><div class="display">Caricamento…</div></div>
+      </div>
+      <form id="new-articolo-form">
+        <div class="row2">
+          <div class="field">
+            <label for="new-articolo-nome">Nome</label>
+            <input type="text" id="new-articolo-nome" required placeholder="es. Pallina">
+          </div>
+          <div class="field">
+            <label for="new-articolo-prezzo">Prezzo di default (CHF)</label>
+            <input type="number" id="new-articolo-prezzo" min="0" step="0.5" placeholder="es. 3">
+          </div>
+        </div>
+        <div class="error-msg" id="new-articolo-error"></div>
+        <button type="submit" class="btn btn-ghost" id="create-articolo-btn">+ Aggiungi articolo</button>
+        <button type="button" class="btn btn-ghost hidden" id="cancel-edit-articolo-btn" style="margin-top:10px;">Annulla modifica</button>
+      </form>
+
     </div>
 
   </main>
@@ -247,6 +271,7 @@
   <nav class="bottom-nav">
     <a href="diario.html">Diario</a>
     <a href="resoconto.html">Resoconto</a>
+    <a href="cassa.html">Cassa</a>
     <a href="#" title="In arrivo">Corsi</a>
     <a href="#" title="In arrivo">Prenotazioni</a>
     <a href="#" title="In arrivo">Camp</a>
@@ -254,6 +279,10 @@
     <a href="configurazione.html" class="active">Config</a>
     <a href="#" id="logout-link">Esci</a>
   </nav>
+
+  <script>
+    document.querySelector(".bottom-nav a.active")?.scrollIntoView({ inline: "center", block: "nearest" });
+  </script>
 
 </div>
 

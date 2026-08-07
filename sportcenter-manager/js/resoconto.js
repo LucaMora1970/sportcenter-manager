@@ -127,7 +127,7 @@ async function loadTutti(dal, al) {
     db.collection("quoteCampo").get()
   ]);
 
-  const entries = diarioSnap.docs.map(d => d.data());
+  const entries = diarioSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
   const tipiById = {};
   tipiSnap.docs.forEach(d => { tipiById[d.id] = { id: d.id, ...d.data() }; });
@@ -304,7 +304,10 @@ function entryRowHtml(en) {
         <div class="entry-tipo">${escapeHtml(tipoAttivitaLabelFor(en))}</div>
         <div class="entry-meta">${escapeHtml(metaParts.join(" · "))}</div>
       </div>
-      <div class="entry-ore">${(en.ore || 0).toFixed(1)}h</div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
+        <div class="entry-ore">${(en.ore || 0).toFixed(1)}h</div>
+        <button type="button" class="btn btn-danger delete-diario-btn" style="width:auto;padding:6px 10px;font-size:0.65rem;" data-id="${en.id}">Elimina</button>
+      </div>
     </div>
   `;
 }
@@ -318,11 +321,21 @@ function toggleDettaglioDipendente(uid) {
     return;
   }
 
-  if (!container.dataset.rendered) {
-    const dipendente = (ultimoTutti.perDipendente || []).find(d => d.uid === uid);
-    container.innerHTML = renderDettaglioGiorniHtml(dipendente);
-    container.dataset.rendered = "true";
-  }
+  const dipendente = (ultimoTutti.perDipendente || []).find(d => d.uid === uid);
+  container.innerHTML = renderDettaglioGiorniHtml(dipendente);
+  container.querySelectorAll(".delete-diario-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      if (!confirm("Eliminare questa voce? L'operazione non è reversibile.")) return;
+      btn.disabled = true;
+      try {
+        await db.collection("diario").doc(btn.dataset.id).delete();
+        await calcola();
+      } catch (err) {
+        showError(document.getElementById("resoconto-error"), "Errore nell'eliminazione: " + err.message);
+        btn.disabled = false;
+      }
+    });
+  });
   container.classList.remove("hidden");
 }
 
@@ -371,6 +384,87 @@ function stampaReportDipendente(uid) {
   window.print();
 }
 
+// Tabella consolidata pensata per segretaria/contabile: un colpo
+// d'occhio su ore, quanto retribuire e quanto ricevere per ciascun
+// dipendente, con totali di riga.
+function renderRiepilogoContabilita(lista) {
+  const el = document.getElementById("riepilogo-contabilita-table");
+
+  if (lista.length === 0) {
+    el.innerHTML = `<div class="empty-state"><div class="display">Nessuna voce nel periodo</div></div>`;
+    return;
+  }
+
+  const totOre = lista.reduce((s, d) => s + d.totale, 0);
+  const totCompenso = lista.reduce((s, d) => s + d.compenso, 0);
+  const totQuota = lista.reduce((s, d) => s + d.quotaCampo, 0);
+
+  el.innerHTML = `
+    <table class="app-table">
+      <thead>
+        <tr><th>Dipendente</th><th>Ore</th><th>Da retribuire</th><th>Da ricevere</th></tr>
+      </thead>
+      <tbody>
+        ${lista.map(d => `
+          <tr>
+            <td>${escapeHtml(d.nome)}</td>
+            <td>${d.totale.toFixed(1)}h</td>
+            <td>${d.compenso > 0 ? "CHF " + d.compenso.toFixed(2) : "—"}</td>
+            <td>${d.quotaCampo > 0 ? "CHF " + d.quotaCampo.toFixed(2) : "—"}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td><strong>Totale</strong></td>
+          <td><strong>${totOre.toFixed(1)}h</strong></td>
+          <td><strong>CHF ${totCompenso.toFixed(2)}</strong></td>
+          <td><strong>CHF ${totQuota.toFixed(2)}</strong></td>
+        </tr>
+      </tfoot>
+    </table>
+  `;
+}
+
+function stampaRiepilogoCompleto() {
+  if (!ultimoTutti || !ultimoTutti.perDipendente) return;
+  const lista = ultimoTutti.perDipendente;
+
+  const righe = lista.map(d => `
+    <tr>
+      <td>${escapeHtml(d.nome)}</td>
+      <td>${d.totale.toFixed(2)}</td>
+      <td>${d.compenso > 0 ? d.compenso.toFixed(2) : "—"}</td>
+      <td>${d.quotaCampo > 0 ? d.quotaCampo.toFixed(2) : "—"}</td>
+    </tr>
+  `).join("");
+
+  const totOre = lista.reduce((s, d) => s + d.totale, 0);
+  const totCompenso = lista.reduce((s, d) => s + d.compenso, 0);
+  const totQuota = lista.reduce((s, d) => s + d.quotaCampo, 0);
+
+  document.getElementById("print-area").innerHTML = `
+    <h1>Riepilogo complessivo dipendenti</h1>
+    <p>Periodo: ${formatDataBreve(ultimoPeriodo.dal)} – ${formatDataBreve(ultimoPeriodo.al)}</p>
+    <table>
+      <thead>
+        <tr><th>Dipendente</th><th>Ore</th><th>Da retribuire (CHF)</th><th>Da ricevere (CHF)</th></tr>
+      </thead>
+      <tbody>${righe}</tbody>
+      <tfoot>
+        <tr>
+          <th>Totale</th>
+          <th>${totOre.toFixed(2)}</th>
+          <th>${totCompenso.toFixed(2)}</th>
+          <th>${totQuota.toFixed(2)}</th>
+        </tr>
+      </tfoot>
+    </table>
+  `;
+
+  window.print();
+}
+
 function renderPerTipoAttivita(lista) {
   const el = document.getElementById("tipoattivita-list");
 
@@ -410,6 +504,7 @@ async function calcola() {
       const tutti = await loadTutti(dal, al);
       ultimoTutti = tutti;
       renderDipendenti(tutti.perDipendente);
+      renderRiepilogoContabilita(tutti.perDipendente);
       renderPerTipoAttivita(tutti.perTipoAttivita);
 
       document.getElementById("totale-complessivo-ore").innerHTML = `${tutti.totaleOre.toFixed(1)}<small>h</small>`;
@@ -471,6 +566,8 @@ requireAuth(async (profile) => {
     document.getElementById("al").value = a;
     calcola();
   });
+
+  document.getElementById("stampa-tutti-btn").addEventListener("click", stampaRiepilogoCompleto);
 
   await loadDiscipline();
   calcola();

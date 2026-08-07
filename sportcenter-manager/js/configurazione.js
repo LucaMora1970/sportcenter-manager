@@ -743,6 +743,70 @@ async function onCreateQuotaCampo(e) {
   }
 }
 
+// ---------- Articoli (Cassa/Bar) ----------
+
+let editingArticoloId = null;
+
+async function loadArticoli() {
+  const list = document.getElementById("articoli-list");
+  list.innerHTML = `<div class="empty-state"><div class="display">Caricamento…</div></div>`;
+
+  const snap = await db.collection("articoli").orderBy("nome").get();
+  const articoli = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  renderSimpleList(
+    "articoli-list",
+    articoli,
+    it => it.nome,
+    it => it.prezzoDefault ? `CHF ${it.prezzoDefault.toFixed(2)}` : "importo libero",
+    "articoli",
+    loadArticoli,
+    startEditArticolo
+  );
+}
+
+function startEditArticolo(item) {
+  editingArticoloId = item.id;
+  document.getElementById("new-articolo-nome").value = item.nome || "";
+  document.getElementById("new-articolo-prezzo").value = item.prezzoDefault || "";
+  document.getElementById("create-articolo-btn").textContent = "Salva modifiche";
+  document.getElementById("cancel-edit-articolo-btn").classList.remove("hidden");
+  document.getElementById("new-articolo-form").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function cancelEditArticolo() {
+  editingArticoloId = null;
+  document.getElementById("new-articolo-form").reset();
+  document.getElementById("create-articolo-btn").textContent = "+ Aggiungi articolo";
+  document.getElementById("cancel-edit-articolo-btn").classList.add("hidden");
+}
+
+async function onCreateArticolo(e) {
+  e.preventDefault();
+  const btn = document.getElementById("create-articolo-btn");
+  const errorEl = document.getElementById("new-articolo-error");
+  errorEl.textContent = "";
+  btn.disabled = true;
+
+  const nome = document.getElementById("new-articolo-nome").value.trim();
+  const prezzoDefault = parseFloat(document.getElementById("new-articolo-prezzo").value) || 0;
+
+  try {
+    if (!nome) throw new Error("Inserisci un nome.");
+    if (editingArticoloId) {
+      await db.collection("articoli").doc(editingArticoloId).update({ nome, prezzoDefault });
+    } else {
+      await db.collection("articoli").add({ nome, prezzoDefault, attivo: true });
+    }
+    cancelEditArticolo();
+    await loadArticoli();
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // ---------- Init ----------
 
 requireAuth(async (profile) => {
@@ -780,6 +844,8 @@ requireAuth(async (profile) => {
   document.getElementById("new-quotacampo-disciplina").addEventListener("change", syncQuotaCampoPadelFields);
   syncQuotaCampoPadelFields();
   wirePrezzoRowRemoval();
+  document.getElementById("new-articolo-form").addEventListener("submit", onCreateArticolo);
+  document.getElementById("cancel-edit-articolo-btn").addEventListener("click", cancelEditArticolo);
 
   await loadDisciplineList();
   await loadAllievi();
@@ -788,6 +854,7 @@ requireAuth(async (profile) => {
   await loadTipiGruppoPadel();
   await loadTipiAttivita();
   await loadQuoteCampo();
+  await loadArticoli();
 });
 
 document.getElementById("logout-link").addEventListener("click", (e) => {

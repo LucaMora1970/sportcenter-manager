@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cassa — Sport-OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <h1>Cassa</h1>
+    <div class="topbar-account">
+      <div class="user-chip" id="user-chip">—</div>
+      <a href="password.html" class="topbar-link">Password</a>
+    </div>
+  </div>
+
+  <main>
+
+    <div id="access-denied" class="empty-state hidden">
+      <div class="display">Accesso non consentito</div>
+      <p>Questa sezione è riservata a chi gestisce le vendite.</p>
+    </div>
+
+    <div id="cassa-content">
+
+      <!-- Scoreboard: incassato oggi -->
+      <div class="scoreboard">
+        <div>
+          <div class="label">Incassato oggi</div>
+          <div class="value" id="oggi-totale">0.00<small>CHF</small></div>
+        </div>
+      </div>
+
+      <!-- Nuova vendita -->
+      <div class="section-title"><h2>Nuova vendita</h2></div>
+      <form id="vendita-form">
+        <div class="field">
+          <label for="vendita-articolo">Articolo</label>
+          <select id="vendita-articolo" required></select>
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label for="vendita-importo">Importo (CHF)</label>
+            <input type="number" id="vendita-importo" min="0" step="0.5" required>
+          </div>
+          <div class="field">
+            <label for="vendita-metodo">Pagamento</label>
+            <select id="vendita-metodo" required>
+              <option value="twint">Twint</option>
+              <option value="contanti">Contanti</option>
+            </select>
+          </div>
+        </div>
+        <div class="error-msg" id="vendita-error"></div>
+        <button type="submit" class="btn btn-primary" id="vendita-btn">Registra vendita</button>
+      </form>
+
+      <hr class="court-divider">
+
+      <div class="section-title"><h2>Vendite di oggi</h2></div>
+      <div id="vendite-oggi-list">
+        <div class="empty-state"><div class="display">Caricamento…</div></div>
+      </div>
+
+      <hr class="court-divider">
+
+      <!-- Riepilogo periodo -->
+      <div class="section-title"><h2>Riepilogo periodo</h2></div>
+      <div class="row2" style="margin-bottom:16px;">
+        <button type="button" class="btn btn-ghost" id="preset-7giorni">Ultimi 7 giorni</button>
+        <button type="button" class="btn btn-ghost" id="preset-mese-corrente">Mese corrente</button>
+      </div>
+      <form id="periodo-form">
+        <div class="row2">
+          <div class="field">
+            <label for="dal">Dal</label>
+            <input type="date" id="dal" required>
+          </div>
+          <div class="field">
+            <label for="al">Al</label>
+            <input type="date" id="al" required>
+          </div>
+        </div>
+        <div class="error-msg" id="periodo-error"></div>
+        <button type="submit" class="btn btn-primary" id="calcola-btn">Calcola</button>
+      </form>
+
+      <hr class="court-divider">
+
+      <div class="scoreboard">
+        <div>
+          <div class="label">Twint</div>
+          <div class="value" id="totale-twint" style="font-size:1.8rem;">CHF 0.00</div>
+        </div>
+        <div>
+          <div class="label">Contanti</div>
+          <div class="value" id="totale-contanti" style="font-size:1.8rem;">CHF 0.00</div>
+        </div>
+      </div>
+
+      <div class="scoreboard" style="margin-top:12px;">
+        <div>
+          <div class="label">Totale periodo</div>
+          <div class="value" id="totale-periodo">0.00<small>CHF</small></div>
+        </div>
+      </div>
+
+      <hr class="court-divider">
+      <div class="section-title"><h2>Per articolo</h2></div>
+      <div id="per-articolo-list">
+        <div class="empty-state"><div class="display">Nessun dato</div></div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <nav class="bottom-nav">
+    <a href="diario.html">Diario</a>
+    <a href="resoconto.html">Resoconto</a>
+    <a href="cassa.html" class="active">Cassa</a>
+    <a href="#" title="In arrivo">Corsi</a>
+    <a href="#" title="In arrivo">Prenotazioni</a>
+    <a href="#" title="In arrivo">Camp</a>
+    <a href="utenti.html">Team</a>
+    <a href="configurazione.html">Config</a>
+    <a href="#" id="logout-link">Esci</a>
+  </nav>
+
+  <script>
+    document.querySelector(".bottom-nav a.active")?.scrollIntoView({ inline: "center", block: "nearest" });
+  </script>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/cassa.js"></script>
+</body>
+</html>

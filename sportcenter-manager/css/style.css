@@ -353,7 +353,8 @@ select:focus, input:focus, textarea:focus {
 .btn-ghost { background: transparent; color: var(--chalk-grey); border: 1px solid var(--court-blue-700); }
 .btn-danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
 
-/* Bottom nav — app mobile-like */
+/* Bottom nav — app mobile-like, scorrevole orizzontalmente quando le
+   voci non entrano tutte (più pagine = più voci nel tempo) */
 .bottom-nav {
   position: fixed;
   bottom: 0;
@@ -364,18 +365,24 @@ select:focus, input:focus, textarea:focus {
   background: var(--court-blue-900);
   border-top: 1px solid var(--court-blue-700);
   display: flex;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
   padding: 8px 6px calc(8px + env(safe-area-inset-bottom));
 }
+.bottom-nav::-webkit-scrollbar { display: none; }
 .bottom-nav a {
-  flex: 1;
+  flex: 0 0 auto;
+  min-width: 62px;
   text-align: center;
   text-decoration: none;
   color: var(--chalk-grey-dim);
   font-size: 0.68rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  padding: 8px 2px;
+  padding: 8px 10px;
   border-radius: 8px;
+  white-space: nowrap;
 }
 .bottom-nav a.active { color: var(--ball); background: rgba(198,223,46,0.08); }
 
@@ -439,6 +446,32 @@ select:focus, input:focus, textarea:focus {
   padding: 12px;
 }
 .dettaglio-giorni .entry-card { margin-bottom: 8px; }
+
+/* Tabella riepilogo contabilità (in-app, tema scuro) */
+.app-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  font-family: 'Space Mono', monospace;
+}
+.app-table th, .app-table td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--court-blue-700);
+  white-space: nowrap;
+}
+.app-table th {
+  color: var(--chalk-grey);
+  text-transform: uppercase;
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+  font-family: 'Inter', sans-serif;
+}
+.app-table tfoot td {
+  border-top: 1px dashed var(--court-blue-700);
+  border-bottom: none;
+  color: var(--ball);
+}
 
 /* Report di stampa: nascosto normalmente, mostrato solo in stampa
    (window.print()) come pagina bianca indipendente dal tema scuro

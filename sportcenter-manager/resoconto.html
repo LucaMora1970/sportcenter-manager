@@ -60,6 +60,14 @@
       </div>
 
       <hr class="court-divider">
+      <div class="section-title"><h2>Riepilogo per la contabilità</h2></div>
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Vista consolidata per segretaria/contabile: ore, quanto retribuire e quanto ricevere per ogni dipendente.</p>
+      <div id="riepilogo-contabilita-table" style="overflow-x:auto;">
+        <div class="empty-state"><div class="display">Caricamento…</div></div>
+      </div>
+      <button type="button" class="btn btn-ghost" id="stampa-tutti-btn" style="margin-top:12px;">Stampa riepilogo completo</button>
+
+      <hr class="court-divider">
       <div class="section-title"><h2>Per tipo di attività</h2></div>
       <div id="tipoattivita-list">
         <div class="empty-state"><div class="display">Caricamento…</div></div>
@@ -102,6 +110,7 @@
   <nav class="bottom-nav">
     <a href="diario.html">Diario</a>
     <a href="resoconto.html" class="active">Resoconto</a>
+    <a href="cassa.html">Cassa</a>
     <a href="#" title="In arrivo">Corsi</a>
     <a href="#" title="In arrivo">Prenotazioni</a>
     <a href="#" title="In arrivo">Camp</a>
@@ -109,6 +118,10 @@
     <a href="configurazione.html">Config</a>
     <a href="#" id="logout-link">Esci</a>
   </nav>
+
+  <script>
+    document.querySelector(".bottom-nav a.active")?.scrollIntoView({ inline: "center", block: "nearest" });
+  </script>
 
 </div>
 
