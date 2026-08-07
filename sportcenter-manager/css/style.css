@@ -68,8 +68,9 @@ a { color: var(--ball); }
 .topbar {
   padding: 20px var(--gap) 14px;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
+  gap: 8px;
   border-bottom: 1px dashed var(--court-blue-700);
 }
 
@@ -84,6 +85,7 @@ a { color: var(--ball); }
 .topbar-account {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
 }
 
@@ -365,8 +367,10 @@ select:focus, input:focus, textarea:focus {
   background: var(--court-blue-900);
   border-top: 1px solid var(--court-blue-700);
   display: flex;
-  overflow-x: auto;
+  overflow-x: scroll;
+  overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
   scrollbar-width: none;
   padding: 8px 6px calc(8px + env(safe-area-inset-bottom));
 }

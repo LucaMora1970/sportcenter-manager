@@ -331,7 +331,7 @@ async function onSubmitEntry(e) {
     showError(errorEl, "Errore nel salvataggio: " + err.message);
   } finally {
     btn.disabled = false;
-    btn.textContent = "Salva voce";
+    btn.textContent = "Salva";
   }
 }
 
