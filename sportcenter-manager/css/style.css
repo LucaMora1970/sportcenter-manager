@@ -81,6 +81,23 @@ a { color: var(--ball); }
   font-family: 'Space Mono', monospace;
 }
 
+.topbar-account {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.topbar-link {
+  font-size: 0.68rem;
+  color: var(--chalk-grey);
+  text-decoration: none;
+  border: 1px solid var(--court-blue-700);
+  border-radius: 6px;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+.topbar-link:hover { color: var(--ball); border-color: var(--ball); }
+
 main {
   flex: 1;
   padding: var(--gap);
