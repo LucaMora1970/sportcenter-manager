@@ -6,7 +6,9 @@
 
 let currentProfile = null;
 let tipiUtenzaCache = []; // [{id, nome, attivo}]
+let tipiAttivitaCache = [];
 let prezzoRowCounter = 0;
+let editingTipoAttivitaId = null;
 
 // ---------- Helper lista generica con toggle attivo ----------
 
@@ -178,10 +180,18 @@ function prezzoRowHtml(rowId) {
   `;
 }
 
-function addPrezzoRow() {
+function addPrezzoRow(initial) {
   prezzoRowCounter++;
   const container = document.getElementById("prezzi-rows-container");
   container.insertAdjacentHTML("beforeend", prezzoRowHtml(prezzoRowCounter));
+
+  if (initial) {
+    const row = container.querySelector(`[data-row-id="${prezzoRowCounter}"]`);
+    if (initial.tipoUtenzaId) row.querySelector(".prezzo-tipoutenza").value = initial.tipoUtenzaId;
+    if (initial.periodoInizio) row.querySelector(".prezzo-periodo-inizio").value = initial.periodoInizio;
+    if (initial.periodoFine) row.querySelector(".prezzo-periodo-fine").value = initial.periodoFine;
+    if (initial.prezzoOra != null) row.querySelector(".prezzo-ora").value = initial.prezzoOra;
+  }
 }
 
 function refreshPrezzoRowSelects() {
@@ -209,16 +219,78 @@ async function loadTipiAttivita() {
   list.innerHTML = `<div class="empty-state"><div class="display">Caricamento…</div></div>`;
 
   const snap = await db.collection("tipiAttivita").orderBy("nome").get();
-  const tipi = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  tipiAttivitaCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-  renderSimpleList(
-    "tipiattivita-list",
-    tipi,
-    it => it.nome,
-    it => `${disciplinaLabel(it.disciplina)} · ${(it.prezzi || []).length} tariffe`,
-    "tipiAttivita",
-    loadTipiAttivita
-  );
+  renderTipiAttivitaList();
+}
+
+function renderTipiAttivitaList() {
+  const list = document.getElementById("tipiattivita-list");
+
+  if (tipiAttivitaCache.length === 0) {
+    list.innerHTML = `<div class="empty-state"><div class="display">Nessun elemento</div></div>`;
+    return;
+  }
+
+  list.innerHTML = tipiAttivitaCache.map(it => `
+    <div class="entry-card" data-id="${it.id}">
+      <div class="entry-main">
+        <div class="entry-tipo">${escapeHtml(it.nome)}</div>
+        <div class="entry-meta">${escapeHtml(disciplinaLabel(it.disciplina))} · ${(it.prezzi || []).length} tariffe</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <button class="btn btn-ghost edit-tipoattivita-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${it.id}">Modifica</button>
+        <button class="btn btn-ghost toggle-active-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${it.id}" data-attivo="${it.attivo !== false}">
+          ${it.attivo !== false ? "Attivo" : "Disattivato"}
+        </button>
+      </div>
+    </div>
+  `).join("");
+
+  list.querySelectorAll(".toggle-active-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      try {
+        await db.collection("tipiAttivita").doc(btn.dataset.id).update({ attivo: btn.dataset.attivo !== "true" });
+        await loadTipiAttivita();
+      } catch (err) {
+        showError(document.getElementById("config-list-error"), "Errore: " + err.message);
+        btn.disabled = false;
+      }
+    });
+  });
+
+  list.querySelectorAll(".edit-tipoattivita-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const tipo = tipiAttivitaCache.find(t => t.id === btn.dataset.id);
+      startEditTipoAttivita(tipo);
+    });
+  });
+}
+
+function startEditTipoAttivita(tipo) {
+  editingTipoAttivitaId = tipo.id;
+
+  document.getElementById("new-tipoattivita-nome").value = tipo.nome || "";
+  document.getElementById("new-tipoattivita-disciplina").value = tipo.disciplina || "";
+
+  document.getElementById("prezzi-rows-container").innerHTML = "";
+  (tipo.prezzi || []).forEach(p => addPrezzoRow(p));
+
+  document.getElementById("tipoattivita-form-title").textContent = "Modifica tipo attività";
+  document.getElementById("create-tipoattivita-btn").textContent = "Salva modifiche";
+  document.getElementById("cancel-edit-tipoattivita-btn").classList.remove("hidden");
+
+  document.getElementById("new-tipoattivita-form").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function cancelEditTipoAttivita() {
+  editingTipoAttivitaId = null;
+  document.getElementById("new-tipoattivita-form").reset();
+  document.getElementById("prezzi-rows-container").innerHTML = "";
+  document.getElementById("tipoattivita-form-title").textContent = "Nuovo tipo attività";
+  document.getElementById("create-tipoattivita-btn").textContent = "Crea tipo attività";
+  document.getElementById("cancel-edit-tipoattivita-btn").classList.add("hidden");
 }
 
 async function onCreateTipoAttivita(e) {
@@ -227,7 +299,7 @@ async function onCreateTipoAttivita(e) {
   const errorEl = document.getElementById("new-tipoattivita-error");
   errorEl.textContent = "";
   btn.disabled = true;
-  btn.textContent = "Creazione…";
+  btn.textContent = editingTipoAttivitaId ? "Salvataggio…" : "Creazione…";
 
   const nome = document.getElementById("new-tipoattivita-nome").value.trim();
   const disciplina = document.getElementById("new-tipoattivita-disciplina").value;
@@ -249,15 +321,18 @@ async function onCreateTipoAttivita(e) {
 
   try {
     if (!nome) throw new Error("Inserisci un nome.");
-    await db.collection("tipiAttivita").add({ nome, disciplina, attivo: true, prezzi });
-    document.getElementById("new-tipoattivita-form").reset();
-    document.getElementById("prezzi-rows-container").innerHTML = "";
+    if (editingTipoAttivitaId) {
+      await db.collection("tipiAttivita").doc(editingTipoAttivitaId).update({ nome, disciplina, prezzi });
+    } else {
+      await db.collection("tipiAttivita").add({ nome, disciplina, attivo: true, prezzi });
+    }
+    cancelEditTipoAttivita();
     await loadTipiAttivita();
   } catch (err) {
     showError(errorEl, "Errore: " + err.message);
   } finally {
     btn.disabled = false;
-    btn.textContent = "Crea tipo attività";
+    btn.textContent = editingTipoAttivitaId ? "Salva modifiche" : "Crea tipo attività";
   }
 }
 
@@ -280,7 +355,8 @@ requireAuth(async (profile) => {
   document.getElementById("new-campo-form").addEventListener("submit", onCreateCampo);
   document.getElementById("new-tipogruppopadel-form").addEventListener("submit", onCreateTipoGruppoPadel);
   document.getElementById("new-tipoattivita-form").addEventListener("submit", onCreateTipoAttivita);
-  document.getElementById("add-prezzo-row-btn").addEventListener("click", addPrezzoRow);
+  document.getElementById("add-prezzo-row-btn").addEventListener("click", () => addPrezzoRow());
+  document.getElementById("cancel-edit-tipoattivita-btn").addEventListener("click", cancelEditTipoAttivita);
   wirePrezzoRowRemoval();
 
   await loadTipiUtenza();
