@@ -47,6 +47,10 @@
             <input type="text" id="new-disciplina-nome" required placeholder="es. Mental Coach">
           </div>
         </div>
+        <div class="field">
+          <label for="new-disciplina-ordine">Ordine (numero più basso = più in alto nell'elenco)</label>
+          <input type="number" id="new-disciplina-ordine" step="1" placeholder="es. 3">
+        </div>
         <div class="error-msg" id="new-disciplina-error"></div>
         <button type="submit" class="btn btn-ghost" id="create-disciplina-btn">+ Aggiungi disciplina</button>
         <button type="button" class="btn btn-ghost hidden" id="cancel-edit-disciplina-btn" style="margin-top:10px;">Annulla modifica</button>
@@ -135,6 +139,11 @@
             <label for="new-tipoattivita-disciplina">Disciplina</label>
             <select id="new-tipoattivita-disciplina" required></select>
           </div>
+        </div>
+
+        <div class="field">
+          <label for="new-tipoattivita-ordine">Ordine (numero più basso = più in alto nell'elenco)</label>
+          <input type="number" id="new-tipoattivita-ordine" step="1" placeholder="es. 3">
         </div>
 
         <div class="checkbox-row" style="margin-bottom:16px;">

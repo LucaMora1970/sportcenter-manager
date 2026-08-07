@@ -84,7 +84,13 @@ function rowHtml(rowId) {
 function populateRowDependents(rowEl) {
   const disciplina = rowEl.querySelector(".row-disciplina").value;
 
-  const tipiPerDisciplina = tipiAttivitaCache.filter(t => t.disciplina === disciplina);
+  const tipiPerDisciplina = tipiAttivitaCache
+    .filter(t => t.disciplina === disciplina)
+    .sort((a, b) => {
+      const ao = a.ordine != null ? a.ordine : 99;
+      const bo = b.ordine != null ? b.ordine : 99;
+      return ao - bo || (a.nome || "").localeCompare(b.nome || "");
+    });
   populateSelect(
     rowEl.querySelector(".row-tipoattivita"),
     tipiPerDisciplina.map(t => ({ id: t.id, label: t.nome }))

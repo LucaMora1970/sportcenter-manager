@@ -10,9 +10,13 @@ let DISCIPLINE = [];
 async function loadDiscipline() {
   const snap = await db.collection("discipline").get();
   DISCIPLINE = snap.docs
-    .map(d => ({ id: d.id, label: d.data().nome, attivo: d.data().attivo }))
+    .map(d => ({ id: d.id, label: d.data().nome, attivo: d.data().attivo, ordine: d.data().ordine }))
     .filter(d => d.attivo !== false)
-    .sort((a, b) => a.label.localeCompare(b.label));
+    .sort((a, b) => {
+      const ao = a.ordine != null ? a.ordine : 99;
+      const bo = b.ordine != null ? b.ordine : 99;
+      return ao - bo || a.label.localeCompare(b.label);
+    });
 }
 
 function disciplinaLabel(id) {

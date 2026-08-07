@@ -14,14 +14,20 @@ let editingCampoId = null;
 let editingDisciplinaId = null;
 
 const DEFAULT_DISCIPLINE_SEED = [
-  { id: "tennis", nome: "Tennis" },
-  { id: "padel", nome: "Padel" },
-  { id: "squash", nome: "Squash" },
-  { id: "preparatore-atletico", nome: "Preparatore atletico" },
-  { id: "sparring", nome: "Sparring" },
-  { id: "mental-coach", nome: "Mental Coach" },
-  { id: "official", nome: "Official" }
+  { id: "tennis", nome: "Tennis", ordine: 0 },
+  { id: "padel", nome: "Padel", ordine: 1 },
+  { id: "squash", nome: "Squash", ordine: 2 },
+  { id: "preparatore-atletico", nome: "Preparatore atletico", ordine: 3 },
+  { id: "sparring", nome: "Sparring", ordine: 4 },
+  { id: "mental-coach", nome: "Mental Coach", ordine: 5 },
+  { id: "official", nome: "Official", ordine: 6 }
 ];
+
+// Per le discipline create prima dell'introduzione del campo "ordine"
+// (mancante), si assegna questo valore come fallback, preservando
+// tennis/padel/squash per primi.
+const DEFAULT_DISCIPLINE_ORDER = {};
+DEFAULT_DISCIPLINE_SEED.forEach(d => { DEFAULT_DISCIPLINE_ORDER[d.id] = d.ordine; });
 
 const POSIZIONI_CAMPO = [
   { id: "interno", label: "Interno" },
@@ -107,19 +113,62 @@ async function seedDisciplineIfEmpty() {
 
   const batch = db.batch();
   DEFAULT_DISCIPLINE_SEED.forEach(d => {
-    batch.set(db.collection("discipline").doc(d.id), { nome: d.nome, attivo: true });
+    batch.set(db.collection("discipline").doc(d.id), { nome: d.nome, ordine: d.ordine, attivo: true });
   });
   await batch.commit();
+}
+
+// Le discipline create prima dell'introduzione del campo "ordine" non
+// ce l'hanno ancora: gliene assegniamo uno la prima volta che vengono
+// caricate in Configurazione, così l'ordinamento resta stabile da lì in poi.
+async function migrateDisciplineOrderIfMissing(discipline) {
+  const missing = discipline.filter(d => d.ordine == null);
+  if (missing.length === 0) return false;
+
+  const batch = db.batch();
+  missing.forEach(d => {
+    const ordine = DEFAULT_DISCIPLINE_ORDER[d.id] != null ? DEFAULT_DISCIPLINE_ORDER[d.id] : 99;
+    batch.update(db.collection("discipline").doc(d.id), { ordine });
+  });
+  await batch.commit();
+  return true;
+}
+
+// Riusato per qualunque lista con un campo "ordine" opzionale (discipline,
+// tipi attività): numero più basso = più in alto; chi non ce l'ha va in
+// fondo, poi ordine alfabetico a parità di valore.
+function sortByOrdine(items) {
+  return items.slice().sort((a, b) => {
+    const ao = a.ordine != null ? a.ordine : 99;
+    const bo = b.ordine != null ? b.ordine : 99;
+    return ao - bo || (a.nome || "").localeCompare(b.nome || "");
+  });
 }
 
 async function loadDisciplineList() {
   const list = document.getElementById("discipline-list");
   list.innerHTML = `<div class="empty-state"><div class="display">Caricamento…</div></div>`;
 
-  const snap = await db.collection("discipline").orderBy("nome").get();
-  const discipline = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  let snap = await db.collection("discipline").get();
+  let discipline = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-  renderSimpleList("discipline-list", discipline, it => it.nome, it => it.id, "discipline", loadDisciplineList, startEditDisciplina);
+  const migrated = await migrateDisciplineOrderIfMissing(discipline);
+  if (migrated) {
+    snap = await db.collection("discipline").get();
+    discipline = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  }
+
+  discipline = sortByOrdine(discipline);
+
+  renderSimpleList(
+    "discipline-list",
+    discipline,
+    it => it.nome,
+    it => `${it.id} · ordine ${it.ordine != null ? it.ordine : "—"}`,
+    "discipline",
+    loadDisciplineList,
+    startEditDisciplina
+  );
 }
 
 function refreshDisciplinaSelects() {
@@ -133,6 +182,7 @@ function startEditDisciplina(item) {
   document.getElementById("new-disciplina-id").value = item.id;
   document.getElementById("new-disciplina-id").disabled = true;
   document.getElementById("new-disciplina-nome").value = item.nome || "";
+  document.getElementById("new-disciplina-ordine").value = item.ordine != null ? item.ordine : "";
   document.getElementById("create-disciplina-btn").textContent = "Salva modifiche";
   document.getElementById("cancel-edit-disciplina-btn").classList.remove("hidden");
   document.getElementById("new-disciplina-form").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -155,14 +205,16 @@ async function onCreateDisciplina(e) {
 
   const id = document.getElementById("new-disciplina-id").value.trim();
   const nome = document.getElementById("new-disciplina-nome").value.trim();
+  const ordineRaw = document.getElementById("new-disciplina-ordine").value;
+  const ordine = ordineRaw !== "" ? parseInt(ordineRaw, 10) : 99;
 
   try {
     if (!nome) throw new Error("Inserisci un nome.");
     if (editingDisciplinaId) {
-      await db.collection("discipline").doc(editingDisciplinaId).update({ nome });
+      await db.collection("discipline").doc(editingDisciplinaId).update({ nome, ordine });
     } else {
       if (!id) throw new Error("Inserisci un ID disciplina (es. mental-coach).");
-      await db.collection("discipline").doc(id).set({ nome, attivo: true });
+      await db.collection("discipline").doc(id).set({ nome, ordine, attivo: true });
     }
     cancelEditDisciplina();
     await loadDisciplineList();
@@ -393,12 +445,37 @@ function wirePrezzoRowRemoval() {
   });
 }
 
+// Ai tipi attività creati prima dell'introduzione del campo "ordine"
+// (mancante) si assegna un ordine di partenza basato sull'ordine
+// alfabetico attuale, così la lista non salta visivamente al primo
+// caricamento; da lì in poi l'admin può aggiustarlo a piacere.
+async function migrateTipoAttivitaOrderIfMissing(tipi) {
+  const missing = tipi.filter(t => t.ordine == null);
+  if (missing.length === 0) return false;
+
+  const ordinati = missing.slice().sort((a, b) => (a.nome || "").localeCompare(b.nome || ""));
+  const batch = db.batch();
+  ordinati.forEach((t, i) => {
+    batch.update(db.collection("tipiAttivita").doc(t.id), { ordine: i });
+  });
+  await batch.commit();
+  return true;
+}
+
 async function loadTipiAttivita() {
   const list = document.getElementById("tipiattivita-list");
   list.innerHTML = `<div class="empty-state"><div class="display">Caricamento…</div></div>`;
 
-  const snap = await db.collection("tipiAttivita").orderBy("nome").get();
-  tipiAttivitaCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  let snap = await db.collection("tipiAttivita").get();
+  let tipi = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  const migrated = await migrateTipoAttivitaOrderIfMissing(tipi);
+  if (migrated) {
+    snap = await db.collection("tipiAttivita").get();
+    tipi = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  }
+
+  tipiAttivitaCache = sortByOrdine(tipi);
 
   renderTipiAttivitaList();
 }
@@ -415,7 +492,7 @@ function renderTipiAttivitaList() {
     <div class="entry-card" data-id="${it.id}">
       <div class="entry-main">
         <div class="entry-tipo">${escapeHtml(it.nome)}</div>
-        <div class="entry-meta">${escapeHtml(disciplinaLabel(it.disciplina))} · ${(it.prezzi || []).length} tariffe${it.soggettoQuotaCampo ? " · quota campo" : ""}${it.retribuitoCollaboratore ? " · compenso" : ""}</div>
+        <div class="entry-meta">${escapeHtml(disciplinaLabel(it.disciplina))} · ordine ${it.ordine != null ? it.ordine : "—"} · ${(it.prezzi || []).length} tariffe${it.soggettoQuotaCampo ? " · quota campo" : ""}${it.retribuitoCollaboratore ? " · compenso" : ""}</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;">
         <button class="btn btn-ghost edit-tipoattivita-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${it.id}">Modifica</button>
@@ -467,6 +544,7 @@ function startEditTipoAttivita(tipo) {
 
   document.getElementById("new-tipoattivita-nome").value = tipo.nome || "";
   document.getElementById("new-tipoattivita-disciplina").value = tipo.disciplina || "";
+  document.getElementById("new-tipoattivita-ordine").value = tipo.ordine != null ? tipo.ordine : "";
   document.getElementById("new-tipoattivita-quotacampo").checked = !!tipo.soggettoQuotaCampo;
   document.getElementById("new-tipoattivita-retribuito").checked = !!tipo.retribuitoCollaboratore;
 
@@ -499,6 +577,8 @@ async function onCreateTipoAttivita(e) {
 
   const nome = document.getElementById("new-tipoattivita-nome").value.trim();
   const disciplina = document.getElementById("new-tipoattivita-disciplina").value;
+  const ordineRaw = document.getElementById("new-tipoattivita-ordine").value;
+  const ordine = ordineRaw !== "" ? parseInt(ordineRaw, 10) : 99;
   const soggettoQuotaCampo = document.getElementById("new-tipoattivita-quotacampo").checked;
   const retribuitoCollaboratore = document.getElementById("new-tipoattivita-retribuito").checked;
 
@@ -520,9 +600,9 @@ async function onCreateTipoAttivita(e) {
   try {
     if (!nome) throw new Error("Inserisci un nome.");
     if (editingTipoAttivitaId) {
-      await db.collection("tipiAttivita").doc(editingTipoAttivitaId).update({ nome, disciplina, soggettoQuotaCampo, retribuitoCollaboratore, prezzi });
+      await db.collection("tipiAttivita").doc(editingTipoAttivitaId).update({ nome, disciplina, ordine, soggettoQuotaCampo, retribuitoCollaboratore, prezzi });
     } else {
-      await db.collection("tipiAttivita").add({ nome, disciplina, soggettoQuotaCampo, retribuitoCollaboratore, attivo: true, prezzi });
+      await db.collection("tipiAttivita").add({ nome, disciplina, ordine, soggettoQuotaCampo, retribuitoCollaboratore, attivo: true, prezzi });
     }
     cancelEditTipoAttivita();
     await loadTipiAttivita();

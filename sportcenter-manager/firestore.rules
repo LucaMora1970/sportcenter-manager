@@ -35,9 +35,16 @@ service cloud.firestore {
         );
     }
 
-    // Ogni utente può leggere il proprio profilo; l'admin (users:gestisci) tutti.
+    // Ogni utente può leggere il proprio profilo; l'admin (users:gestisci)
+    // tutti; chi ha "diario:leggi_tutti" può leggere tutti gli utenti
+    // (serve al Resoconto per calcolare quota campo e compenso per
+    // dipendente), ma non modificarli.
     match /users/{userId} {
-      allow read: if isSignedIn() && (request.auth.uid == userId || hasPermission("users:gestisci"));
+      allow read: if isSignedIn() && (
+        request.auth.uid == userId
+        || hasPermission("users:gestisci")
+        || hasPermission("diario:leggi_tutti")
+      );
       allow write: if hasPermission("users:gestisci");
     }
 

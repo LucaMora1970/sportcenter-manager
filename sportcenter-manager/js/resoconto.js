@@ -11,6 +11,8 @@
 // ============================================================
 
 let currentProfile = null;
+let ultimoTutti = null; // risultato dell'ultimo calcolo admin, per dettaglio/stampa
+let ultimoPeriodo = null; // { dal, al } dell'ultimo calcolo
 
 function pad2(n) {
   return String(n).padStart(2, "0");
@@ -20,11 +22,23 @@ function toISO(date) {
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 }
 
+function formatDataBreve(dataStr) {
+  const [y, m, d] = dataStr.split("-");
+  return `${d}.${m}.${y}`;
+}
+
 function currentMonthRange() {
   const now = new Date();
   const first = new Date(now.getFullYear(), now.getMonth(), 1);
   const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
   return [toISO(first), toISO(last)];
+}
+
+function last7DaysRange() {
+  const oggi = new Date();
+  const settimanaFa = new Date();
+  settimanaFa.setDate(oggi.getDate() - 6);
+  return [toISO(settimanaFa), toISO(oggi)];
 }
 
 async function loadPersonal(uid, dal, al) {
@@ -143,8 +157,9 @@ async function loadTutti(dal, al) {
     const ore = e.ore || 0;
     totaleOre += ore;
 
-    if (!perUtente[e.userId]) perUtente[e.userId] = { nome: e.userNome || e.userId, totale: 0, quotaCampo: 0, compenso: 0 };
+    if (!perUtente[e.userId]) perUtente[e.userId] = { uid: e.userId, nome: e.userNome || e.userId, totale: 0, quotaCampo: 0, compenso: 0, entries: [] };
     perUtente[e.userId].totale += ore;
+    perUtente[e.userId].entries.push(e);
 
     const tipoKey = e.tipoAttivitaId || ("legacy:" + (e.tipoAttivita || "altro"));
     if (!perTipo[tipoKey]) perTipo[tipoKey] = { nome: tipoAttivitaLabelFor(e), ore: 0, costo: 0 };
@@ -224,15 +239,134 @@ function renderDipendenti(lista) {
   }
 
   el.innerHTML = lista.map(d => `
-    <div class="entry-card">
-      <div class="entry-main">
-        <div class="entry-tipo">${escapeHtml(d.nome)}</div>
-        ${d.quotaCampo > 0 ? `<div class="entry-meta">Quota campo dovuta: CHF ${d.quotaCampo.toFixed(2)}</div>` : ""}
-        ${d.compenso > 0 ? `<div class="entry-meta">Compenso dovuto: CHF ${d.compenso.toFixed(2)}</div>` : ""}
+    <div class="dipendente-block" data-uid="${d.uid}">
+      <div class="entry-card">
+        <div class="entry-main">
+          <div class="entry-tipo">${escapeHtml(d.nome)}</div>
+          ${d.quotaCampo > 0 ? `<div class="entry-meta">Quota campo dovuta: CHF ${d.quotaCampo.toFixed(2)}</div>` : ""}
+          ${d.compenso > 0 ? `<div class="entry-meta">Compenso dovuto: CHF ${d.compenso.toFixed(2)}</div>` : ""}
+        </div>
+        <div class="entry-ore">${d.totale.toFixed(1)}h</div>
       </div>
-      <div class="entry-ore">${d.totale.toFixed(1)}h</div>
+      <div class="dipendente-actions">
+        <button type="button" class="btn btn-ghost toggle-dettaglio-btn" data-uid="${d.uid}">Dettaglio</button>
+        <button type="button" class="btn btn-ghost stampa-btn" data-uid="${d.uid}">Stampa / PDF</button>
+      </div>
+      <div class="dettaglio-giorni hidden" id="dettaglio-${d.uid}"></div>
     </div>
   `).join("");
+
+  el.querySelectorAll(".toggle-dettaglio-btn").forEach(btn => {
+    btn.addEventListener("click", () => toggleDettaglioDipendente(btn.dataset.uid));
+  });
+  el.querySelectorAll(".stampa-btn").forEach(btn => {
+    btn.addEventListener("click", () => stampaReportDipendente(btn.dataset.uid));
+  });
+}
+
+// Raggruppa le voci di un dipendente per data (più recente prima), con
+// un mini-totale per giorno, riusando lo stesso stile card del diario.
+function renderDettaglioGiorniHtml(dipendente) {
+  if (!dipendente || dipendente.entries.length === 0) {
+    return `<div class="empty-state"><div class="display">Nessuna voce</div></div>`;
+  }
+
+  const perGiorno = {};
+  dipendente.entries.forEach(en => {
+    if (!perGiorno[en.data]) perGiorno[en.data] = [];
+    perGiorno[en.data].push(en);
+  });
+
+  const giorni = Object.keys(perGiorno).sort().reverse();
+
+  return giorni.map(data => {
+    const entries = perGiorno[data];
+    const totaleGiorno = entries.reduce((s, en) => s + (en.ore || 0), 0);
+    return `
+      <div class="row-label">${formatDataBreve(data)} · ${totaleGiorno.toFixed(1)}h</div>
+      ${entries.map(en => entryRowHtml(en)).join("")}
+    `;
+  }).join("");
+}
+
+function entryRowHtml(en) {
+  const metaParts = [];
+  if (en.campoNumero) metaParts.push("Campo " + en.campoNumero);
+  if (en.tipoGruppoNome) metaParts.push(en.tipoGruppoNome);
+  if (en.oraInizio || en.oraFine) metaParts.push(`${en.oraInizio || "—"}–${en.oraFine || "—"}`);
+  if (en.note) metaParts.push(en.note);
+
+  return `
+    <div class="entry-card">
+      <div class="entry-main">
+        <span class="badge ${en.disciplina}">${disciplinaLabel(en.disciplina)}</span>
+        <div class="entry-tipo">${escapeHtml(tipoAttivitaLabelFor(en))}</div>
+        <div class="entry-meta">${escapeHtml(metaParts.join(" · "))}</div>
+      </div>
+      <div class="entry-ore">${(en.ore || 0).toFixed(1)}h</div>
+    </div>
+  `;
+}
+
+function toggleDettaglioDipendente(uid) {
+  const container = document.getElementById(`dettaglio-${uid}`);
+  if (!container) return;
+
+  if (!container.classList.contains("hidden")) {
+    container.classList.add("hidden");
+    return;
+  }
+
+  if (!container.dataset.rendered) {
+    const dipendente = (ultimoTutti.perDipendente || []).find(d => d.uid === uid);
+    container.innerHTML = renderDettaglioGiorniHtml(dipendente);
+    container.dataset.rendered = "true";
+  }
+  container.classList.remove("hidden");
+}
+
+function stampaReportDipendente(uid) {
+  const dipendente = (ultimoTutti.perDipendente || []).find(d => d.uid === uid);
+  if (!dipendente) return;
+
+  const perGiorno = {};
+  dipendente.entries.forEach(en => {
+    if (!perGiorno[en.data]) perGiorno[en.data] = [];
+    perGiorno[en.data].push(en);
+  });
+  const giorni = Object.keys(perGiorno).sort();
+
+  const righe = giorni.flatMap(data =>
+    perGiorno[data].map(en => `
+      <tr>
+        <td>${formatDataBreve(data)}</td>
+        <td>${escapeHtml(disciplinaLabel(en.disciplina))}</td>
+        <td>${escapeHtml(tipoAttivitaLabelFor(en))}</td>
+        <td>${en.campoNumero ? escapeHtml(String(en.campoNumero)) : "—"}</td>
+        <td>${en.oraInizio || "—"}–${en.oraFine || "—"}</td>
+        <td>${(en.ore || 0).toFixed(2)}</td>
+        <td>${escapeHtml(en.note || "")}</td>
+      </tr>
+    `)
+  ).join("");
+
+  const totaliParts = [`<p><strong>Totale ore:</strong> ${dipendente.totale.toFixed(2)}</p>`];
+  if (dipendente.quotaCampo > 0) totaliParts.push(`<p><strong>Quota campo dovuta:</strong> CHF ${dipendente.quotaCampo.toFixed(2)}</p>`);
+  if (dipendente.compenso > 0) totaliParts.push(`<p><strong>Compenso dovuto:</strong> CHF ${dipendente.compenso.toFixed(2)}</p>`);
+
+  document.getElementById("print-area").innerHTML = `
+    <h1>${escapeHtml(dipendente.nome)}</h1>
+    <p>Periodo: ${formatDataBreve(ultimoPeriodo.dal)} – ${formatDataBreve(ultimoPeriodo.al)}</p>
+    <table>
+      <thead>
+        <tr><th>Data</th><th>Disciplina</th><th>Tipo attività</th><th>Campo</th><th>Orario</th><th>Ore</th><th>Note</th></tr>
+      </thead>
+      <tbody>${righe}</tbody>
+    </table>
+    ${totaliParts.join("")}
+  `;
+
+  window.print();
 }
 
 function renderPerTipoAttivita(lista) {
@@ -264,12 +398,15 @@ async function calcola() {
   btn.textContent = "Calcolo…";
 
   try {
+    ultimoPeriodo = { dal, al };
+
     const personal = await loadPersonal(currentProfile.uid, dal, al);
     document.getElementById("totale-ore").innerHTML = `${personal.totale.toFixed(1)}<small>h</small>`;
     renderDisciplinaBreakdown(personal.perDisciplina);
 
     if (hasPermission(currentProfile, "diario:leggi_tutti")) {
       const tutti = await loadTutti(dal, al);
+      ultimoTutti = tutti;
       renderDipendenti(tutti.perDipendente);
       renderPerTipoAttivita(tutti.perTipoAttivita);
 
@@ -316,6 +453,20 @@ requireAuth(async (profile) => {
 
   document.getElementById("period-form").addEventListener("submit", (e) => {
     e.preventDefault();
+    calcola();
+  });
+
+  document.getElementById("preset-7giorni").addEventListener("click", () => {
+    const [d, a] = last7DaysRange();
+    document.getElementById("dal").value = d;
+    document.getElementById("al").value = a;
+    calcola();
+  });
+
+  document.getElementById("preset-mese-corrente").addEventListener("click", () => {
+    const [d, a] = currentMonthRange();
+    document.getElementById("dal").value = d;
+    document.getElementById("al").value = a;
     calcola();
   });
 
