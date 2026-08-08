@@ -237,12 +237,15 @@ async function loadAllievi() {
   const snap = await db.collection("allievi").orderBy("nome").get();
   const allievi = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-  renderSimpleList("allievi-list", allievi, it => it.nome, () => "", "allievi", loadAllievi, startEditAllievo);
+  const metaFn = it => [it.tel, it.email].filter(Boolean).join(" · ");
+  renderSimpleList("allievi-list", allievi, it => it.nome, metaFn, "allievi", loadAllievi, startEditAllievo);
 }
 
 function startEditAllievo(item) {
   editingAllievoId = item.id;
   document.getElementById("new-allievo-nome").value = item.nome || "";
+  document.getElementById("new-allievo-tel").value = item.tel || "";
+  document.getElementById("new-allievo-email").value = item.email || "";
   document.getElementById("create-allievo-btn").textContent = "Salva modifiche";
   document.getElementById("cancel-edit-allievo-btn").classList.remove("hidden");
   document.getElementById("new-allievo-form").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -263,13 +266,15 @@ async function onCreateAllievo(e) {
   btn.disabled = true;
 
   const nome = document.getElementById("new-allievo-nome").value.trim();
+  const tel = document.getElementById("new-allievo-tel").value.trim();
+  const email = document.getElementById("new-allievo-email").value.trim();
 
   try {
     if (!nome) throw new Error("Inserisci un nome.");
     if (editingAllievoId) {
-      await db.collection("allievi").doc(editingAllievoId).update({ nome });
+      await db.collection("allievi").doc(editingAllievoId).update({ nome, tel: tel || null, email: email || null });
     } else {
-      await db.collection("allievi").add({ nome, attivo: true });
+      await db.collection("allievi").add({ nome, attivo: true, tel: tel || null, email: email || null });
     }
     cancelEditAllievo();
     await loadAllievi();

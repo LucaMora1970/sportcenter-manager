@@ -55,10 +55,22 @@
 
     <div id="disciplina-breakdown"></div>
 
+    <div class="row2" style="margin:12px 0;">
+      <button type="button" class="btn btn-ghost" id="personal-dettaglio-btn">Dettaglio giorni</button>
+      <button type="button" class="btn btn-ghost" id="personal-stampa-btn">Stampa / PDF</button>
+    </div>
+    <div class="dettaglio-giorni hidden" id="personal-dettaglio"></div>
+
     <div id="admin-section" class="hidden">
       <hr class="court-divider">
       <div class="section-title"><h2>Per dipendente</h2></div>
       <div id="dipendenti-list">
+        <div class="empty-state"><div class="display">Caricamento…</div></div>
+      </div>
+
+      <hr class="court-divider">
+      <div class="section-title"><h2>Per allievo</h2></div>
+      <div id="allievi-list-report">
         <div class="empty-state"><div class="display">Caricamento…</div></div>
       </div>
 

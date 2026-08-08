@@ -12,6 +12,7 @@
 
 let currentProfile = null;
 let ultimoTutti = null; // risultato dell'ultimo calcolo admin, per dettaglio/stampa
+let ultimoPersonal = null; // { entries } dell'ultimo calcolo personale, per dettaglio/stampa
 let ultimoPeriodo = null; // { dal, al } dell'ultimo calcolo
 
 function pad2(n) {
@@ -48,13 +49,13 @@ async function loadPersonal(uid, dal, al) {
     .where("data", "<=", al)
     .get();
 
-  const entries = snap.docs.map(d => d.data());
+  const entries = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   const totale = entries.reduce((s, e) => s + (e.ore || 0), 0);
   const perDisciplina = {};
   entries.forEach(e => {
     perDisciplina[e.disciplina] = (perDisciplina[e.disciplina] || 0) + (e.ore || 0);
   });
-  return { totale, perDisciplina };
+  return { totale, perDisciplina, entries };
 }
 
 // Tra le tariffe di un tipo attività, trova quella "per tutti" (senza
@@ -145,6 +146,7 @@ async function loadTutti(dal, al) {
 
   const perUtente = {};
   const perTipo = {};
+  const perAllievo = {};
   let totaleOre = 0;
   let totaleCosto = 0;
   let totaleQuotaCampo = 0;
@@ -164,6 +166,12 @@ async function loadTutti(dal, al) {
     const tipoKey = (e.tipoAttivitaId || ("legacy:" + (e.tipoAttivita || "altro"))) + "|" + (e.disciplina || "");
     if (!perTipo[tipoKey]) perTipo[tipoKey] = { nome: tipoAttivitaLabelFor(e), disciplina: e.disciplina, ore: 0, costo: 0 };
     perTipo[tipoKey].ore += ore;
+
+    if (e.allievoId) {
+      if (!perAllievo[e.allievoId]) perAllievo[e.allievoId] = { aid: e.allievoId, nome: e.allievoNome || e.allievoId, totale: 0, entries: [] };
+      perAllievo[e.allievoId].totale += ore;
+      perAllievo[e.allievoId].entries.push(e);
+    }
 
     const tipoAttivitaDoc = e.tipoAttivitaId ? tipiById[e.tipoAttivitaId] : null;
     const prezzoOra = prezzoPerData(tipoAttivitaDoc, e.data);
@@ -201,6 +209,7 @@ async function loadTutti(dal, al) {
   return {
     perDipendente: Object.values(perUtente).sort((a, b) => b.totale - a.totale),
     perTipoAttivita: Object.values(perTipo).sort((a, b) => b.ore - a.ore),
+    perAllievo: Object.values(perAllievo).sort((a, b) => a.nome.localeCompare(b.nome)),
     totaleOre,
     totaleCosto,
     totaleQuotaCampo,
@@ -262,6 +271,71 @@ function renderDipendenti(lista) {
   el.querySelectorAll(".stampa-btn").forEach(btn => {
     btn.addEventListener("click", () => stampaReportDipendente(btn.dataset.uid));
   });
+}
+
+function renderAllievi(lista) {
+  const el = document.getElementById("allievi-list-report");
+
+  if (lista.length === 0) {
+    el.innerHTML = `<div class="empty-state"><div class="display">Nessuna voce nel periodo</div></div>`;
+    return;
+  }
+
+  el.innerHTML = lista.map(a => `
+    <div class="dipendente-block" data-aid="${a.aid}">
+      <div class="entry-card">
+        <div class="entry-main">
+          <div class="entry-tipo">${escapeHtml(a.nome)}</div>
+        </div>
+        <div class="entry-ore">${a.totale.toFixed(1)}h</div>
+      </div>
+      <div class="dipendente-actions">
+        <button type="button" class="btn btn-ghost toggle-dettaglio-allievo-btn" data-aid="${a.aid}">Dettaglio</button>
+        <button type="button" class="btn btn-ghost stampa-allievo-btn" data-aid="${a.aid}">Stampa / PDF</button>
+      </div>
+      <div class="dettaglio-giorni hidden" id="dettaglio-allievo-${a.aid}"></div>
+    </div>
+  `).join("");
+
+  el.querySelectorAll(".toggle-dettaglio-allievo-btn").forEach(btn => {
+    btn.addEventListener("click", () => toggleDettaglioAllievo(btn.dataset.aid));
+  });
+  el.querySelectorAll(".stampa-allievo-btn").forEach(btn => {
+    btn.addEventListener("click", () => stampaReportAllievo(btn.dataset.aid));
+  });
+}
+
+function toggleDettaglioAllievo(aid) {
+  const container = document.getElementById(`dettaglio-allievo-${aid}`);
+  if (!container) return;
+
+  if (!container.classList.contains("hidden")) {
+    container.classList.add("hidden");
+    return;
+  }
+
+  const allievo = (ultimoTutti.perAllievo || []).find(a => a.aid === aid);
+  container.innerHTML = renderDettaglioGiorniHtml(allievo);
+  container.querySelectorAll(".delete-diario-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      if (!confirm("Eliminare questa voce? L'operazione non è reversibile.")) return;
+      btn.disabled = true;
+      try {
+        await db.collection("diario").doc(btn.dataset.id).delete();
+        await calcola();
+      } catch (err) {
+        showError(document.getElementById("resoconto-error"), "Errore nell'eliminazione: " + err.message);
+        btn.disabled = false;
+      }
+    });
+  });
+  container.classList.remove("hidden");
+}
+
+function stampaReportAllievo(aid) {
+  const allievo = (ultimoTutti.perAllievo || []).find(a => a.aid === aid);
+  if (!allievo) return;
+  stampaReport({ nome: allievo.nome, entries: allievo.entries, totale: allievo.totale, quotaCampo: 0, compenso: 0 });
 }
 
 // Raggruppa le voci di un dipendente per data (più recente prima), con
@@ -339,12 +413,11 @@ function toggleDettaglioDipendente(uid) {
   container.classList.remove("hidden");
 }
 
-function stampaReportDipendente(uid) {
-  const dipendente = (ultimoTutti.perDipendente || []).find(d => d.uid === uid);
-  if (!dipendente) return;
-
+// Tabella di stampa condivisa tra il report di un singolo dipendente
+// (vista admin) e il report personale (vista collaboratore).
+function stampaReport({ nome, entries, totale, quotaCampo, compenso }) {
   const perGiorno = {};
-  dipendente.entries.forEach(en => {
+  entries.forEach(en => {
     if (!perGiorno[en.data]) perGiorno[en.data] = [];
     perGiorno[en.data].push(en);
   });
@@ -365,12 +438,12 @@ function stampaReportDipendente(uid) {
     `)
   ).join("");
 
-  const totaliParts = [`<p><strong>Totale ore:</strong> ${dipendente.totale.toFixed(2)}</p>`];
-  if (dipendente.quotaCampo > 0) totaliParts.push(`<p><strong>Quota campo dovuta:</strong> CHF ${dipendente.quotaCampo.toFixed(2)}</p>`);
-  if (dipendente.compenso > 0) totaliParts.push(`<p><strong>Compenso dovuto:</strong> CHF ${dipendente.compenso.toFixed(2)}</p>`);
+  const totaliParts = [`<p><strong>Totale ore:</strong> ${totale.toFixed(2)}</p>`];
+  if (quotaCampo > 0) totaliParts.push(`<p><strong>Quota campo dovuta:</strong> CHF ${quotaCampo.toFixed(2)}</p>`);
+  if (compenso > 0) totaliParts.push(`<p><strong>Compenso dovuto:</strong> CHF ${compenso.toFixed(2)}</p>`);
 
   document.getElementById("print-area").innerHTML = `
-    <h1>${escapeHtml(dipendente.nome)}</h1>
+    <h1>${escapeHtml(nome)}</h1>
     <p>Periodo: ${formatDataBreve(ultimoPeriodo.dal)} – ${formatDataBreve(ultimoPeriodo.al)}</p>
     <table>
       <thead>
@@ -382,6 +455,43 @@ function stampaReportDipendente(uid) {
   `;
 
   window.print();
+}
+
+function stampaReportDipendente(uid) {
+  const dipendente = (ultimoTutti.perDipendente || []).find(d => d.uid === uid);
+  if (!dipendente) return;
+  stampaReport({ nome: dipendente.nome, entries: dipendente.entries, totale: dipendente.totale, quotaCampo: dipendente.quotaCampo, compenso: dipendente.compenso });
+}
+
+function stampaReportPersonale() {
+  if (!ultimoPersonal) return;
+  stampaReport({ nome: currentProfile.nome, entries: ultimoPersonal.entries, totale: ultimoPersonal.totale, quotaCampo: 0, compenso: 0 });
+}
+
+function togglePersonalDettaglio() {
+  const container = document.getElementById("personal-dettaglio");
+  if (!container || !ultimoPersonal) return;
+
+  if (!container.classList.contains("hidden")) {
+    container.classList.add("hidden");
+    return;
+  }
+
+  container.innerHTML = renderDettaglioGiorniHtml(ultimoPersonal);
+  container.querySelectorAll(".delete-diario-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      if (!confirm("Eliminare questa voce? L'operazione non è reversibile.")) return;
+      btn.disabled = true;
+      try {
+        await db.collection("diario").doc(btn.dataset.id).delete();
+        await calcola();
+      } catch (err) {
+        showError(document.getElementById("resoconto-error"), "Errore nell'eliminazione: " + err.message);
+        btn.disabled = false;
+      }
+    });
+  });
+  container.classList.remove("hidden");
 }
 
 // Tabella consolidata pensata per segretaria/contabile: un colpo
@@ -498,8 +608,13 @@ async function calcola() {
     ultimoPeriodo = { dal, al };
 
     const personal = await loadPersonal(currentProfile.uid, dal, al);
+    ultimoPersonal = personal;
     document.getElementById("totale-ore").innerHTML = `${personal.totale.toFixed(1)}<small>h</small>`;
     renderDisciplinaBreakdown(personal.perDisciplina);
+
+    const personalDettaglioEl = document.getElementById("personal-dettaglio");
+    personalDettaglioEl.innerHTML = "";
+    personalDettaglioEl.classList.add("hidden");
 
     if (hasPermission(currentProfile, "diario:leggi_tutti")) {
       const tutti = await loadTutti(dal, al);
@@ -507,6 +622,7 @@ async function calcola() {
       renderDipendenti(tutti.perDipendente);
       renderRiepilogoContabilita(tutti.perDipendente);
       renderPerTipoAttivita(tutti.perTipoAttivita);
+      renderAllievi(tutti.perAllievo);
 
       document.getElementById("totale-complessivo-ore").innerHTML = `${tutti.totaleOre.toFixed(1)}<small>h</small>`;
       document.getElementById("totale-complessivo-costo").textContent = `CHF ${tutti.totaleCosto.toFixed(2)}`;
@@ -553,6 +669,9 @@ requireAuth(async (profile) => {
     e.preventDefault();
     calcola();
   });
+
+  document.getElementById("personal-dettaglio-btn").addEventListener("click", togglePersonalDettaglio);
+  document.getElementById("personal-stampa-btn").addEventListener("click", stampaReportPersonale);
 
   document.getElementById("preset-7giorni").addEventListener("click", () => {
     const [d, a] = last7DaysRange();
