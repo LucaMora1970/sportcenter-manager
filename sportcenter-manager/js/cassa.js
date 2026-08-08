@@ -37,17 +37,31 @@ function last7DaysRange() {
 
 // ---------- Catalogo articoli ----------
 
+const ARTICOLO_LIBERO_VALUE = "__altro__";
+
 async function loadArticoli() {
   const snap = await db.collection("articoli").where("attivo", "==", true).get();
   articoliCache = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.nome || "").localeCompare(b.nome || ""));
 
   const select = document.getElementById("vendita-articolo");
-  select.innerHTML = articoliCache.map(a => `<option value="${a.id}">${escapeHtml(a.nome)}</option>`).join("");
-  syncPrezzoDefault();
+  select.innerHTML = articoliCache.map(a => `<option value="${a.id}">${escapeHtml(a.nome)}</option>`).join("")
+    + `<option value="${ARTICOLO_LIBERO_VALUE}">Altro (articolo non previsto)</option>`;
+  syncArticoloSelezionato();
 }
 
-function syncPrezzoDefault() {
+function syncArticoloSelezionato() {
   const select = document.getElementById("vendita-articolo");
+  const liberoField = document.getElementById("vendita-articolo-libero-field");
+  const isLibero = select.value === ARTICOLO_LIBERO_VALUE;
+
+  liberoField.classList.toggle("hidden", !isLibero);
+  document.getElementById("vendita-articolo-libero").required = isLibero;
+
+  if (isLibero) {
+    document.getElementById("vendita-importo").value = "";
+    return;
+  }
+
   const articolo = articoliCache.find(a => a.id === select.value);
   if (articolo && articolo.prezzoDefault) {
     document.getElementById("vendita-importo").value = articolo.prezzoDefault;
@@ -69,17 +83,20 @@ async function onSubmitVendita(e) {
   btn.textContent = "Registrazione…";
 
   const select = document.getElementById("vendita-articolo");
+  const isLibero = select.value === ARTICOLO_LIBERO_VALUE;
+  const nomeLibero = document.getElementById("vendita-articolo-libero").value.trim();
   const importo = parseFloat(document.getElementById("vendita-importo").value) || 0;
   const metodoPagamento = document.getElementById("vendita-metodo").value;
 
   try {
     if (!select.value) throw new Error("Seleziona un articolo.");
+    if (isLibero && !nomeLibero) throw new Error("Inserisci il nome dell'articolo.");
     if (importo <= 0) throw new Error("Inserisci un importo maggiore di zero.");
 
     await db.collection("vendite").add({
       data: todayISO(),
-      articoloId: select.value,
-      articoloNome: select.options[select.selectedIndex].textContent,
+      articoloId: isLibero ? null : select.value,
+      articoloNome: isLibero ? nomeLibero : select.options[select.selectedIndex].textContent,
       importo,
       metodoPagamento,
       userId: currentProfile.uid,
@@ -88,7 +105,8 @@ async function onSubmitVendita(e) {
     });
 
     document.getElementById("vendita-metodo").value = "twint";
-    syncPrezzoDefault();
+    document.getElementById("vendita-articolo-libero").value = "";
+    syncArticoloSelezionato();
   } catch (err) {
     showError(errorEl, "Errore: " + err.message);
   } finally {
@@ -245,7 +263,7 @@ requireAuth(async (profile) => {
   document.getElementById("al").value = al;
 
   document.getElementById("vendita-form").addEventListener("submit", onSubmitVendita);
-  document.getElementById("vendita-articolo").addEventListener("change", syncPrezzoDefault);
+  document.getElementById("vendita-articolo").addEventListener("change", syncArticoloSelezionato);
 
   document.getElementById("periodo-form").addEventListener("submit", (e) => {
     e.preventDefault();

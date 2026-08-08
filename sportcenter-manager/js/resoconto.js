@@ -161,8 +161,8 @@ async function loadTutti(dal, al) {
     perUtente[e.userId].totale += ore;
     perUtente[e.userId].entries.push(e);
 
-    const tipoKey = e.tipoAttivitaId || ("legacy:" + (e.tipoAttivita || "altro"));
-    if (!perTipo[tipoKey]) perTipo[tipoKey] = { nome: tipoAttivitaLabelFor(e), ore: 0, costo: 0 };
+    const tipoKey = (e.tipoAttivitaId || ("legacy:" + (e.tipoAttivita || "altro"))) + "|" + (e.disciplina || "");
+    if (!perTipo[tipoKey]) perTipo[tipoKey] = { nome: tipoAttivitaLabelFor(e), disciplina: e.disciplina, ore: 0, costo: 0 };
     perTipo[tipoKey].ore += ore;
 
     const tipoAttivitaDoc = e.tipoAttivitaId ? tipiById[e.tipoAttivitaId] : null;
@@ -476,6 +476,7 @@ function renderPerTipoAttivita(lista) {
   el.innerHTML = lista.map(t => `
     <div class="entry-card">
       <div class="entry-main">
+        <span class="badge ${t.disciplina}">${escapeHtml(disciplinaLabel(t.disciplina))}</span>
         <div class="entry-tipo">${escapeHtml(t.nome)}</div>
         <div class="entry-meta">${t.ore.toFixed(1)}h</div>
       </div>
