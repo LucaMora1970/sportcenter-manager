@@ -186,10 +186,17 @@
           </div>
         </div>
 
-        <div class="field">
-          <label for="new-tipoattivita-ordine">Ordine (numero più basso = più in alto nell'elenco)</label>
-          <input type="number" id="new-tipoattivita-ordine" step="1" placeholder="es. 3">
+        <div class="row2">
+          <div class="field">
+            <label for="new-tipoattivita-ordine">Ordine (numero più basso = più in alto nell'elenco)</label>
+            <input type="number" id="new-tipoattivita-ordine" step="1" placeholder="es. 3">
+          </div>
+          <div class="field">
+            <label for="new-tipoattivita-durata">Durata fissa in minuti (facoltativa)</label>
+            <input type="number" id="new-tipoattivita-durata" min="0" step="1" placeholder="es. 60">
+          </div>
         </div>
+        <p style="color:var(--chalk-grey);font-size:0.78rem;margin:-6px 0 14px;">Se impostata, in Diario basterà scegliere l'ora di inizio: l'ora di fine si calcola da sola (es. Lezione Padel 60' o 90', sessione Squash 45').</p>
 
         <div class="checkbox-row" style="margin-bottom:16px;">
           <input type="checkbox" id="new-tipoattivita-quotacampo">

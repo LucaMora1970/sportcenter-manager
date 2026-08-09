@@ -13,22 +13,42 @@ let tipiGruppoPadelCache = [];
 let allieviCache = [];
 let rowCounter = 0;
 
-// Orari di inizio/fine ammessi per disciplina (slot di prenotazione fissi
-// del circolo). Le discipline non elencate qui (tennis, padel, ecc.) restano
-// con l'orario libero — per il tennis c'è invece il selettore di slot già
-// abbinati (vedi SLOT_TENNIS), più rapido da compilare.
-const ORARI_FISSI = {
-  squash: ["08:15", "09:00", "09:45", "10:30", "11:15", "12:00", "12:45", "13:30", "14:15", "15:00", "15:45", "16:30", "17:15", "18:00", "18:45", "19:30", "20:15", "21:00", "21:45"]
-};
-
 // Slot di 60' già abbinati inizio-fine per il tennis, per velocizzare
 // l'immissione rispetto a scegliere ora inizio e ora fine separatamente.
 // Per situazioni non previste resta comunque disponibile l'orario libero.
+// (il tennis ha un salto pranzo 12:15→13:30 che non è un semplice "inizio +
+// durata fissa", per questo resta gestito con coppie esplicite invece che
+// con ORARI_INIZIO_AUTO/durataMinuti come padel e squash)
 const SLOT_TENNIS = [
   ["08:15", "09:15"], ["09:15", "10:15"], ["10:15", "11:15"], ["11:15", "12:15"],
   ["13:30", "14:30"], ["14:30", "15:30"], ["15:30", "16:30"], ["16:30", "17:30"],
   ["17:30", "18:30"], ["18:30", "19:30"], ["19:30", "20:30"], ["20:30", "21:30"], ["21:30", "22:30"]
 ];
+
+function minutiToOrario(min) {
+  return `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+}
+
+function generaOrari(inizioMin, fineMin, stepMin) {
+  const out = [];
+  for (let m = inizioMin; m <= fineMin; m += stepMin) out.push(minutiToOrario(m));
+  return out;
+}
+
+function addMinuti(orario, minuti) {
+  const [h, m] = orario.split(":").map(Number);
+  return minutiToOrario(h * 60 + m + minuti);
+}
+
+// Orari di inizio ammessi per padel e squash quando il tipo attività
+// selezionato ha una durataMinuti fissa (vedi Configurazione): basta
+// scegliere l'inizio, la fine si calcola da sola (addMinuti). Le altre
+// discipline (o i tipi attività senza durata configurata) restano con
+// l'orario libero.
+const ORARI_INIZIO_AUTO = {
+  padel: generaOrari(8 * 60, 21 * 60 + 30, 15),      // 08:00–21:30 ogni 15'
+  squash: generaOrari(8 * 60 + 15, 21 * 60 + 45, 45)  // 08:15–21:45 ogni 45'
+};
 
 function todayISO() {
   const d = new Date();
@@ -102,12 +122,12 @@ function rowHtml(rowId) {
         <div class="field">
           <label>Ora inizio</label>
           <input type="time" class="row-orainizio-libera">
-          <select class="row-orainizio-fissa hidden"></select>
+          <select class="row-orainizio-auto hidden"></select>
         </div>
         <div class="field">
           <label>Ora fine</label>
           <input type="time" class="row-orafine-libera">
-          <select class="row-orafine-fissa hidden"></select>
+          <input type="text" class="row-orafine-auto hidden" readonly tabindex="-1">
         </div>
       </div>
     </div>
@@ -129,14 +149,21 @@ function populateRowDependents(rowEl) {
     tipiPerDisciplina.map(t => ({ id: t.id, label: t.nome }))
   );
 
+  // Campo obbligatorio per tennis/squash (più campi tra cui scegliere) e per
+  // il padel (un solo campo: si preseleziona da solo, niente placeholder "—"
+  // da dover cambiare a mano).
   const campiPerDisciplina = campiCache
     .filter(c => c.disciplina === disciplina)
     .sort((a, b) => (a.numero || "").localeCompare(b.numero || "", undefined, { numeric: true }));
+  const campoSelect = rowEl.querySelector(".row-campo");
+  const campoUnico = disciplina === "padel" && campiPerDisciplina.length === 1;
   populateSelect(
-    rowEl.querySelector(".row-campo"),
+    campoSelect,
     campiPerDisciplina.map(c => ({ id: c.numero, label: "Campo " + c.numero })),
-    "—"
+    campoUnico ? undefined : "—"
   );
+  const richiedeCampo = ["tennis", "squash", "padel"].includes(disciplina);
+  campoSelect.required = richiedeCampo && campiPerDisciplina.length > 0;
 
   const gruppoField = rowEl.querySelector(".row-gruppo-field");
   const gruppoSelect = rowEl.querySelector(".row-gruppo");
@@ -146,35 +173,6 @@ function populateRowDependents(rowEl) {
   } else {
     gruppoField.classList.add("hidden");
     gruppoSelect.innerHTML = "";
-  }
-
-  // Lo squash ha orari di inizio/fine fissi (slot di prenotazione del
-  // circolo): l'input libero viene sostituito da un select con solo quegli
-  // orari. Le altre discipline (tranne il tennis, gestito sotto) restano
-  // con l'orario libero.
-  const inizioLibera = rowEl.querySelector(".row-orainizio-libera");
-  const fineLibera = rowEl.querySelector(".row-orafine-libera");
-  const inizioFissa = rowEl.querySelector(".row-orainizio-fissa");
-  const fineFissa = rowEl.querySelector(".row-orafine-fissa");
-  const orariFissi = ORARI_FISSI[disciplina];
-
-  if (orariFissi) {
-    const options = `<option value="">—</option>` + orariFissi.map(t => `<option value="${t}">${t}</option>`).join("");
-    inizioFissa.innerHTML = options;
-    fineFissa.innerHTML = options;
-    inizioLibera.classList.add("hidden");
-    fineLibera.classList.add("hidden");
-    inizioFissa.classList.remove("hidden");
-    fineFissa.classList.remove("hidden");
-    inizioLibera.value = "";
-    fineLibera.value = "";
-  } else {
-    inizioFissa.classList.add("hidden");
-    fineFissa.classList.add("hidden");
-    inizioLibera.classList.remove("hidden");
-    fineLibera.classList.remove("hidden");
-    inizioFissa.value = "";
-    fineFissa.value = "";
   }
 
   // Il tennis ha uno slot combinato inizio+fine (SLOT_TENNIS) accanto al
@@ -192,40 +190,88 @@ function populateRowDependents(rowEl) {
     slotSelect.innerHTML = "";
   }
 
-  // Per il padel serve l'orario esatto (durata 60/90 min e fascia oraria
-  // per la quota campo), quindi si nasconde "Nr. ore" e si richiede
-  // l'orario invece di lasciarlo come alternativa opzionale. Per il tennis
-  // "Nr. ore" si nasconde perché ridondante: lo slot già implica la durata.
+  // Padel e squash: se il tipo attività scelto ha una durata fissa
+  // configurata, basta l'ora di inizio (griglia dedicata) e la fine si
+  // calcola da sola — vedi syncOrarioAuto().
+  syncOrarioAuto(rowEl);
+
+  // Per il padel serve l'orario esatto (fascia oraria per la quota campo),
+  // quindi si nasconde "Nr. ore" e si richiede l'orario invece di lasciarlo
+  // come alternativa opzionale (gestito dentro syncOrarioAuto). Per il
+  // tennis "Nr. ore" si nasconde perché ridondante: lo slot implica già
+  // la durata.
   const nrOreField = rowEl.querySelector(".row-nrore-field");
   const orariHint = rowEl.querySelector(".row-orari-hint");
-  const oraInizioAttivo = orariFissi ? inizioFissa : inizioLibera;
-  const oraFineAttivo = orariFissi ? fineFissa : fineLibera;
-  [inizioLibera, fineLibera, inizioFissa, fineFissa].forEach(el => { el.required = false; });
 
-  if (disciplina === "padel") {
+  if (disciplina === "padel" || disciplina === "tennis") {
     nrOreField.classList.add("hidden");
     rowEl.querySelector(".row-nrore").value = "";
-    orariHint.classList.add("hidden");
-    oraInizioAttivo.required = true;
-    oraFineAttivo.required = true;
-  } else if (disciplina === "tennis") {
-    nrOreField.classList.add("hidden");
-    rowEl.querySelector(".row-nrore").value = "";
-    orariHint.classList.remove("hidden");
   } else {
     nrOreField.classList.remove("hidden");
-    orariHint.classList.remove("hidden");
+  }
+  // Il padel non ha un vero "oppure" da segnalare (l'orario è comunque
+  // obbligatorio, auto o libero che sia); il tennis sì (slot vs manuale).
+  orariHint.classList.toggle("hidden", disciplina === "padel");
+}
+
+function tipoAttivitaSelezionato(rowEl) {
+  return tipiAttivitaCache.find(t => t.id === rowEl.querySelector(".row-tipoattivita").value);
+}
+
+// Mostra il select "Ora inizio" a griglia (con fine calcolata in automatico)
+// quando disciplina+tipo attività hanno una durata fissa configurata;
+// altrimenti mostra l'orario libero. Il padel lo richiede sempre (in un modo
+// o nell'altro); lo squash resta facoltativo (Nr. ore è un'alternativa valida).
+function syncOrarioAuto(rowEl) {
+  const disciplina = rowEl.querySelector(".row-disciplina").value;
+  const tipo = tipoAttivitaSelezionato(rowEl);
+  const listaInizio = ORARI_INIZIO_AUTO[disciplina];
+  const usaAuto = !!(listaInizio && tipo && tipo.durataMinuti);
+
+  const inizioAuto = rowEl.querySelector(".row-orainizio-auto");
+  const fineAuto = rowEl.querySelector(".row-orafine-auto");
+  const inizioLibera = rowEl.querySelector(".row-orainizio-libera");
+  const fineLibera = rowEl.querySelector(".row-orafine-libera");
+
+  inizioAuto.required = false;
+  inizioLibera.required = false;
+  fineLibera.required = false;
+
+  if (usaAuto) {
+    inizioAuto.innerHTML = `<option value="">—</option>` + listaInizio.map(t => `<option value="${t}">${t}</option>`).join("");
+    inizioAuto.classList.remove("hidden");
+    fineAuto.classList.remove("hidden");
+    fineAuto.value = "";
+    inizioLibera.classList.add("hidden");
+    fineLibera.classList.add("hidden");
+    inizioLibera.value = "";
+    fineLibera.value = "";
+    if (disciplina === "padel") inizioAuto.required = true;
+  } else {
+    inizioAuto.classList.add("hidden");
+    fineAuto.classList.add("hidden");
+    inizioAuto.value = "";
+    inizioLibera.classList.remove("hidden");
+    fineLibera.classList.remove("hidden");
+    if (disciplina === "padel") {
+      inizioLibera.required = true;
+      fineLibera.required = true;
+    }
   }
 }
 
-function oraValue(rowEl, campo) {
-  const fissa = rowEl.querySelector(`.row-ora${campo}-fissa`);
-  if (!fissa.classList.contains("hidden")) return fissa.value;
-  return rowEl.querySelector(`.row-ora${campo}-libera`).value;
+// Aggiorna dal vivo l'ora fine calcolata quando cambia l'ora di inizio
+// scelta nel select automatico (padel/squash).
+function aggiornaOraFineAuto(rowEl) {
+  const inizioAuto = rowEl.querySelector(".row-orainizio-auto");
+  const fineAuto = rowEl.querySelector(".row-orafine-auto");
+  const tipo = tipoAttivitaSelezionato(rowEl);
+  fineAuto.value = (inizioAuto.value && tipo && tipo.durataMinuti) ? addMinuti(inizioAuto.value, tipo.durataMinuti) : "";
 }
 
-// Per il tennis lo slot combinato ha priorità se scelto; altrimenti (o per
-// le altre discipline) si usano ora inizio/fine (fisse o libere).
+// Per il tennis lo slot combinato ha priorità se scelto; per padel/squash
+// l'ora inizio automatica (con fine calcolata) se visibile; altrimenti
+// l'orario libero.
 function orarioRiga(rowEl) {
   const slotField = rowEl.querySelector(".row-slot-field");
   const slotSelect = rowEl.querySelector(".row-slot");
@@ -233,7 +279,28 @@ function orarioRiga(rowEl) {
     const [oraInizio, oraFine] = slotSelect.value.split("|");
     return { oraInizio, oraFine };
   }
-  return { oraInizio: oraValue(rowEl, "inizio"), oraFine: oraValue(rowEl, "fine") };
+
+  const inizioAuto = rowEl.querySelector(".row-orainizio-auto");
+  if (!inizioAuto.classList.contains("hidden") && inizioAuto.value) {
+    const tipo = tipoAttivitaSelezionato(rowEl);
+    const oraInizio = inizioAuto.value;
+    const oraFine = tipo && tipo.durataMinuti ? addMinuti(oraInizio, tipo.durataMinuti) : "";
+    return { oraInizio, oraFine };
+  }
+  return {
+    oraInizio: rowEl.querySelector(".row-orainizio-libera").value,
+    oraFine: rowEl.querySelector(".row-orafine-libera").value
+  };
+}
+
+// Due voci si sovrappongono se stesso campo/disciplina ed entrambe hanno
+// un orario che si incrocia. Voci senza campo o senza orario (es. inserite
+// solo con "Nr. ore") non sono confrontabili e vengono ignorate.
+function vociSiSovrappongono(a, b) {
+  return a.disciplina === b.disciplina
+    && a.campoNumero && b.campoNumero && a.campoNumero === b.campoNumero
+    && a.oraInizio && a.oraFine && b.oraInizio && b.oraFine
+    && a.oraInizio < b.oraFine && b.oraInizio < a.oraFine;
 }
 
 // Alcuni tipi attività (es. Sparring) richiedono il nome dell'allievo
@@ -277,7 +344,11 @@ function addRow() {
     populateRowDependents(rowEl);
     syncAllievoField(rowEl);
   });
-  rowEl.querySelector(".row-tipoattivita").addEventListener("change", () => syncAllievoField(rowEl));
+  rowEl.querySelector(".row-tipoattivita").addEventListener("change", () => {
+    syncAllievoField(rowEl);
+    syncOrarioAuto(rowEl);
+  });
+  rowEl.querySelector(".row-orainizio-auto").addEventListener("change", () => aggiornaOraFineAuto(rowEl));
   rowEl.querySelector(".row-allievo").addEventListener("change", (e) => {
     const nuovoInput = rowEl.querySelector(".row-allievo-nuovo");
     if (e.target.value === "__new__") {
@@ -403,6 +474,28 @@ async function onSubmitEntry(e) {
       }
 
       entries.push(entry);
+    }
+
+    // Verifica sovrapposizioni di campo/orario tra le righe appena inserite...
+    for (let i = 0; i < entries.length; i++) {
+      for (let j = i + 1; j < entries.length; j++) {
+        if (vociSiSovrappongono(entries[i], entries[j])) {
+          throw new Error(`Due righe si sovrappongono su Campo ${entries[i].campoNumero} (${entries[i].oraInizio}–${entries[i].oraFine} e ${entries[j].oraInizio}–${entries[j].oraFine}).`);
+        }
+      }
+    }
+
+    // ...e con le voci che hai già salvato oggi (stesso utente, stesso giorno).
+    const esistentiSnap = await db.collection("diario")
+      .where("userId", "==", currentProfile.uid)
+      .where("data", "==", dataVal)
+      .get();
+    const esistenti = esistentiSnap.docs.map(d => d.data());
+    for (const nuova of entries) {
+      const conflitto = esistenti.find(e => vociSiSovrappongono(nuova, e));
+      if (conflitto) {
+        throw new Error(`Hai già una voce su Campo ${nuova.campoNumero} dalle ${conflitto.oraInizio} alle ${conflitto.oraFine} che si sovrappone a ${nuova.oraInizio}–${nuova.oraFine}.`);
+      }
     }
 
     const batch = db.batch();
