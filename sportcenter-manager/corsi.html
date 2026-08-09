@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Corsi — Sport-OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d1f30">
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <h1>Corsi</h1>
+    <div class="user-chip" id="user-chip">—</div>
+    <a href="password.html" class="topbar-link">Password</a>
+  </div>
+
+  <main>
+
+    <div id="access-denied" class="empty-state hidden">
+      <div class="display">Accesso non consentito</div>
+      <p>Questa sezione è riservata a chi gestisce o approva i corsi.</p>
+    </div>
+
+    <div id="corsi-content">
+
+      <div class="error-msg" id="corsi-list-error"></div>
+
+      <!-- Elenco corsi -->
+      <div class="section-title"><h2>Corsi</h2></div>
+      <div id="corsi-list">
+        <div class="empty-state"><div class="display">Caricamento…</div></div>
+      </div>
+
+      <hr class="court-divider">
+
+      <!-- Nuovo corso -->
+      <div class="section-title" id="corso-form-title"><h2>Nuovo corso</h2></div>
+      <form id="corso-form">
+
+        <div class="field">
+          <label for="corso-nome">Nome corso</label>
+          <input type="text" id="corso-nome" required placeholder="es. Scuola tennis junior">
+        </div>
+
+        <div class="field">
+          <label for="corso-descrizione">Descrizione</label>
+          <textarea id="corso-descrizione" rows="3" placeholder="Presentazione del corso"></textarea>
+        </div>
+
+        <div class="field">
+          <label for="corso-disciplina">Disciplina</label>
+          <select id="corso-disciplina" required></select>
+        </div>
+
+        <div class="row2">
+          <div class="field">
+            <label for="corso-dal">Dal</label>
+            <input type="date" id="corso-dal" required>
+          </div>
+          <div class="field">
+            <label for="corso-al">Al (indicativo)</label>
+            <input type="date" id="corso-al">
+          </div>
+        </div>
+
+        <div class="row2">
+          <div class="field">
+            <label for="corso-nrsessioni">Nr. sessioni</label>
+            <input type="number" id="corso-nrsessioni" min="1" step="1" required placeholder="es. 10">
+          </div>
+          <div class="field">
+            <label for="corso-durata">Durata a sessione (minuti)</label>
+            <input type="number" id="corso-durata" min="0" step="5" required placeholder="es. 60">
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Giorni e orari proposti</label>
+          <p style="color:var(--chalk-grey);font-size:0.78rem;margin:-2px 0 8px;">Ogni giorno ha la sua disponibilità — scegli per ciascuno solo gli orari realmente proponibili (stessi orari prenotabili usati in Diario). Un giorno senza orari selezionati non fa parte della proposta.</p>
+          <div id="corso-giorni-orari"></div>
+        </div>
+
+        <div class="field">
+          <label>Campi proposti</label>
+          <div class="checkbox-list" id="corso-campi-list"></div>
+        </div>
+
+        <div class="row2">
+          <div class="field">
+            <label for="corso-eta-min">Età di ammissione — da</label>
+            <input type="number" id="corso-eta-min" min="0" step="1" placeholder="es. 6">
+          </div>
+          <div class="field">
+            <label for="corso-eta-max">Età di ammissione — a</label>
+            <input type="number" id="corso-eta-max" min="0" step="1" placeholder="es. 12">
+          </div>
+        </div>
+
+        <div class="row2">
+          <div class="field">
+            <label for="corso-max-iscritti">Max iscritti a sessione</label>
+            <input type="number" id="corso-max-iscritti" min="1" step="1" placeholder="es. 8">
+          </div>
+          <div class="field">
+            <label for="corso-min-iscritti">Min. iscritti per conferma</label>
+            <input type="number" id="corso-min-iscritti" min="1" step="1" required placeholder="es. 4">
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="corso-termine-iscrizione">Termine iscrizione</label>
+          <input type="date" id="corso-termine-iscrizione">
+        </div>
+
+        <div class="field">
+          <label for="corso-condizioni">Condizioni generali</label>
+          <textarea id="corso-condizioni" rows="3" placeholder="Termini e condizioni comunicati agli iscritti"></textarea>
+        </div>
+
+        <p class="row-label" style="margin: -8px 0 16px;">Il calendario reale delle sessioni si genera dopo, quando dagli iscritti risulta chiaro quale combinazione di giorno/orario/campo attivare.</p>
+
+        <hr class="court-divider">
+
+        <div class="field">
+          <label>Livello istruttori richiesto</label>
+          <div class="checkbox-list">
+            <div class="checkbox-row">
+              <input type="checkbox" id="corso-liv-maestro">
+              <label for="corso-liv-maestro">Maestro</label>
+            </div>
+            <div class="checkbox-row">
+              <input type="checkbox" id="corso-liv-monitore">
+              <label for="corso-liv-monitore">Monitore</label>
+            </div>
+            <div class="checkbox-row">
+              <input type="checkbox" id="corso-liv-preparatore">
+              <label for="corso-liv-preparatore">Preparatore atletico</label>
+            </div>
+          </div>
+        </div>
+
+        <div class="row2">
+          <div class="field">
+            <label for="corso-costo-istruttore">Costo istruttori/ora (CHF)</label>
+            <input type="number" id="corso-costo-istruttore" min="0" step="0.5">
+          </div>
+          <div class="field">
+            <label for="corso-costo-campo">Costo campo e org./ora (CHF)</label>
+            <input type="number" id="corso-costo-campo" min="0" step="0.5">
+          </div>
+        </div>
+
+        <div class="row2">
+          <div class="field">
+            <label for="corso-costo-materiale">Costo materiale totale (CHF)</label>
+            <input type="number" id="corso-costo-materiale" min="0" step="0.5" placeholder="es. palline">
+          </div>
+          <div class="field">
+            <label for="corso-prezzo-richiesto">Prezzo richiesto (CHF)</label>
+            <input type="number" id="corso-prezzo-richiesto" min="0" step="0.5" required>
+          </div>
+        </div>
+
+        <div class="scoreboard" style="margin: 6px 0 18px;">
+          <div>
+            <div class="label">Costo minimo a persona</div>
+            <div class="value" id="corso-costo-calcolato" style="font-size:1.5rem;">CHF —</div>
+          </div>
+        </div>
+
+        <div class="error-msg" id="corso-form-error"></div>
+        <button type="submit" class="btn btn-primary" id="corso-save-btn">Crea corso</button>
+        <button type="button" class="btn btn-ghost hidden" id="corso-cancel-edit-btn" style="margin-top:10px;">Annulla modifica</button>
+      </form>
+
+    </div>
+
+  </main>
+
+  <nav class="bottom-nav">
+    <a href="diario.html">Diario</a>
+    <a href="resoconto.html">Resoconto</a>
+    <a href="cassa.html">Cassa</a>
+    <a href="corsi.html" class="active">Corsi</a>
+    <a href="#" title="In arrivo">Prenotazioni</a>
+    <a href="#" title="In arrivo">Camp</a>
+    <a href="utenti.html">Team</a>
+    <a href="configurazione.html">Config</a>
+    <a href="#" id="logout-link">Esci</a>
+  </nav>
+
+  <script>
+    document.querySelector(".bottom-nav a.active")?.scrollIntoView({ inline: "center", block: "nearest" });
+  </script>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/corsi.js"></script>
+</body>
+</html>

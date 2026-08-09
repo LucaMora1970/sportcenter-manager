@@ -53,6 +53,48 @@ function puoEliminareVoceDiario(entry, profile) {
   return (Date.now() - entry.createdAt.toMillis()) <= limiteMs;
 }
 
+// Orari di inizio "prenotabili" per disciplina — stessa fonte usata sia dal
+// Diario (per lo slot/orario di una singola voce) sia da Corsi (per
+// proporre agli iscritti solo combinazioni realmente compatibili con i
+// campi). Tennis ha un salto pranzo 12:15→13:30 quindi resta gestito con
+// coppie inizio-fine esplicite; padel/squash con una griglia inizio+durata.
+const SLOT_TENNIS = [
+  ["08:15", "09:15"], ["09:15", "10:15"], ["10:15", "11:15"], ["11:15", "12:15"],
+  ["13:30", "14:30"], ["14:30", "15:30"], ["15:30", "16:30"], ["16:30", "17:30"],
+  ["17:30", "18:30"], ["18:30", "19:30"], ["19:30", "20:30"], ["20:30", "21:30"], ["21:30", "22:30"]
+];
+
+function minutiToOrario(min) {
+  return `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+}
+
+function generaOrari(inizioMin, fineMin, stepMin) {
+  const out = [];
+  for (let m = inizioMin; m <= fineMin; m += stepMin) out.push(minutiToOrario(m));
+  return out;
+}
+
+function addMinuti(orario, minuti) {
+  const [h, m] = orario.split(":").map(Number);
+  return minutiToOrario(h * 60 + m + minuti);
+}
+
+// Orari di inizio ammessi per padel e squash quando il tipo attività (o il
+// corso) ha una durata fissa: basta scegliere l'inizio, la fine si calcola
+// da sola (addMinuti).
+const ORARI_INIZIO_AUTO = {
+  padel: generaOrari(8 * 60, 21 * 60 + 30, 15),      // 08:00–21:30 ogni 15'
+  squash: generaOrari(8 * 60 + 15, 21 * 60 + 45, 45)  // 08:15–21:45 ogni 45'
+};
+
+// Elenco piatto degli orari di inizio "prenotabili" per una disciplina,
+// indipendentemente da come sono modellati sotto (coppie per il tennis,
+// griglia per padel/squash). Usato per proporre scelte in Corsi.
+function orariInizioPerDisciplina(disciplina) {
+  if (disciplina === "tennis") return SLOT_TENNIS.map(([i]) => i);
+  return ORARI_INIZIO_AUTO[disciplina] || [];
+}
+
 function calcOre(oraInizio, oraFine) {
   if (!oraInizio || !oraFine) return 0;
   const [h1, m1] = oraInizio.split(":").map(Number);

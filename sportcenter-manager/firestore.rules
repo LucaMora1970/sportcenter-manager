@@ -162,8 +162,18 @@ service cloud.firestore {
       allow write: if hasPermission("config:gestisci");
     }
 
-    // Placeholder per collezioni future (corsi, prenotazioni_padel, camp, pagamenti):
-    // aggiungere qui blocchi match dedicati man mano che si sviluppano le pagine,
-    // seguendo lo stesso pattern basato su hasPermission().
+    // Corsi (fase 1: solo gestione interna, dietro login — niente iscrizioni
+    // pubbliche ancora). Lettura per chiunque loggato (serve anche a chi ha
+    // solo corsi:approva di vedere le bozze da approvare); scrittura a chi
+    // crea/modifica i corsi o a chi li approva.
+    match /corsi/{id} {
+      allow read: if isSignedIn();
+      allow create, update: if hasPermission("corsi:gestisci") || hasPermission("corsi:approva");
+      allow delete: if hasPermission("corsi:gestisci");
+    }
+
+    // Placeholder per collezioni future (iscrizioni corsi, prenotazioni_padel,
+    // camp, pagamenti): aggiungere qui blocchi match dedicati man mano che si
+    // sviluppano le pagine, seguendo lo stesso pattern basato su hasPermission().
   }
 }

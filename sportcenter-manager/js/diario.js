@@ -13,42 +13,9 @@ let tipiGruppoPadelCache = [];
 let allieviCache = [];
 let rowCounter = 0;
 
-// Slot di 60' già abbinati inizio-fine per il tennis, per velocizzare
-// l'immissione rispetto a scegliere ora inizio e ora fine separatamente.
-// Per situazioni non previste resta comunque disponibile l'orario libero.
-// (il tennis ha un salto pranzo 12:15→13:30 che non è un semplice "inizio +
-// durata fissa", per questo resta gestito con coppie esplicite invece che
-// con ORARI_INIZIO_AUTO/durataMinuti come padel e squash)
-const SLOT_TENNIS = [
-  ["08:15", "09:15"], ["09:15", "10:15"], ["10:15", "11:15"], ["11:15", "12:15"],
-  ["13:30", "14:30"], ["14:30", "15:30"], ["15:30", "16:30"], ["16:30", "17:30"],
-  ["17:30", "18:30"], ["18:30", "19:30"], ["19:30", "20:30"], ["20:30", "21:30"], ["21:30", "22:30"]
-];
-
-function minutiToOrario(min) {
-  return `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
-}
-
-function generaOrari(inizioMin, fineMin, stepMin) {
-  const out = [];
-  for (let m = inizioMin; m <= fineMin; m += stepMin) out.push(minutiToOrario(m));
-  return out;
-}
-
-function addMinuti(orario, minuti) {
-  const [h, m] = orario.split(":").map(Number);
-  return minutiToOrario(h * 60 + m + minuti);
-}
-
-// Orari di inizio ammessi per padel e squash quando il tipo attività
-// selezionato ha una durataMinuti fissa (vedi Configurazione): basta
-// scegliere l'inizio, la fine si calcola da sola (addMinuti). Le altre
-// discipline (o i tipi attività senza durata configurata) restano con
-// l'orario libero.
-const ORARI_INIZIO_AUTO = {
-  padel: generaOrari(8 * 60, 21 * 60 + 30, 15),      // 08:00–21:30 ogni 15'
-  squash: generaOrari(8 * 60 + 15, 21 * 60 + 45, 45)  // 08:15–21:45 ogni 45'
-};
+// SLOT_TENNIS, ORARI_INIZIO_AUTO, generaOrari(), addMinuti() sono definiti
+// in utils.js — condivisi con Corsi (stessa fonte per gli orari "prenotabili"
+// per disciplina, niente liste duplicate che potrebbero disallinearsi).
 
 function todayISO() {
   const d = new Date();
