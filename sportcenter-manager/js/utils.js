@@ -2,6 +2,47 @@
 // utils.js — costanti e helper condivisi tra le pagine
 // ============================================================
 
+// Giorni della settimana, usati da Corsi (proposta) e dal modulo pubblico
+// di iscrizione (flag di disponibilità) — stessa fonte per non disallinearli.
+const GIORNI_SETTIMANA = [
+  { id: "lun", label: "Lun" },
+  { id: "mar", label: "Mar" },
+  { id: "mer", label: "Mer" },
+  { id: "gio", label: "Gio" },
+  { id: "ven", label: "Ven" },
+  { id: "sab", label: "Sab" },
+  { id: "dom", label: "Dom" }
+];
+
+const GIORNO_JS_DAY = { dom: 0, lun: 1, mar: 2, mer: 3, gio: 4, ven: 5, sab: 6 };
+
+// Date reali delle sessioni di un gruppo confermato (corso + giorno +
+// orario assegnati): parte da "dal" e ripete sullo stesso giorno della
+// settimana finché non raggiunge nrSessioni. Usata da Corsi per le viste
+// giornaliera/settimanale una volta che un'iscrizione è confermata su
+// uno slot specifico — prima della conferma non ha senso generarla,
+// perché non si sa ancora quale combinazione verrà davvero attivata.
+function generaCalendarioSessioni(dal, nrSessioni, giornoId, oraInizio, durataMinuti) {
+  const jsDay = GIORNO_JS_DAY[giornoId];
+  const sessioni = [];
+  if (jsDay == null || !dal || !nrSessioni) return sessioni;
+
+  const cursor = new Date(dal + "T00:00:00");
+  let guardia = 0; // evita loop infinito se qualcosa non torna
+  while (sessioni.length < nrSessioni && guardia < 3650) {
+    if (cursor.getDay() === jsDay) {
+      sessioni.push({
+        data: `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}-${String(cursor.getDate()).padStart(2, "0")}`,
+        oraInizio,
+        oraFine: durataMinuti ? addMinuti(oraInizio, durataMinuti) : null
+      });
+    }
+    cursor.setDate(cursor.getDate() + 1);
+    guardia++;
+  }
+  return sessioni;
+}
+
 // Popolata da loadDiscipline() a ogni caricamento pagina (collection
 // Firestore "discipline", configurabile da Configurazione). Ogni pagina
 // che la usa deve chiamare `await loadDiscipline()` prima di usarla.

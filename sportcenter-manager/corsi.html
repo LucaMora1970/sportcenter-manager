@@ -41,6 +41,32 @@
 
       <hr class="court-divider">
 
+      <!-- Riepilogo giornaliero/settimanale gruppi confermati -->
+      <div id="riepilogo-sezione" class="hidden">
+        <div class="section-title"><h2>Riepilogo giornaliero</h2></div>
+        <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Iscritti confermati ed età, per ogni orario di corso del giorno scelto — solo i gruppi già confermati su uno slot specifico.</p>
+        <div class="row2">
+          <div class="field">
+            <label for="riepilogo-data">Giorno</label>
+            <input type="date" id="riepilogo-data">
+          </div>
+        </div>
+        <div id="riepilogo-giornaliero-list">
+          <div class="empty-state"><div class="display">Nessun gruppo confermato per questo giorno</div></div>
+        </div>
+
+        <hr class="court-divider">
+
+        <div class="section-title"><h2>Riepilogo settimanale</h2></div>
+        <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Stessa cosa per 7 giorni a partire dal giorno scelto sopra — stampabile in PDF.</p>
+        <div id="riepilogo-settimanale-list">
+          <div class="empty-state"><div class="display">Nessun gruppo confermato in questa settimana</div></div>
+        </div>
+        <button type="button" class="btn btn-ghost" id="stampa-settimanale-btn" style="margin-top:12px;">Stampa / PDF settimana</button>
+      </div>
+
+      <hr class="court-divider">
+
       <!-- Nuovo corso -->
       <div class="section-title" id="corso-form-title"><h2>Nuovo corso</h2></div>
       <form id="corso-form">
@@ -190,7 +216,7 @@
     <a href="resoconto.html">Resoconto</a>
     <a href="cassa.html">Cassa</a>
     <a href="corsi.html" class="active">Corsi</a>
-    <a href="#" title="In arrivo">Prenotazioni</a>
+    <a href="prenotazioni.html">Prenotazioni</a>
     <a href="#" title="In arrivo">Camp</a>
     <a href="utenti.html">Team</a>
     <a href="configurazione.html">Config</a>
@@ -202,6 +228,8 @@
   </script>
 
 </div>
+
+<div id="print-area"></div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>

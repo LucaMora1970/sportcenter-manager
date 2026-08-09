@@ -162,18 +162,51 @@ service cloud.firestore {
       allow write: if hasPermission("config:gestisci");
     }
 
-    // Corsi (fase 1: solo gestione interna, dietro login — niente iscrizioni
-    // pubbliche ancora). Lettura per chiunque loggato (serve anche a chi ha
-    // solo corsi:approva di vedere le bozze da approvare); scrittura a chi
-    // crea/modifica i corsi o a chi li approva.
+    // Corsi: lettura pubblica (il modulo di iscrizione, senza login, deve
+    // poter mostrare i corsi aperti — non sono dati sensibili, sono
+    // informazioni che vogliamo mostrare agli interessati). Scrittura
+    // riservata a chi crea/modifica i corsi o a chi li approva.
     match /corsi/{id} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow create, update: if hasPermission("corsi:gestisci") || hasPermission("corsi:approva");
       allow delete: if hasPermission("corsi:gestisci");
     }
 
-    // Placeholder per collezioni future (iscrizioni corsi, prenotazioni_padel,
-    // camp, pagamenti): aggiungere qui blocchi match dedicati man mano che si
-    // sviluppano le pagine, seguendo lo stesso pattern basato su hasPermission().
+    // Iscrizioni corsi (fase 2): form pubblico, nessun login richiesto per
+    // iscriversi — la creazione è quindi validata qui invece che sul solito
+    // controllo isSignedIn(): deve puntare a un corso esistente e già
+    // approvato, avere i campi minimi e partire sempre come "in_attesa"
+    // (non può auto-confermarsi). Contiene dati sensibili (anagrafica,
+    // contatti) quindi lettura/gestione riservata al permesso dedicato
+    // iscrizioni:gestisci — non isSignedIn() generico come il resto dell'app.
+    match /iscrizioniCorsi/{id} {
+      allow create: if request.resource.data.corsoId is string
+        && exists(/databases/$(database)/documents/corsi/$(request.resource.data.corsoId))
+        && get(/databases/$(database)/documents/corsi/$(request.resource.data.corsoId)).data.approvato == true
+        && request.resource.data.nome is string && request.resource.data.nome.size() > 0
+        && request.resource.data.cognome is string && request.resource.data.cognome.size() > 0
+        && request.resource.data.email is string && request.resource.data.email.size() > 0
+        && request.resource.data.stato == "in_attesa";
+      allow read, update, delete: if hasPermission("iscrizioni:gestisci");
+    }
+
+    // Tabellone prenotazione campo padel (fase di test interna): dietro
+    // login come tutte le altre pagine, nessun accesso pubblico ancora —
+    // vedi memoria di progetto sul perché (le regole sono il vero confine
+    // di sicurezza, non l'URL). Chiunque loggato vede e crea prenotazioni
+    // (serve al tabellone condiviso); l'eliminazione è riservata al
+    // proprietario o a chi ha prenotazioni:gestisci.
+    match /prenotazioniPadel/{id} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow delete: if isSignedIn() && (
+        resource.data.userId == request.auth.uid
+        || hasPermission("prenotazioni:gestisci")
+      );
+    }
+
+    // Placeholder per collezioni future (camp, pagamenti): aggiungere qui
+    // blocchi match dedicati man mano che si sviluppano le pagine,
+    // seguendo lo stesso pattern basato su hasPermission().
   }
 }

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Cambia password — Sport-OS</title>
+<title>Prenotazioni — Sport-OS</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
@@ -17,33 +17,47 @@
 <div class="app">
 
   <div class="topbar">
-    <h1>Password</h1>
+    <h1>Prenotazioni</h1>
     <div class="user-chip" id="user-chip">—</div>
     <a href="password.html" class="topbar-link">Password</a>
   </div>
 
   <main>
 
-    <div class="section-title"><h2>Cambia password</h2></div>
-    <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Per motivi di sicurezza devi confermare la password attuale.</p>
+    <div id="prenotazioni-content">
 
-    <form id="change-password-form">
-      <div class="field">
-        <label for="current-password">Password attuale</label>
-        <input type="password" id="current-password" required autocomplete="current-password">
+      <p style="color:var(--chalk-grey);font-size:0.8rem;margin:-4px 0 16px;">Fase di test interna — visibile solo al team, non ancora aperta ai soci. Nessun pagamento richiesto in questa fase.</p>
+
+      <div class="day-strip" id="dayStrip" role="tablist" aria-label="Giorno"></div>
+
+      <div class="duration-row" style="margin-top:16px;">
+        <div>
+          <div class="picker-label" style="margin-bottom:10px;">1. Scegli la durata</div>
+          <div class="seg" id="durationSeg" role="group" aria-label="Durata prenotazione">
+            <button type="button" data-dur="60" aria-pressed="false">60'</button>
+            <button type="button" data-dur="90" aria-pressed="false">90'</button>
+          </div>
+        </div>
+        <div class="tabellone-legend">
+          <span><i class="i-occ"></i>Occupato</span>
+          <span><i class="i-free"></i>Libero</span>
+          <span><i class="i-slot"></i>Disponibile</span>
+        </div>
       </div>
-      <div class="field">
-        <label for="new-password">Nuova password</label>
-        <input type="password" id="new-password" required minlength="6" autocomplete="new-password" placeholder="almeno 6 caratteri">
+
+      <hr class="court-divider">
+
+      <div>
+        <div class="court-head" style="margin-bottom:8px;">
+          <h2>Campo Padel</h2>
+          <span class="tag">unico campo</span>
+        </div>
+        <div class="picker-label" style="margin-bottom:8px;">2. Tocca dove posizionarti</div>
+        <div class="error-msg" id="tabellone-error"></div>
+        <div class="timeline" id="timeline"></div>
       </div>
-      <div class="field">
-        <label for="confirm-password">Conferma nuova password</label>
-        <input type="password" id="confirm-password" required minlength="6" autocomplete="new-password">
-      </div>
-      <div class="error-msg" id="password-error"></div>
-      <div id="password-success" class="hidden" style="color:var(--ball);font-size:0.85rem;margin:-6px 0 14px;">Password aggiornata con successo.</div>
-      <button type="submit" class="btn btn-primary" id="change-password-btn">Aggiorna password</button>
-    </form>
+
+    </div>
 
   </main>
 
@@ -52,7 +66,7 @@
     <a href="resoconto.html">Resoconto</a>
     <a href="cassa.html">Cassa</a>
     <a href="corsi.html">Corsi</a>
-    <a href="prenotazioni.html">Prenotazioni</a>
+    <a href="prenotazioni.html" class="active">Prenotazioni</a>
     <a href="#" title="In arrivo">Camp</a>
     <a href="utenti.html">Team</a>
     <a href="configurazione.html">Config</a>
@@ -65,12 +79,21 @@
 
 </div>
 
+<div class="summary-bar" id="summaryBar">
+  <div class="summary-card">
+    <div class="summary-info">
+      <div class="t" id="summaryTitle">—</div>
+    </div>
+    <button type="button" class="summary-cta" id="summaryCta">Prenota</button>
+  </div>
+</div>
+
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="js/firebase-config.js"></script>
 <script src="js/utils.js"></script>
 <script src="js/auth.js"></script>
-<script src="js/password.js"></script>
+<script src="js/prenotazioni.js"></script>
 </body>
 </html>

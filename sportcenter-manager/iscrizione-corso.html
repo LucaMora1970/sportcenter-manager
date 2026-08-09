@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Iscrizione corso — Sport-OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d1f30">
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <h1>Iscrizione corso</h1>
+  </div>
+
+  <main>
+
+    <div id="step-scelta">
+      <div class="section-title"><h2>Corsi aperti alle iscrizioni</h2></div>
+      <div id="corsi-aperti-list">
+        <div class="empty-state"><div class="display">Caricamento…</div></div>
+      </div>
+    </div>
+
+    <div id="step-form" class="hidden">
+      <div class="section-title"><h2 id="corso-scelto-nome">Iscrizione</h2></div>
+      <p id="corso-scelto-descrizione" style="color:var(--chalk-grey);font-size:0.85rem;margin:-6px 0 16px;"></p>
+      <button type="button" class="btn btn-ghost" id="cambia-corso-btn" style="margin-bottom:18px;">← Scegli un altro corso</button>
+
+      <form id="iscrizione-form">
+        <div class="row2">
+          <div class="field">
+            <label for="isc-nome">Nome</label>
+            <input type="text" id="isc-nome" required>
+          </div>
+          <div class="field">
+            <label for="isc-cognome">Cognome</label>
+            <input type="text" id="isc-cognome" required>
+          </div>
+        </div>
+
+        <div class="row2">
+          <div class="field">
+            <label for="isc-datanascita">Data di nascita</label>
+            <input type="date" id="isc-datanascita" required>
+          </div>
+          <div class="field">
+            <label for="isc-nazionalita">Nazionalità</label>
+            <input type="text" id="isc-nazionalita" required>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="isc-via">Via</label>
+          <input type="text" id="isc-via" required>
+        </div>
+
+        <div class="row2">
+          <div class="field" style="flex:0 0 110px;">
+            <label for="isc-cap">CAP</label>
+            <input type="text" id="isc-cap" required>
+          </div>
+          <div class="field">
+            <label for="isc-localita">Località</label>
+            <input type="text" id="isc-localita" required>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="isc-email">Email</label>
+          <input type="email" id="isc-email" required>
+        </div>
+
+        <div class="row2">
+          <div class="field">
+            <label for="isc-nomegenitore">Nome del genitore</label>
+            <input type="text" id="isc-nomegenitore" placeholder="facoltativo, per i minori">
+          </div>
+          <div class="field">
+            <label for="isc-telgenitore">Telefono del genitore</label>
+            <input type="tel" id="isc-telgenitore" placeholder="facoltativo, per i minori">
+          </div>
+        </div>
+
+        <div class="row2">
+          <div class="field">
+            <label for="isc-scuola">Scuola frequentata</label>
+            <input type="text" id="isc-scuola" placeholder="facoltativo">
+          </div>
+          <div class="field">
+            <label for="isc-altrisport">Altri sport praticati</label>
+            <input type="text" id="isc-altrisport" placeholder="facoltativo">
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="isc-nrore">Nr. ore di corso desiderate (a settimana)</label>
+          <input type="number" id="isc-nrore" min="0" step="0.5">
+        </div>
+
+        <div class="field">
+          <label>Giorni e orari disponibili</label>
+          <p style="color:var(--chalk-grey);font-size:0.78rem;margin:-2px 0 8px;">Seleziona tra le combinazioni proposte da questo corso quelle che ti vanno bene — più ne selezioni, più è probabile trovare un gruppo compatibile.</p>
+          <div id="isc-disponibilita-list"></div>
+        </div>
+
+        <div class="error-msg" id="iscrizione-form-error"></div>
+        <button type="submit" class="btn btn-primary" id="iscrizione-save-btn">Invia iscrizione</button>
+      </form>
+    </div>
+
+    <div id="step-fatto" class="hidden">
+      <div class="empty-state">
+        <div class="display">Iscrizione inviata</div>
+        <p>Grazie! Il nostro team valuterà la disponibilità e ti contatterà via email per la conferma del corso.</p>
+      </div>
+    </div>
+
+  </main>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/iscrizione-corso.js"></script>
+</body>
+</html>

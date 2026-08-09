@@ -15,7 +15,9 @@ const KNOWN_PERMISSIONS = [
   { id: "config:gestisci", label: "Gestire configurazione (tipi attività, tariffe, campi)" },
   { id: "vendite:gestisci", label: "Gestire vendite (Cassa: registrare e vedere il riepilogo)" },
   { id: "corsi:gestisci", label: "Corsi: creare e modificare" },
-  { id: "corsi:approva", label: "Corsi: approvare" }
+  { id: "corsi:approva", label: "Corsi: approvare" },
+  { id: "iscrizioni:gestisci", label: "Iscrizioni corsi: leggere e confermare/annullare (dati sensibili)" },
+  { id: "prenotazioni:gestisci", label: "Prenotazioni padel: eliminare prenotazioni altrui" }
 ];
 
 function permessoLabel(id) {
