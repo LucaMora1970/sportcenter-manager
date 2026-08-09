@@ -23,6 +23,28 @@ function formatDataBreve(dataStr) {
   return `${d}.${m}.${y}`;
 }
 
+function etaDa(dataNascitaStr) {
+  if (!dataNascitaStr) return null;
+  const nascita = new Date(dataNascitaStr + "T00:00:00");
+  const oggi = new Date();
+  let eta = oggi.getFullYear() - nascita.getFullYear();
+  const m = oggi.getMonth() - nascita.getMonth();
+  if (m < 0 || (m === 0 && oggi.getDate() < nascita.getDate())) eta--;
+  return eta;
+}
+
+// Il contatto del genitore è obbligatorio solo per i minorenni (fino a 17
+// anni) — qui si calcola dal vivo appena si inserisce la data di nascita
+// e si mostra/nasconde il suggerimento e l'obbligatorietà dei campi.
+function syncGenitoreObbligatorio() {
+  const eta = etaDa(document.getElementById("isc-datanascita").value);
+  const minorenne = eta != null && eta < 18;
+
+  document.getElementById("isc-genitore-hint").classList.toggle("hidden", !minorenne);
+  document.getElementById("isc-nomegenitore").required = minorenne;
+  document.getElementById("isc-telgenitore").required = minorenne;
+}
+
 async function loadCorsiAperti() {
   const list = document.getElementById("corsi-aperti-list");
   list.innerHTML = `<div class="empty-state"><div class="display">Caricamento…</div></div>`;
@@ -92,6 +114,7 @@ function selezionaCorso(corso) {
 function tornaAllaScelta() {
   corsoSelezionato = null;
   document.getElementById("iscrizione-form").reset();
+  syncGenitoreObbligatorio();
   document.getElementById("step-form").classList.add("hidden");
   document.getElementById("step-scelta").classList.remove("hidden");
 }
@@ -122,6 +145,7 @@ async function onSubmitIscrizione(e) {
       nome: document.getElementById("isc-nome").value.trim(),
       cognome: document.getElementById("isc-cognome").value.trim(),
       dataNascita: document.getElementById("isc-datanascita").value,
+      eta: etaDa(document.getElementById("isc-datanascita").value),
       nazionalita: document.getElementById("isc-nazionalita").value.trim(),
       via: document.getElementById("isc-via").value.trim(),
       cap: document.getElementById("isc-cap").value.trim(),
@@ -150,5 +174,6 @@ async function onSubmitIscrizione(e) {
 
 document.getElementById("cambia-corso-btn").addEventListener("click", tornaAllaScelta);
 document.getElementById("iscrizione-form").addEventListener("submit", onSubmitIscrizione);
+document.getElementById("isc-datanascita").addEventListener("change", syncGenitoreObbligatorio);
 
 loadCorsiAperti();

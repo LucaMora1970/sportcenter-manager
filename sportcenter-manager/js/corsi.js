@@ -181,11 +181,14 @@ function renderCorsi() {
           ${puoApprovare && !c.approvato ? `<button class="btn btn-primary approva-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Approva</button>` : ""}
           ${puoVedereIscrizioni && c.approvato ? `<button class="btn btn-ghost iscrizioni-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Iscrizioni</button>` : ""}
           ${puoVedereIscrizioni && c.approvato ? `<button class="btn btn-ghost panoramica-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Panoramica</button>` : ""}
+          ${puoVedereIscrizioni && c.approvato ? `<button class="btn btn-ghost stampa-lista-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Stampa / PDF</button>` : ""}
+          ${puoVedereIscrizioni && c.approvato ? `<button class="btn btn-ghost storico-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Storico</button>` : ""}
           ${puoGestire ? `<button class="btn btn-danger delete-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Elimina</button>` : ""}
         </div>
       </div>
       ${puoVedereIscrizioni && c.approvato ? `<div class="dettaglio-giorni hidden" id="iscrizioni-${c.id}"></div>` : ""}
       ${puoVedereIscrizioni && c.approvato ? `<div class="dettaglio-giorni hidden" id="panoramica-${c.id}"></div>` : ""}
+      ${puoVedereIscrizioni && c.approvato ? `<div class="dettaglio-giorni hidden" id="storico-${c.id}"></div>` : ""}
     </div>
   `;
   }).join("");
@@ -231,6 +234,14 @@ function renderCorsi() {
 
   list.querySelectorAll(".panoramica-corso-btn").forEach(btn => {
     btn.addEventListener("click", () => togglePanoramicaCorso(btn.dataset.id));
+  });
+
+  list.querySelectorAll(".stampa-lista-corso-btn").forEach(btn => {
+    btn.addEventListener("click", () => stampaListaCorso(btn.dataset.id));
+  });
+
+  list.querySelectorAll(".storico-corso-btn").forEach(btn => {
+    btn.addEventListener("click", () => toggleStoricoCorso(btn.dataset.id));
   });
 }
 
@@ -302,6 +313,19 @@ async function togglePanoramicaCorso(corsoId) {
   renderPanoramicaCorso(container, corso, iscrizioni);
 }
 
+function nomeEta(i) {
+  const eta = etaDa(i.dataNascita);
+  return `${escapeHtml(i.nome)} ${escapeHtml(i.cognome)}${eta != null ? " (" + eta + ")" : ""}`;
+}
+
+// Il semaforo di un candidato vale solo per lo slot per cui è stato messo
+// (semaforoGiorno/semaforoOrario): la stessa persona può comparire come
+// candidata in più slot se ha flaggato più disponibilità, e qui vogliamo
+// vedere il suo stato SOLO nello slot che stiamo guardando.
+function semaforoPerSlot(i, giorno, orario) {
+  return (i.semaforoGiorno === giorno && i.semaforoOrario === orario) ? i.semaforo || null : null;
+}
+
 function renderPanoramicaCorso(container, corso, iscrizioni) {
   const combinazioni = combinazioniCorso(corso);
   let html = "";
@@ -320,19 +344,207 @@ function renderPanoramicaCorso(container, corso, iscrizioni) {
     const totale = candidati.length + confermati.length;
     const bastante = corso.minIscrittiConferma && totale >= corso.minIscrittiConferma;
 
+    // Se il corso propone più campi per lo stesso giorno/orario, da qui
+    // possono nascere più gruppi paralleli (uno per campo): ogni iscritto
+    // ha il proprio selettore campo, non è un'unica scelta per lo slot.
+    const piuCampi = (corso.campiNumeri || []).length > 1;
+    const campoOptions = (corso.campiNumeri || []).map(n => `<option value="${n}">Campo ${n}</option>`).join("");
+
+    const righeConfermati = confermati.map(i => `
+      <div class="candidato-row">
+        <span class="candidato-nome">${nomeEta(i)}</span>
+        ${piuCampi && i.campoAssegnato ? `<span class="candidato-nome">Campo ${escapeHtml(i.campoAssegnato)}</span>` : ""}
+      </div>
+    `).join("");
+
+    const righeCandidati = candidati.map(i => {
+      const attuale = semaforoPerSlot(i, c.giorno, c.orario);
+      const dot = (colore) => `<button type="button" class="semaforo-dot ${colore}" data-selected="${attuale === colore}" data-id="${i.id}" data-giorno="${c.giorno}" data-orario="${c.orario}" data-colore="${colore}" aria-label="${colore}"></button>`;
+      const campoSelect = piuCampi ? `<select class="candidato-campo-select" data-id="${i.id}" style="font-size:0.7rem;padding:3px 4px;">${campoOptions}</select>` : "";
+      return `
+        <div class="candidato-row">
+          <span class="candidato-nome">${nomeEta(i)}</span>
+          <span class="semaforo">${campoSelect}${dot("rosso")}${dot("giallo")}${dot("verde")}</span>
+        </div>
+      `;
+    }).join("");
+
     html += `
       <div class="entry-card">
         <div class="entry-main">
           <span class="badge" style="${bastante ? "border-color:#7f9e4a;color:#c1e08f;" : "border-color:var(--chalk-grey-dim);color:var(--chalk-grey);"}">${totale} ${totale === 1 ? "persona" : "persone"}${corso.minIscrittiConferma ? " / min " + corso.minIscrittiConferma : ""}</span>
           <div class="entry-tipo">${c.orario}</div>
-          ${confermati.length > 0 ? `<div class="entry-meta">Confermati: ${confermati.map(i => escapeHtml(i.nome) + " " + escapeHtml(i.cognome)).join(", ")}</div>` : ""}
-          ${candidati.length > 0 ? `<div class="entry-meta">In attesa: ${candidati.map(i => escapeHtml(i.nome) + " " + escapeHtml(i.cognome)).join(", ")}</div>` : ""}
+          ${piuCampi ? `<div class="entry-meta">Campi proposti: ${(corso.campiNumeri || []).join(", ")} — puoi formare più gruppi paralleli, uno per campo</div>` : ""}
+          ${confermati.length > 0 ? `<div class="entry-meta" style="margin-top:10px;">Confermati</div>${righeConfermati}` : ""}
+          ${candidati.length > 0 ? `<div class="entry-meta" style="margin-top:10px;">In attesa</div>${righeCandidati}` : ""}
+          ${candidati.length > 0 ? `<button type="button" class="btn btn-primary conferma-gruppo-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;margin-top:10px;" data-corso="${corso.id}" data-giorno="${c.giorno}" data-orario="${c.orario}">Conferma gruppo</button>` : ""}
         </div>
       </div>
     `;
   });
 
-  container.innerHTML = html || `<div class="empty-state"><div class="display">Nessuna disponibilità ricevuta ancora</div></div>`;
+  container.innerHTML = html
+    ? `<button type="button" class="btn btn-ghost stampa-panoramica-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;margin-bottom:10px;" data-corso="${corso.id}">Stampa / PDF panoramica</button>${html}`
+    : `<div class="empty-state"><div class="display">Nessuna disponibilità ricevuta ancora</div></div>`;
+
+  container.querySelectorAll(".semaforo-dot").forEach(btn => {
+    btn.addEventListener("click", () => impostaSemaforo(btn.dataset.id, btn.dataset.giorno, btn.dataset.orario, btn.dataset.colore, corso.id));
+  });
+  container.querySelectorAll(".conferma-gruppo-btn").forEach(btn => {
+    btn.addEventListener("click", () => confermaGruppoSlot(btn.dataset.corso, btn.dataset.giorno, btn.dataset.orario, container));
+  });
+  const stampaBtn = container.querySelector(".stampa-panoramica-btn");
+  if (stampaBtn) stampaBtn.addEventListener("click", () => stampaPanoramicaCorso(corso.id, iscrizioni));
+}
+
+// Stampa un'istantanea della Panoramica così com'è in quel momento (con i
+// semafori) — pensata per essere usata più volte durante la valutazione,
+// non solo a decisione presa.
+const SEMAFORO_LABEL = { rosso: "Rosso", giallo: "Giallo", verde: "Verde" };
+
+function stampaPanoramicaCorso(corsoId, iscrizioni) {
+  const corso = corsiCache.find(c => c.id === corsoId);
+  if (!corso) return;
+  const combinazioni = combinazioniCorso(corso);
+
+  let righe = "";
+  combinazioni.forEach(c => {
+    const candidati = iscrizioni.filter(i => i.stato === "in_attesa" && (i.disponibilita?.[c.giorno] || []).includes(c.orario));
+    const confermati = iscrizioni.filter(i => i.stato === "confermata" && i.giornoAssegnato === c.giorno && i.orarioAssegnato === c.orario);
+    if (candidati.length === 0 && confermati.length === 0) return;
+
+    confermati.forEach(i => {
+      righe += `<tr><td>${c.giornoLabel} ${c.orario}</td><td>${i.campoAssegnato ? "Campo " + escapeHtml(i.campoAssegnato) : "—"}</td><td>${nomeEta(i)}</td><td>Confermato</td></tr>`;
+    });
+    candidati.forEach(i => {
+      const colore = semaforoPerSlot(i, c.giorno, c.orario);
+      righe += `<tr><td>${c.giornoLabel} ${c.orario}</td><td>—</td><td>${nomeEta(i)}</td><td>${colore ? SEMAFORO_LABEL[colore] : "Da valutare"}</td></tr>`;
+    });
+  });
+
+  document.getElementById("print-area").innerHTML = `
+    <h1>Panoramica — ${escapeHtml(corso.nome)}</h1>
+    <p>Istantanea del ${new Date().toLocaleString("it-CH")}</p>
+    <table>
+      <thead><tr><th>Slot</th><th>Campo</th><th>Nominativo</th><th>Valutazione</th></tr></thead>
+      <tbody>${righe}</tbody>
+    </table>
+  `;
+  window.print();
+}
+
+// Storico immutabile: una riga per ogni azione che cambia lo stato di
+// un'iscrizione, per poter ricostruire cosa è successo in caso di errori
+// di organizzazione/attribuzione. Non blocca l'azione principale se il
+// log fallisce (es. rete) — meglio un log mancante che un'azione bloccata.
+async function registraLog(iscrizioneId, corsoId, iscrittoNome, azione, dettaglio) {
+  try {
+    await db.collection("iscrizioniLog").add({
+      iscrizioneId,
+      corsoId,
+      iscrittoNome,
+      azione,
+      dettaglio,
+      daUid: currentProfile.uid,
+      daNome: currentProfile.nome,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+  } catch (err) {
+    console.warn("registraLog fallito:", err.message);
+  }
+}
+
+// Rimettere lo stesso colore già selezionato lo toglie (torna neutro).
+async function impostaSemaforo(iscrizioneId, giorno, orario, colore, corsoId) {
+  try {
+    const doc = await db.collection("iscrizioniCorsi").doc(iscrizioneId).get();
+    const attuale = doc.data();
+    const giaSelezionato = attuale.semaforoGiorno === giorno && attuale.semaforoOrario === orario && attuale.semaforo === colore;
+    const nomeCompleto = `${attuale.nome} ${attuale.cognome}`;
+    const giornoLabel = (GIORNI_SETTIMANA.find(g => g.id === giorno) || {}).label || giorno;
+
+    await db.collection("iscrizioniCorsi").doc(iscrizioneId).update(
+      giaSelezionato
+        ? { semaforo: null, semaforoGiorno: null, semaforoOrario: null }
+        : { semaforo: colore, semaforoGiorno: giorno, semaforoOrario: orario }
+    );
+    await registraLog(iscrizioneId, corsoId, nomeCompleto,
+      giaSelezionato ? "semaforo_rimosso" : "semaforo",
+      giaSelezionato ? `Tolto ${colore} su ${giornoLabel} ${orario}` : `${colore} su ${giornoLabel} ${orario}`);
+    await ricaricaPanoramicaSeAperta(corsoId);
+  } catch (err) {
+    showError(document.getElementById("corsi-list-error"), "Errore: " + err.message);
+  }
+}
+
+// Conferma in blocco solo chi è segnato verde per QUESTO slot — chi è
+// giallo/rosso, o verde per un altro slot, resta in attesa. Salta (con
+// avviso) chi ha richiesto meno ore di quante ne dura questa sessione:
+// non possiamo confermarlo per più ore di quante ne abbia chieste.
+async function confermaGruppoSlot(corsoId, giorno, orario, container) {
+  const corso = corsiCache.find(c => c.id === corsoId);
+  if (!corso) return;
+
+  const snap = await db.collection("iscrizioniCorsi")
+    .where("corsoId", "==", corsoId)
+    .where("stato", "==", "in_attesa")
+    .get();
+  const candidatiVerdi = snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(i => i.semaforoGiorno === giorno && i.semaforoOrario === orario && i.semaforo === "verde");
+
+  if (candidatiVerdi.length === 0) {
+    alert("Nessun iscritto segnato verde per questo slot.");
+    return;
+  }
+
+  // Con un solo campo proposto non c'è scelta da fare; con più campi si
+  // legge quello scelto da ciascuno nel proprio selettore (permette di
+  // formare più gruppi paralleli in un'unica conferma).
+  const unicoCampo = (corso.campiNumeri || []).length === 1 ? corso.campiNumeri[0] : null;
+  candidatiVerdi.forEach(i => {
+    const select = container?.querySelector(`.candidato-campo-select[data-id="${i.id}"]`);
+    i.campoAssegnato = select ? select.value : unicoCampo;
+  });
+
+  const oreSessione = (corso.durataSessioneMinuti || 0) / 60;
+  const daConfermare = candidatiVerdi.filter(i => !i.nrOreDesiderate || i.nrOreDesiderate >= oreSessione);
+  const saltati = candidatiVerdi.filter(i => i.nrOreDesiderate && i.nrOreDesiderate < oreSessione);
+
+  if (saltati.length > 0) {
+    const nomi = saltati.map(i => `${i.nome} ${i.cognome} (ha chiesto ${i.nrOreDesiderate}h, la sessione dura ${oreSessione}h)`).join("\n");
+    if (!confirm(`Questi iscritti hanno richiesto meno ore di quante dura la sessione e NON verranno confermati:\n\n${nomi}\n\nProseguire con gli altri ${daConfermare.length}?`)) return;
+  }
+  if (daConfermare.length === 0) return;
+
+  const giornoLabel = (GIORNI_SETTIMANA.find(g => g.id === giorno) || {}).label || giorno;
+
+  try {
+    const batch = db.batch();
+    daConfermare.forEach(i => {
+      batch.update(db.collection("iscrizioniCorsi").doc(i.id), {
+        stato: "confermata",
+        giornoAssegnato: giorno,
+        orarioAssegnato: orario,
+        campoAssegnato: i.campoAssegnato || null,
+        semaforo: null,
+        semaforoGiorno: null,
+        semaforoOrario: null,
+        motivoRifiuto: null,
+        gestitaDaUid: currentProfile.uid,
+        gestitaDaNome: currentProfile.nome
+      });
+    });
+    await batch.commit();
+    await Promise.all(daConfermare.map(i =>
+      registraLog(i.id, corsoId, `${i.nome} ${i.cognome}`, "confermato",
+        `Confermato su ${giornoLabel} ${orario}${i.campoAssegnato ? " Campo " + i.campoAssegnato : ""} (conferma gruppo)`)
+    ));
+    await ricaricaIscrizioniCorso(corsoId);
+    await ricaricaPanoramicaSeAperta(corsoId);
+  } catch (err) {
+    showError(document.getElementById("corsi-list-error"), "Errore: " + err.message);
+  }
 }
 
 // Se la Panoramica di questo corso è aperta, la ricarica — così conferme e
@@ -366,10 +578,12 @@ function renderIscrizioniCorso(container, corso, iscrizioni) {
     const eta = etaDa(i.dataNascita);
     const disponibileSet = new Set(Object.entries(i.disponibilita || {}).flatMap(([g, orari]) => orari.map(o => `${g}|${o}`)));
 
+    const piuCampi = (corso.campiNumeri || []).length > 1;
     const selectSlot = i.stato === "in_attesa" ? `
       <select class="assegna-slot-select" data-id="${i.id}" style="font-size:0.72rem;padding:6px 8px;">
         ${combinazioni.map(c => `<option value="${c.giorno}|${c.orario}">${c.giornoLabel} ${c.orario}${disponibileSet.has(`${c.giorno}|${c.orario}`) ? " ✓" : ""}</option>`).join("")}
       </select>
+      ${piuCampi ? `<select class="assegna-campo-select" data-id="${i.id}" style="font-size:0.72rem;padding:6px 8px;margin-top:6px;">${(corso.campiNumeri || []).map(n => `<option value="${n}">Campo ${n}</option>`).join("")}</select>` : ""}
     ` : "";
 
     return `
@@ -380,13 +594,13 @@ function renderIscrizioniCorso(container, corso, iscrizioni) {
           <div class="entry-meta">${escapeHtml(i.email)}${i.nrOreDesiderate ? " · " + i.nrOreDesiderate + "h/sett." : ""}${i.scuolaFrequentata ? " · " + escapeHtml(i.scuolaFrequentata) : ""}</div>
           ${i.nomeGenitore || i.telefonoGenitore ? `<div class="entry-meta">Genitore: ${escapeHtml(i.nomeGenitore || "—")}${i.telefonoGenitore ? " · " + escapeHtml(i.telefonoGenitore) : ""}</div>` : ""}
           <div class="entry-meta">Disponibilità: ${disponibilitaLabel}</div>
-          ${i.stato === "confermata" && i.giornoAssegnato ? `<div class="entry-meta">Assegnato: ${(GIORNI_SETTIMANA.find(x => x.id === i.giornoAssegnato) || {}).label || i.giornoAssegnato} ${i.orarioAssegnato}</div>` : ""}
+          ${i.stato === "confermata" && i.giornoAssegnato ? `<div class="entry-meta">Assegnato: ${(GIORNI_SETTIMANA.find(x => x.id === i.giornoAssegnato) || {}).label || i.giornoAssegnato} ${i.orarioAssegnato}${i.campoAssegnato ? " · Campo " + escapeHtml(i.campoAssegnato) : ""}</div>` : ""}
           ${i.stato === "annullata" && i.motivoRifiuto ? `<div class="entry-meta">Motivo: ${escapeHtml(i.motivoRifiuto)}</div>` : ""}
         </div>
         <div style="display:flex;flex-direction:column;gap:6px;">
           ${selectSlot}
-          ${i.stato === "in_attesa" ? `<button class="btn btn-primary conferma-iscrizione-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}" data-corso="${corso.id}">Conferma in questo slot</button>` : ""}
-          ${i.stato === "in_attesa" ? `<button class="btn btn-danger annulla-iscrizione-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}" data-corso="${corso.id}">Rifiuta</button>` : ""}
+          ${i.stato === "in_attesa" ? `<button class="btn btn-primary conferma-iscrizione-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}" data-corso="${corso.id}" data-nome="${escapeHtml(i.nome + " " + i.cognome)}">Conferma in questo slot</button>` : ""}
+          ${i.stato === "in_attesa" ? `<button class="btn btn-danger annulla-iscrizione-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}" data-corso="${corso.id}" data-nome="${escapeHtml(i.nome + " " + i.cognome)}">Rifiuta</button>` : ""}
         </div>
       </div>
     `;
@@ -396,27 +610,32 @@ function renderIscrizioniCorso(container, corso, iscrizioni) {
     btn.addEventListener("click", () => {
       const select = container.querySelector(`.assegna-slot-select[data-id="${btn.dataset.id}"]`);
       const [giorno, orario] = select.value.split("|");
-      confermaIscrizione(btn.dataset.id, btn.dataset.corso, giorno, orario);
+      const campoSelect = container.querySelector(`.assegna-campo-select[data-id="${btn.dataset.id}"]`);
+      const campo = campoSelect ? campoSelect.value : ((corso.campiNumeri || []).length === 1 ? corso.campiNumeri[0] : null);
+      confermaIscrizione(btn.dataset.id, btn.dataset.corso, giorno, orario, btn.dataset.nome, campo);
     });
   });
   container.querySelectorAll(".annulla-iscrizione-btn").forEach(btn => {
-    btn.addEventListener("click", () => rifiutaIscrizione(btn.dataset.id, btn.dataset.corso));
+    btn.addEventListener("click", () => rifiutaIscrizione(btn.dataset.id, btn.dataset.corso, btn.dataset.nome));
   });
 }
 
 // Conferma l'iscritto nello slot scelto nel select — può essere diverso da
 // quanto aveva flaggato come disponibile (spostamento previo suo accordo,
 // concordato fuori dall'app: qui si registra solo l'esito).
-async function confermaIscrizione(iscrizioneId, corsoId, giorno, orario) {
+async function confermaIscrizione(iscrizioneId, corsoId, giorno, orario, nome, campo) {
+  const giornoLabel = (GIORNI_SETTIMANA.find(g => g.id === giorno) || {}).label || giorno;
   try {
     await db.collection("iscrizioniCorsi").doc(iscrizioneId).update({
       stato: "confermata",
       giornoAssegnato: giorno,
       orarioAssegnato: orario,
+      campoAssegnato: campo || null,
       motivoRifiuto: null,
       gestitaDaUid: currentProfile.uid,
       gestitaDaNome: currentProfile.nome
     });
+    await registraLog(iscrizioneId, corsoId, nome, "confermato", `Confermato su ${giornoLabel} ${orario}${campo ? " Campo " + campo : ""}`);
     await ricaricaIscrizioniCorso(corsoId);
     await ricaricaPanoramicaSeAperta(corsoId);
   } catch (err) {
@@ -426,7 +645,7 @@ async function confermaIscrizione(iscrizioneId, corsoId, giorno, orario) {
 
 // Chiede un motivo (es. "numero insufficiente di iscritti nella fascia
 // richiesta") così lo staff ha una nota pronta per avvisare l'interessato.
-async function rifiutaIscrizione(iscrizioneId, corsoId) {
+async function rifiutaIscrizione(iscrizioneId, corsoId, nome) {
   const motivo = prompt("Motivo del rifiuto (es. numero insufficiente di iscritti nella fascia richiesta) — verrà usato per avvisare l'interessato:", "Numero insufficiente di iscritti nella fascia richiesta");
   if (motivo === null) return;
 
@@ -437,6 +656,7 @@ async function rifiutaIscrizione(iscrizioneId, corsoId) {
       gestitaDaUid: currentProfile.uid,
       gestitaDaNome: currentProfile.nome
     });
+    await registraLog(iscrizioneId, corsoId, nome, "rifiutato", motivo);
     await ricaricaIscrizioniCorso(corsoId);
     await ricaricaPanoramicaSeAperta(corsoId);
   } catch (err) {
@@ -454,15 +674,19 @@ async function loadIscrizioniConfermate() {
 // Raggruppa le iscrizioni confermate per corso+giorno+orario assegnati, poi
 // tiene solo i gruppi la cui data generata (dal + giorno della settimana,
 // ripetuto per nrSessioni volte) include dataIso.
+// Un gruppo è per corso+giorno+orario+campo: se il corso propone più campi
+// nello stesso giorno/orario possono coesistere più gruppi paralleli
+// (uno per campo), da mostrare come voci separate — non un unico elenco
+// che mischia chi gioca su campi diversi allo stesso orario.
 function gruppiConfermatiPerData(dataIso) {
   const gruppiMap = {};
   iscrizioniConfermateCache.forEach(i => {
     if (!i.giornoAssegnato || !i.orarioAssegnato) return;
     const corso = corsiCache.find(c => c.id === i.corsoId);
     if (!corso) return;
-    const key = `${i.corsoId}|${i.giornoAssegnato}|${i.orarioAssegnato}`;
+    const key = `${i.corsoId}|${i.giornoAssegnato}|${i.orarioAssegnato}|${i.campoAssegnato || ""}`;
     if (!gruppiMap[key]) {
-      gruppiMap[key] = { corso, giorno: i.giornoAssegnato, orario: i.orarioAssegnato, iscritti: [] };
+      gruppiMap[key] = { corso, giorno: i.giornoAssegnato, orario: i.orarioAssegnato, campo: i.campoAssegnato || null, iscritti: [] };
     }
     gruppiMap[key].iscritti.push(i);
   });
@@ -470,7 +694,7 @@ function gruppiConfermatiPerData(dataIso) {
   return Object.values(gruppiMap)
     .filter(g => generaCalendarioSessioni(g.corso.dal, g.corso.nrSessioni, g.giorno, g.orario, g.corso.durataSessioneMinuti)
       .some(s => s.data === dataIso))
-    .sort((a, b) => a.orario.localeCompare(b.orario));
+    .sort((a, b) => a.orario.localeCompare(b.orario) || (a.campo || "").localeCompare(b.campo || ""));
 }
 
 function giornoLabelDa(dataIso) {
@@ -488,7 +712,7 @@ function gruppoCardHtml(g) {
     <div class="entry-card">
       <div class="entry-main">
         <span class="badge ${g.corso.disciplina}">${escapeHtml(disciplinaLabel(g.corso.disciplina))}</span>
-        <div class="entry-tipo">${g.orario} · ${escapeHtml(g.corso.nome)}</div>
+        <div class="entry-tipo">${g.orario}${g.campo ? " · Campo " + escapeHtml(g.campo) : ""} · ${escapeHtml(g.corso.nome)}</div>
         <div class="entry-meta">${g.iscritti.length} iscritti</div>
         <ul style="margin:8px 0 0;padding-left:18px;font-size:0.82rem;color:var(--chalk-grey);">${righeIscritti}</ul>
       </div>
@@ -551,6 +775,7 @@ function stampaRiepilogoSettimanale() {
         <tr>
           <td>${giornoLabelDa(iso)} ${formatDataBreve(iso)}</td>
           <td>${g.orario}</td>
+          <td>${g.campo ? "Campo " + escapeHtml(g.campo) : "—"}</td>
           <td>${escapeHtml(g.corso.nome)}</td>
           <td>${escapeHtml(disciplinaLabel(g.corso.disciplina))}</td>
           <td>${g.iscritti.map(x => escapeHtml(x.nome) + " " + escapeHtml(x.cognome) + (etaDa(x.dataNascita) != null ? " (" + etaDa(x.dataNascita) + ")" : "")).join(", ")}</td>
@@ -563,11 +788,97 @@ function stampaRiepilogoSettimanale() {
     <h1>Riepilogo settimanale corsi</h1>
     <p>Settimana dal ${formatDataBreve(dalIso)}</p>
     <table>
-      <thead><tr><th>Giorno</th><th>Orario</th><th>Corso</th><th>Disciplina</th><th>Iscritti</th></tr></thead>
+      <thead><tr><th>Giorno</th><th>Orario</th><th>Campo</th><th>Corso</th><th>Disciplina</th><th>Iscritti</th></tr></thead>
       <tbody>${righe}</tbody>
     </table>
   `;
   window.print();
+}
+
+// Lista stampabile di tutti gli iscritti di un corso (qualunque stato),
+// con lo slot assegnato per i confermati — utile come lista da portare
+// alla prima sessione o per condividerla con lo staff.
+async function stampaListaCorso(corsoId) {
+  const corso = corsiCache.find(c => c.id === corsoId);
+  if (!corso) return;
+
+  const snap = await db.collection("iscrizioniCorsi").where("corsoId", "==", corsoId).get();
+  const iscrizioni = snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (a.cognome || "").localeCompare(b.cognome || ""));
+
+  const statoLabel = { in_attesa: "In attesa", confermata: "Confermata", annullata: "Annullata" };
+
+  const righe = iscrizioni.map(i => {
+    const eta = etaDa(i.dataNascita);
+    const slot = i.stato === "confermata" && i.giornoAssegnato
+      ? `${(GIORNI_SETTIMANA.find(g => g.id === i.giornoAssegnato) || {}).label || i.giornoAssegnato} ${i.orarioAssegnato}${i.campoAssegnato ? " Campo " + i.campoAssegnato : ""}`
+      : "—";
+    return `
+      <tr>
+        <td>${escapeHtml(i.cognome)} ${escapeHtml(i.nome)}</td>
+        <td>${eta != null ? eta : "—"}</td>
+        <td>${statoLabel[i.stato] || i.stato}</td>
+        <td>${slot}</td>
+        <td>${escapeHtml(i.email || "")}</td>
+        <td>${escapeHtml(i.telefonoGenitore || "")}</td>
+      </tr>
+    `;
+  }).join("");
+
+  document.getElementById("print-area").innerHTML = `
+    <h1>${escapeHtml(corso.nome)}</h1>
+    <p>${formatDataBreve(corso.dal)}${corso.al ? " – " + formatDataBreve(corso.al) : ""} · ${escapeHtml(disciplinaLabel(corso.disciplina))} · ${iscrizioni.length} iscritti</p>
+    <table>
+      <thead><tr><th>Nominativo</th><th>Età</th><th>Stato</th><th>Slot assegnato</th><th>Email</th><th>Telefono genitore</th></tr></thead>
+      <tbody>${righe}</tbody>
+    </table>
+  `;
+  window.print();
+}
+
+// ---------- Storico azioni (permesso iscrizioni:gestisci) ----------
+
+const AZIONE_LABEL = {
+  semaforo: "Semaforo impostato",
+  semaforo_rimosso: "Semaforo tolto",
+  confermato: "Confermato",
+  rifiutato: "Rifiutato"
+};
+
+async function toggleStoricoCorso(corsoId) {
+  const container = document.getElementById(`storico-${corsoId}`);
+  if (!container) return;
+
+  if (!container.classList.contains("hidden")) {
+    container.classList.add("hidden");
+    return;
+  }
+
+  container.innerHTML = `<div class="empty-state"><div class="display">Caricamento…</div></div>`;
+  container.classList.remove("hidden");
+
+  // Niente orderBy nella query (eviterebbe un indice composito con
+  // corsoId==): si ordina lato client per data decrescente.
+  const snap = await db.collection("iscrizioniLog").where("corsoId", "==", corsoId).get();
+  const log = snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
+
+  if (log.length === 0) {
+    container.innerHTML = `<div class="empty-state"><div class="display">Nessuna azione registrata ancora</div></div>`;
+    return;
+  }
+
+  container.innerHTML = log.map(l => `
+    <div class="entry-card">
+      <div class="entry-main">
+        <div class="entry-tipo">${escapeHtml(l.iscrittoNome || "—")}</div>
+        <div class="entry-meta">${AZIONE_LABEL[l.azione] || l.azione}${l.dettaglio ? " — " + escapeHtml(l.dettaglio) : ""}</div>
+        <div class="entry-meta">${l.createdAt ? l.createdAt.toDate().toLocaleString("it-CH") : "—"} · ${escapeHtml(l.daNome || "—")}</div>
+      </div>
+    </div>
+  `).join("");
 }
 
 // ---------- Form: creazione/modifica ----------
@@ -689,6 +1000,8 @@ requireAuth(async (profile) => {
     document.getElementById("corso-form").classList.add("hidden");
     document.getElementById("corso-form-title").classList.add("hidden");
   }
+
+  initLinkCopyBox("link-iscrizione", "copia-link-iscrizione-btn", "iscrizione-corso.html");
 
   await loadDiscipline();
   await loadCampi();

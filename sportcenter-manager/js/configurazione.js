@@ -854,6 +854,8 @@ requireAuth(async (profile) => {
     return;
   }
 
+  initLinkCopyBox("link-tabellone", "copia-link-tabellone-btn", "prenotazioni.html");
+
   await seedDisciplineIfEmpty();
   await loadDiscipline();
 

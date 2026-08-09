@@ -449,6 +449,32 @@ select:focus, input:focus, textarea:focus {
   border-radius: 0 0 var(--radius) var(--radius);
   padding: 12px;
 }
+
+/* Panoramica corso: riga candidato con semaforo a destra */
+.candidato-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 0;
+}
+.candidato-nome { font-size: 0.82rem; color: var(--chalk-grey); }
+.semaforo { display: flex; gap: 6px; flex: 0 0 auto; }
+.semaforo-dot {
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  border: 1.5px solid var(--court-blue-700);
+}
+.semaforo-dot.rosso { border-color: var(--danger); }
+.semaforo-dot.giallo { border-color: #d4b83a; }
+.semaforo-dot.verde { border-color: #7f9e4a; }
+.semaforo-dot[data-selected="true"].rosso { background: var(--danger); }
+.semaforo-dot[data-selected="true"].giallo { background: #d4b83a; }
+.semaforo-dot[data-selected="true"].verde { background: #7f9e4a; }
 .dettaglio-giorni .entry-card { margin-bottom: 8px; }
 
 /* Tabella riepilogo contabilità (in-app, tema scuro) */

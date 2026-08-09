@@ -194,3 +194,27 @@ function renderErrorMessage(text) {
 function showError(el, message) {
   el.innerHTML = renderErrorMessage(message);
 }
+
+// Riempie un campo readonly con l'URL assoluto di un'altra pagina dell'app
+// (calcolato da location, funziona sia in locale che sotto sotto-percorso
+// su GitHub Pages) e collega un pulsante "Copia" negli appunti.
+function initLinkCopyBox(inputId, btnId, targetPage) {
+  const input = document.getElementById(inputId);
+  const btn = document.getElementById(btnId);
+  if (!input || !btn) return;
+
+  const base = location.href.replace(/[^/]*$/, "");
+  input.value = base + targetPage;
+
+  btn.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(input.value);
+      const originale = btn.textContent;
+      btn.textContent = "Copiato!";
+      setTimeout(() => { btn.textContent = originale; }, 1500);
+    } catch {
+      input.select();
+      document.execCommand("copy");
+    }
+  });
+}

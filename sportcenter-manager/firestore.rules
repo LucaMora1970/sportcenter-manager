@@ -179,15 +179,44 @@ service cloud.firestore {
     // (non può auto-confermarsi). Contiene dati sensibili (anagrafica,
     // contatti) quindi lettura/gestione riservata al permesso dedicato
     // iscrizioni:gestisci — non isSignedIn() generico come il resto dell'app.
+    // Email validata col formato (qualcosa@qualcosa.qualcosa) — controlla
+    // solo che sia scritta bene, non che esista davvero/riceva posta (per
+    // quello servirebbe un invio di conferma, non ancora previsto).
+    function emailValida(email) {
+      return email is string && email.matches('^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$');
+    }
+
     match /iscrizioniCorsi/{id} {
       allow create: if request.resource.data.corsoId is string
         && exists(/databases/$(database)/documents/corsi/$(request.resource.data.corsoId))
         && get(/databases/$(database)/documents/corsi/$(request.resource.data.corsoId)).data.approvato == true
         && request.resource.data.nome is string && request.resource.data.nome.size() > 0
         && request.resource.data.cognome is string && request.resource.data.cognome.size() > 0
-        && request.resource.data.email is string && request.resource.data.email.size() > 0
+        && emailValida(request.resource.data.email)
+        // Contatto genitore obbligatorio solo per i minorenni (fino a 17
+        // anni): l'età viene calcolata lato client dalla data di nascita
+        // e inviata come campo "eta" — un valore falsato non aggira nulla
+        // di sensibile, nel peggiore dei casi lo staff nota poi dalla
+        // dataNascita reale che manca il contatto e lo richiede a parte.
+        && request.resource.data.eta is int
+        && (
+          request.resource.data.eta >= 18
+          || (
+            request.resource.data.nomeGenitore is string && request.resource.data.nomeGenitore.size() > 0
+            && request.resource.data.telefonoGenitore is string && request.resource.data.telefonoGenitore.size() > 0
+          )
+        )
         && request.resource.data.stato == "in_attesa";
       allow read, update, delete: if hasPermission("iscrizioni:gestisci");
+    }
+
+    // Storico azioni sulle iscrizioni corsi (semafori, conferme, rifiuti,
+    // riassegnazioni): registro immutabile per ricostruire cosa è successo
+    // in caso di errori di organizzazione/attribuzione — niente update né
+    // delete, nemmeno per chi ha iscrizioni:gestisci, altrimenti non
+    // sarebbe più uno storico affidabile.
+    match /iscrizioniLog/{id} {
+      allow read, create: if hasPermission("iscrizioni:gestisci");
     }
 
     // Tabellone prenotazione campo padel (fase di test interna): dietro
