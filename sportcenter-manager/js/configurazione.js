@@ -39,6 +39,33 @@ function posizioneLabel(id) {
   return (POSIZIONI_CAMPO.find(p => p.id === id) || {}).label || id;
 }
 
+// ---------- Impostazioni generali ----------
+
+async function loadImpostazioniForm() {
+  await loadImpostazioni();
+  document.getElementById("minuti-eliminazione-diario").value = IMPOSTAZIONI.minutiEliminazioneDiario;
+}
+
+async function onSaveImpostazioni(e) {
+  e.preventDefault();
+  const btn = document.getElementById("salva-impostazioni-btn");
+  const errorEl = document.getElementById("impostazioni-error");
+  errorEl.textContent = "";
+  btn.disabled = true;
+
+  const minuti = parseInt(document.getElementById("minuti-eliminazione-diario").value, 10);
+
+  try {
+    if (isNaN(minuti) || minuti < 0) throw new Error("Inserisci un numero di minuti valido.");
+    await db.collection("impostazioni").doc("generale").set({ minutiEliminazioneDiario: minuti }, { merge: true });
+    IMPOSTAZIONI.minutiEliminazioneDiario = minuti;
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // ---------- Helper lista generica con toggle attivo ----------
 
 function renderSimpleList(containerId, items, labelFn, metaFn, collectionName, reloadFn, onEdit) {
@@ -833,6 +860,7 @@ requireAuth(async (profile) => {
   populateSelect(document.getElementById("new-quotacampo-disciplina"), DISCIPLINE);
   populateSelect(document.getElementById("new-quotacampo-posizione"), POSIZIONI_CAMPO, "— tutti —");
 
+  document.getElementById("impostazioni-form").addEventListener("submit", onSaveImpostazioni);
   document.getElementById("new-disciplina-form").addEventListener("submit", onCreateDisciplina);
   document.getElementById("cancel-edit-disciplina-btn").addEventListener("click", cancelEditDisciplina);
   document.getElementById("new-allievo-form").addEventListener("submit", onCreateAllievo);
@@ -852,6 +880,7 @@ requireAuth(async (profile) => {
   document.getElementById("new-articolo-form").addEventListener("submit", onCreateArticolo);
   document.getElementById("cancel-edit-articolo-btn").addEventListener("click", cancelEditArticolo);
 
+  await loadImpostazioniForm();
   await loadDisciplineList();
   await loadAllievi();
   await loadTipiUtenza();

@@ -380,7 +380,7 @@ function entryRowHtml(en) {
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
         <div class="entry-ore">${(en.ore || 0).toFixed(1)}h</div>
-        <button type="button" class="btn btn-danger delete-diario-btn" style="width:auto;padding:6px 10px;font-size:0.65rem;" data-id="${en.id}">Elimina</button>
+        ${puoEliminareVoceDiario(en, currentProfile) ? `<button type="button" class="btn btn-danger delete-diario-btn" style="width:auto;padding:6px 10px;font-size:0.65rem;" data-id="${en.id}">Elimina</button>` : ""}
       </div>
     </div>
   `;
@@ -690,6 +690,7 @@ requireAuth(async (profile) => {
   document.getElementById("stampa-tutti-btn").addEventListener("click", stampaRiepilogoCompleto);
 
   await loadDiscipline();
+  await loadImpostazioni();
   calcola();
 });
 

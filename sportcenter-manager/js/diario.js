@@ -13,6 +13,23 @@ let tipiGruppoPadelCache = [];
 let allieviCache = [];
 let rowCounter = 0;
 
+// Orari di inizio/fine ammessi per disciplina (slot di prenotazione fissi
+// del circolo). Le discipline non elencate qui (tennis, padel, ecc.) restano
+// con l'orario libero — per il tennis c'è invece il selettore di slot già
+// abbinati (vedi SLOT_TENNIS), più rapido da compilare.
+const ORARI_FISSI = {
+  squash: ["08:15", "09:00", "09:45", "10:30", "11:15", "12:00", "12:45", "13:30", "14:15", "15:00", "15:45", "16:30", "17:15", "18:00", "18:45", "19:30", "20:15", "21:00", "21:45"]
+};
+
+// Slot di 60' già abbinati inizio-fine per il tennis, per velocizzare
+// l'immissione rispetto a scegliere ora inizio e ora fine separatamente.
+// Per situazioni non previste resta comunque disponibile l'orario libero.
+const SLOT_TENNIS = [
+  ["08:15", "09:15"], ["09:15", "10:15"], ["10:15", "11:15"], ["11:15", "12:15"],
+  ["13:30", "14:30"], ["14:30", "15:30"], ["15:30", "16:30"], ["16:30", "17:30"],
+  ["17:30", "18:30"], ["18:30", "19:30"], ["19:30", "20:30"], ["20:30", "21:30"], ["21:30", "22:30"]
+];
+
 function todayISO() {
   const d = new Date();
   return d.toISOString().slice(0, 10);
@@ -50,13 +67,17 @@ function rowHtml(rowId) {
         </div>
       </div>
       <div class="row2">
-        <div class="field">
+        <div class="field" style="flex:0 0 100px;">
           <label>Campo</label>
           <select class="row-campo"></select>
         </div>
         <div class="field row-gruppo-field hidden">
           <label>Tipo gruppo</label>
           <select class="row-gruppo"></select>
+        </div>
+        <div class="field row-slot-field hidden">
+          <label>Seleziona slot</label>
+          <select class="row-slot"></select>
         </div>
       </div>
       <div class="field row-allievo-field hidden">
@@ -80,11 +101,13 @@ function rowHtml(rowId) {
       <div class="row2">
         <div class="field">
           <label>Ora inizio</label>
-          <input type="time" class="row-orainizio">
+          <input type="time" class="row-orainizio-libera">
+          <select class="row-orainizio-fissa hidden"></select>
         </div>
         <div class="field">
           <label>Ora fine</label>
-          <input type="time" class="row-orafine">
+          <input type="time" class="row-orafine-libera">
+          <select class="row-orafine-fissa hidden"></select>
         </div>
       </div>
     </div>
@@ -125,26 +148,92 @@ function populateRowDependents(rowEl) {
     gruppoSelect.innerHTML = "";
   }
 
+  // Lo squash ha orari di inizio/fine fissi (slot di prenotazione del
+  // circolo): l'input libero viene sostituito da un select con solo quegli
+  // orari. Le altre discipline (tranne il tennis, gestito sotto) restano
+  // con l'orario libero.
+  const inizioLibera = rowEl.querySelector(".row-orainizio-libera");
+  const fineLibera = rowEl.querySelector(".row-orafine-libera");
+  const inizioFissa = rowEl.querySelector(".row-orainizio-fissa");
+  const fineFissa = rowEl.querySelector(".row-orafine-fissa");
+  const orariFissi = ORARI_FISSI[disciplina];
+
+  if (orariFissi) {
+    const options = `<option value="">—</option>` + orariFissi.map(t => `<option value="${t}">${t}</option>`).join("");
+    inizioFissa.innerHTML = options;
+    fineFissa.innerHTML = options;
+    inizioLibera.classList.add("hidden");
+    fineLibera.classList.add("hidden");
+    inizioFissa.classList.remove("hidden");
+    fineFissa.classList.remove("hidden");
+    inizioLibera.value = "";
+    fineLibera.value = "";
+  } else {
+    inizioFissa.classList.add("hidden");
+    fineFissa.classList.add("hidden");
+    inizioLibera.classList.remove("hidden");
+    fineLibera.classList.remove("hidden");
+    inizioFissa.value = "";
+    fineFissa.value = "";
+  }
+
+  // Il tennis ha uno slot combinato inizio+fine (SLOT_TENNIS) accanto al
+  // Campo, per velocizzare l'immissione rispetto a scegliere ora inizio e
+  // ora fine separatamente. Resta comunque disponibile l'orario libero più
+  // sotto ("oppure specifica gli orari") per situazioni non previste.
+  const slotField = rowEl.querySelector(".row-slot-field");
+  const slotSelect = rowEl.querySelector(".row-slot");
+  if (disciplina === "tennis") {
+    slotField.classList.remove("hidden");
+    slotSelect.innerHTML = `<option value="">—</option>` +
+      SLOT_TENNIS.map(([i, f]) => `<option value="${i}|${f}">${i}–${f}</option>`).join("");
+  } else {
+    slotField.classList.add("hidden");
+    slotSelect.innerHTML = "";
+  }
+
   // Per il padel serve l'orario esatto (durata 60/90 min e fascia oraria
-  // per la quota campo), quindi si nasconde "Nr. ore" e si richiedono
-  // ora inizio/fine invece di lasciarli come alternativa opzionale.
+  // per la quota campo), quindi si nasconde "Nr. ore" e si richiede
+  // l'orario invece di lasciarlo come alternativa opzionale. Per il tennis
+  // "Nr. ore" si nasconde perché ridondante: lo slot già implica la durata.
   const nrOreField = rowEl.querySelector(".row-nrore-field");
   const orariHint = rowEl.querySelector(".row-orari-hint");
-  const oraInizioInput = rowEl.querySelector(".row-orainizio");
-  const oraFineInput = rowEl.querySelector(".row-orafine");
+  const oraInizioAttivo = orariFissi ? inizioFissa : inizioLibera;
+  const oraFineAttivo = orariFissi ? fineFissa : fineLibera;
+  [inizioLibera, fineLibera, inizioFissa, fineFissa].forEach(el => { el.required = false; });
 
   if (disciplina === "padel") {
     nrOreField.classList.add("hidden");
     rowEl.querySelector(".row-nrore").value = "";
     orariHint.classList.add("hidden");
-    oraInizioInput.required = true;
-    oraFineInput.required = true;
+    oraInizioAttivo.required = true;
+    oraFineAttivo.required = true;
+  } else if (disciplina === "tennis") {
+    nrOreField.classList.add("hidden");
+    rowEl.querySelector(".row-nrore").value = "";
+    orariHint.classList.remove("hidden");
   } else {
     nrOreField.classList.remove("hidden");
     orariHint.classList.remove("hidden");
-    oraInizioInput.required = false;
-    oraFineInput.required = false;
   }
+}
+
+function oraValue(rowEl, campo) {
+  const fissa = rowEl.querySelector(`.row-ora${campo}-fissa`);
+  if (!fissa.classList.contains("hidden")) return fissa.value;
+  return rowEl.querySelector(`.row-ora${campo}-libera`).value;
+}
+
+// Per il tennis lo slot combinato ha priorità se scelto; altrimenti (o per
+// le altre discipline) si usano ora inizio/fine (fisse o libere).
+function orarioRiga(rowEl) {
+  const slotField = rowEl.querySelector(".row-slot-field");
+  const slotSelect = rowEl.querySelector(".row-slot");
+  if (!slotField.classList.contains("hidden") && slotSelect.value) {
+    const [oraInizio, oraFine] = slotSelect.value.split("|");
+    return { oraInizio, oraFine };
+  }
+  return { oraInizio: oraValue(rowEl, "inizio"), oraFine: oraValue(rowEl, "fine") };
 }
 
 // Alcuni tipi attività (es. Sparring) richiedono il nome dell'allievo
@@ -262,8 +351,7 @@ async function onSubmitEntry(e) {
       const tipoAttivitaSel = rowEl.querySelector(".row-tipoattivita");
       const campoSel = rowEl.querySelector(".row-campo");
       const gruppoSel = rowEl.querySelector(".row-gruppo");
-      const oraInizio = rowEl.querySelector(".row-orainizio").value;
-      const oraFine = rowEl.querySelector(".row-orafine").value;
+      const { oraInizio, oraFine } = orarioRiga(rowEl);
       const nrOreRaw = rowEl.querySelector(".row-nrore").value;
       const note = rowEl.querySelector(".row-note").value.trim();
 
@@ -371,7 +459,7 @@ function renderEntries(entries) {
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
           <div class="entry-ore">${(en.ore || 0).toFixed(1)}h</div>
-          <button type="button" class="btn btn-danger delete-entry-btn" style="width:auto;padding:6px 10px;font-size:0.65rem;" data-id="${en.id}">Elimina</button>
+          ${puoEliminareVoceDiario(en, currentProfile) ? `<button type="button" class="btn btn-danger delete-entry-btn" style="width:auto;padding:6px 10px;font-size:0.65rem;" data-id="${en.id}">Elimina</button>` : ""}
         </div>
       </div>
     `;
@@ -425,6 +513,7 @@ requireAuth(async (profile) => {
   }
 
   await loadDiscipline();
+  await loadImpostazioni();
   await loadCatalogs();
   initForm();
   listenToday();

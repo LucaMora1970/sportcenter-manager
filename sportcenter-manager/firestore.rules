@@ -55,10 +55,22 @@ service cloud.firestore {
       allow write: if hasPermission("ruoli:gestisci");
     }
 
+    // Minuti entro cui un dipendente può eliminare una propria voce diario
+    // (impostazioni/generale.minutiEliminazioneDiario, configurabile da
+    // Configurazione); 15 di default se il documento non esiste ancora.
+    function minutiEliminazioneDiario() {
+      return exists(/databases/$(database)/documents/impostazioni/generale)
+        ? get(/databases/$(database)/documents/impostazioni/generale).data.minutiEliminazioneDiario
+        : 15;
+    }
+
     // Diario giornaliero:
     // - un dipendente può creare/leggere/modificare solo le proprie voci (userId == uid)
+    // - un dipendente può eliminare una propria voce solo entro
+    //   minutiEliminazioneDiario() dalla creazione
     // - chi ha "diario:leggi_tutti" può leggere le voci di chiunque
-    // - chi ha "diario:gestisci_tutti" può anche modificare/cancellare voci altrui
+    // - chi ha "diario:gestisci_tutti" può modificare/cancellare voci altrui
+    //   e cancellare oltre il limite di tempo (es. admin, supervisore)
     match /diario/{entryId} {
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
 
@@ -67,9 +79,17 @@ service cloud.firestore {
         || hasPermission("diario:leggi_tutti")
       );
 
-      allow update, delete: if isSignedIn() && (
+      allow update: if isSignedIn() && (
         resource.data.userId == request.auth.uid
         || hasPermission("diario:gestisci_tutti")
+      );
+
+      allow delete: if isSignedIn() && (
+        hasPermission("diario:gestisci_tutti")
+        || (
+          resource.data.userId == request.auth.uid
+          && resource.data.createdAt > request.time - duration.value(minutiEliminazioneDiario(), 'm')
+        )
       );
     }
 
@@ -133,6 +153,13 @@ service cloud.firestore {
 
     match /vendite/{id} {
       allow read, write: if hasPermission("vendite:gestisci");
+    }
+
+    // Impostazioni generali (doc singolo "generale"): minutiEliminazioneDiario
+    // e altri parametri globali configurabili da Configurazione.
+    match /impostazioni/{id} {
+      allow read: if isSignedIn();
+      allow write: if hasPermission("config:gestisci");
     }
 
     // Placeholder per collezioni future (corsi, prenotazioni_padel, camp, pagamenti):

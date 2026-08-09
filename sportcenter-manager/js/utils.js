@@ -23,6 +23,36 @@ function disciplinaLabel(id) {
   return (DISCIPLINE.find(d => d.id === id) || {}).label || id;
 }
 
+// Popolata da loadImpostazioni() (doc Firestore "impostazioni/generale",
+// configurabile da Configurazione). Ogni pagina che deve controllare
+// puoEliminareVoceDiario() deve chiamare `await loadImpostazioni()` a inizio pagina.
+let IMPOSTAZIONI = { minutiEliminazioneDiario: 15 };
+
+async function loadImpostazioni() {
+  // Se le firestore.rules per "impostazioni" non sono ancora state pubblicate
+  // (o la lettura fallisce per qualsiasi altro motivo), resta il default
+  // hardcoded sopra invece di bloccare l'inizializzazione dell'intera pagina.
+  try {
+    const doc = await db.collection("impostazioni").doc("generale").get();
+    if (doc.exists) IMPOSTAZIONI = { minutiEliminazioneDiario: 15, ...doc.data() };
+  } catch (err) {
+    console.warn("loadImpostazioni: uso il default, lettura fallita:", err.message);
+  }
+}
+
+// Un dipendente può eliminare una propria voce diario solo entro i primi
+// IMPOSTAZIONI.minutiEliminazioneDiario minuti dall'inserimento; oltre,
+// serve il permesso diario:gestisci_tutti (admin/supervisore). Stessa
+// regola applicata anche lato firestore.rules (che resta l'unica fonte
+// di verità: questo helper serve solo a mostrare/nascondere il pulsante).
+function puoEliminareVoceDiario(entry, profile) {
+  if (hasPermission(profile, "diario:gestisci_tutti")) return true;
+  if (entry.userId !== profile.uid) return false;
+  if (!entry.createdAt || typeof entry.createdAt.toMillis !== "function") return false;
+  const limiteMs = (IMPOSTAZIONI.minutiEliminazioneDiario || 15) * 60000;
+  return (Date.now() - entry.createdAt.toMillis()) <= limiteMs;
+}
+
 function calcOre(oraInizio, oraFine) {
   if (!oraInizio || !oraFine) return 0;
   const [h1, m1] = oraInizio.split(":").map(Number);
