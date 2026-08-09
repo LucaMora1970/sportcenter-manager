@@ -180,10 +180,12 @@ function renderCorsi() {
           ${puoGestire ? `<button class="btn btn-ghost edit-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Modifica</button>` : ""}
           ${puoApprovare && !c.approvato ? `<button class="btn btn-primary approva-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Approva</button>` : ""}
           ${puoVedereIscrizioni && c.approvato ? `<button class="btn btn-ghost iscrizioni-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Iscrizioni</button>` : ""}
+          ${puoVedereIscrizioni && c.approvato ? `<button class="btn btn-ghost panoramica-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Panoramica</button>` : ""}
           ${puoGestire ? `<button class="btn btn-danger delete-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Elimina</button>` : ""}
         </div>
       </div>
       ${puoVedereIscrizioni && c.approvato ? `<div class="dettaglio-giorni hidden" id="iscrizioni-${c.id}"></div>` : ""}
+      ${puoVedereIscrizioni && c.approvato ? `<div class="dettaglio-giorni hidden" id="panoramica-${c.id}"></div>` : ""}
     </div>
   `;
   }).join("");
@@ -225,6 +227,10 @@ function renderCorsi() {
 
   list.querySelectorAll(".iscrizioni-corso-btn").forEach(btn => {
     btn.addEventListener("click", () => toggleIscrizioniCorso(btn.dataset.id));
+  });
+
+  list.querySelectorAll(".panoramica-corso-btn").forEach(btn => {
+    btn.addEventListener("click", () => togglePanoramicaCorso(btn.dataset.id));
   });
 }
 
@@ -272,6 +278,71 @@ function combinazioniCorso(corso) {
     });
   });
   return combinazioni;
+}
+
+// Panoramica: ribalta la vista da "per iscritto" a "per slot" — per ogni
+// combinazione giorno/orario proposta, chi l'ha flaggata come disponibile
+// (in attesa) e chi c'è già confermato. Serve a decidere in un colpo
+// d'occhio quali slot hanno abbastanza persone per formare un gruppo.
+async function togglePanoramicaCorso(corsoId) {
+  const container = document.getElementById(`panoramica-${corsoId}`);
+  if (!container) return;
+
+  if (!container.classList.contains("hidden")) {
+    container.classList.add("hidden");
+    return;
+  }
+
+  container.innerHTML = `<div class="empty-state"><div class="display">Caricamento…</div></div>`;
+  container.classList.remove("hidden");
+
+  const corso = corsiCache.find(c => c.id === corsoId);
+  const snap = await db.collection("iscrizioniCorsi").where("corsoId", "==", corsoId).get();
+  const iscrizioni = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  renderPanoramicaCorso(container, corso, iscrizioni);
+}
+
+function renderPanoramicaCorso(container, corso, iscrizioni) {
+  const combinazioni = combinazioniCorso(corso);
+  let html = "";
+  let giornoCorrente = null;
+
+  combinazioni.forEach(c => {
+    const candidati = iscrizioni.filter(i => i.stato === "in_attesa" && (i.disponibilita?.[c.giorno] || []).includes(c.orario));
+    const confermati = iscrizioni.filter(i => i.stato === "confermata" && i.giornoAssegnato === c.giorno && i.orarioAssegnato === c.orario);
+    if (candidati.length === 0 && confermati.length === 0) return;
+
+    if (c.giorno !== giornoCorrente) {
+      giornoCorrente = c.giorno;
+      html += `<div class="row-label" style="margin:14px 0 6px;">${c.giornoLabel}</div>`;
+    }
+
+    const totale = candidati.length + confermati.length;
+    const bastante = corso.minIscrittiConferma && totale >= corso.minIscrittiConferma;
+
+    html += `
+      <div class="entry-card">
+        <div class="entry-main">
+          <span class="badge" style="${bastante ? "border-color:#7f9e4a;color:#c1e08f;" : "border-color:var(--chalk-grey-dim);color:var(--chalk-grey);"}">${totale} ${totale === 1 ? "persona" : "persone"}${corso.minIscrittiConferma ? " / min " + corso.minIscrittiConferma : ""}</span>
+          <div class="entry-tipo">${c.orario}</div>
+          ${confermati.length > 0 ? `<div class="entry-meta">Confermati: ${confermati.map(i => escapeHtml(i.nome) + " " + escapeHtml(i.cognome)).join(", ")}</div>` : ""}
+          ${candidati.length > 0 ? `<div class="entry-meta">In attesa: ${candidati.map(i => escapeHtml(i.nome) + " " + escapeHtml(i.cognome)).join(", ")}</div>` : ""}
+        </div>
+      </div>
+    `;
+  });
+
+  container.innerHTML = html || `<div class="empty-state"><div class="display">Nessuna disponibilità ricevuta ancora</div></div>`;
+}
+
+// Se la Panoramica di questo corso è aperta, la ricarica — così conferme e
+// rifiuti fatti dalla vista Iscrizioni si riflettono subito nei conteggi.
+async function ricaricaPanoramicaSeAperta(corsoId) {
+  const container = document.getElementById(`panoramica-${corsoId}`);
+  if (!container || container.classList.contains("hidden")) return;
+  const corso = corsiCache.find(c => c.id === corsoId);
+  const snap = await db.collection("iscrizioniCorsi").where("corsoId", "==", corsoId).get();
+  renderPanoramicaCorso(container, corso, snap.docs.map(d => ({ id: d.id, ...d.data() })));
 }
 
 function renderIscrizioniCorso(container, corso, iscrizioni) {
@@ -347,6 +418,7 @@ async function confermaIscrizione(iscrizioneId, corsoId, giorno, orario) {
       gestitaDaNome: currentProfile.nome
     });
     await ricaricaIscrizioniCorso(corsoId);
+    await ricaricaPanoramicaSeAperta(corsoId);
   } catch (err) {
     showError(document.getElementById("corsi-list-error"), "Errore: " + err.message);
   }
@@ -366,6 +438,7 @@ async function rifiutaIscrizione(iscrizioneId, corsoId) {
       gestitaDaNome: currentProfile.nome
     });
     await ricaricaIscrizioniCorso(corsoId);
+    await ricaricaPanoramicaSeAperta(corsoId);
   } catch (err) {
     showError(document.getElementById("corsi-list-error"), "Errore: " + err.message);
   }
