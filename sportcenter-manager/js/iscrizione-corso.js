@@ -12,6 +12,29 @@
 
 let corsiApertiCache = [];
 let corsoSelezionato = null;
+let staffProfile = null;
+
+// La pagina resta pubblica (nessun requireAuth/redirect), ma se chi la
+// apre è già loggato nell'app (es. maestro arrivato dal pulsante "Iscrivi
+// un allievo" in Corsi) rileviamo la sessione per marcare l'iscrizione
+// come inserita dallo staff invece che dalla famiglia.
+auth.onAuthStateChanged(async (user) => {
+  if (!user) { staffProfile = null; syncStaffBanner(); return; }
+  try {
+    const userSnap = await db.collection("users").doc(user.uid).get();
+    staffProfile = userSnap.exists ? { uid: user.uid, nome: userSnap.data().nome || user.email } : null;
+  } catch {
+    staffProfile = null;
+  }
+  syncStaffBanner();
+});
+
+function syncStaffBanner() {
+  const banner = document.getElementById("staff-banner");
+  if (!banner) return;
+  banner.classList.toggle("hidden", !staffProfile);
+  if (staffProfile) banner.textContent = `Stai compilando come membro dello staff (${staffProfile.nome}) — l'iscrizione verrà segnata come inserita da te.`;
+}
 
 function todayISO() {
   const d = new Date();
@@ -165,7 +188,8 @@ async function onSubmitIscrizione(e) {
       nrOreDesiderate: nrOreRaw !== "" ? parseFloat(nrOreRaw) : null,
       disponibilita,
       stato: "in_attesa",
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      ...(staffProfile ? { inseritaDaStaff: true, inseritaDaUid: staffProfile.uid, inseritaDaNome: staffProfile.nome } : {})
     });
 
     document.getElementById("step-form").classList.add("hidden");

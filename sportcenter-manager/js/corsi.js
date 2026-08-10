@@ -179,6 +179,7 @@ function renderCorsi() {
         <div style="display:flex;flex-direction:column;gap:6px;">
           ${puoGestire ? `<button class="btn btn-ghost edit-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Modifica</button>` : ""}
           ${puoApprovare && !c.approvato ? `<button class="btn btn-primary approva-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Approva</button>` : ""}
+          ${puoVedereIscrizioni && c.approvato ? `<button class="btn btn-primary iscrivi-allievo-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Iscrivi un allievo</button>` : ""}
           ${c.approvato ? `<button class="btn btn-ghost link-diretto-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Copia link diretto</button>` : ""}
           ${puoVedereIscrizioni && c.approvato ? `<button class="btn btn-ghost iscrizioni-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Iscrizioni</button>` : ""}
           ${puoVedereIscrizioni && c.approvato ? `<button class="btn btn-ghost panoramica-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Panoramica</button>` : ""}
@@ -226,6 +227,12 @@ function renderCorsi() {
         showError(document.getElementById("corsi-list-error"), "Errore: " + err.message);
         btn.disabled = false;
       }
+    });
+  });
+
+  list.querySelectorAll(".iscrivi-allievo-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      window.open(basePageUrl() + "iscrizione-corso.html?corso=" + btn.dataset.id, "_blank");
     });
   });
 
@@ -599,6 +606,7 @@ function renderIscrizioniCorso(container, corso, iscrizioni) {
         <div class="entry-main">
           <span class="badge" style="${statoStyle[i.stato] || statoStyle.in_attesa}">${statoLabel[i.stato] || i.stato}</span>
           <div class="entry-tipo">${escapeHtml(i.nome)} ${escapeHtml(i.cognome)}${eta != null ? " · " + eta + " anni" : ""}</div>
+          ${i.inseritaDaStaff ? `<div class="entry-meta">Inserita dallo staff (${escapeHtml(i.inseritaDaNome || "—")})</div>` : ""}
           <div class="entry-meta">${escapeHtml(i.email)}${i.nrOreDesiderate ? " · " + i.nrOreDesiderate + "h/sett." : ""}${i.scuolaFrequentata ? " · " + escapeHtml(i.scuolaFrequentata) : ""}</div>
           ${i.nomeGenitore || i.telefonoGenitore ? `<div class="entry-meta">Genitore: ${escapeHtml(i.nomeGenitore || "—")}${i.telefonoGenitore ? " · " + escapeHtml(i.telefonoGenitore) : ""}</div>` : ""}
           <div class="entry-meta">Disponibilità: ${disponibilitaLabel}</div>
