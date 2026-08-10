@@ -257,8 +257,12 @@ function initThemeToggle(btnId) {
   const btn = document.getElementById(btnId || "theme-toggle-btn");
   if (!btn) return;
 
+  btn.textContent = "💡";
   const sync = () => {
-    btn.textContent = temaAttuale() === "light" ? "Tema scuro" : "Tema chiaro";
+    const chiaro = temaAttuale() === "light";
+    btn.classList.toggle("is-on", chiaro);
+    btn.setAttribute("aria-label", chiaro ? "Passa al tema scuro" : "Passa al tema chiaro");
+    btn.title = btn.getAttribute("aria-label");
   };
 
   btn.addEventListener("click", () => {

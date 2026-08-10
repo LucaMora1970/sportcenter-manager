@@ -66,6 +66,37 @@ async function onSaveImpostazioni(e) {
   }
 }
 
+// ---------- Tariffe padel ----------
+
+async function loadTariffePadelForm() {
+  const doc = await db.collection("impostazioni").doc("tariffePadel").get();
+  const t = doc.exists ? doc.data() : {};
+  document.getElementById("tariffa-diurno-60").value = t.diurno60 != null ? t.diurno60 : "";
+  document.getElementById("tariffa-diurno-90").value = t.diurno90 != null ? t.diurno90 : "";
+  document.getElementById("tariffa-serale-90").value = t.serale90 != null ? t.serale90 : "";
+}
+
+async function onSaveTariffePadel(e) {
+  e.preventDefault();
+  const btn = document.getElementById("salva-tariffe-padel-btn");
+  const errorEl = document.getElementById("tariffe-padel-error");
+  errorEl.textContent = "";
+  btn.disabled = true;
+
+  const diurno60 = parseFloat(document.getElementById("tariffa-diurno-60").value);
+  const diurno90 = parseFloat(document.getElementById("tariffa-diurno-90").value);
+  const serale90 = parseFloat(document.getElementById("tariffa-serale-90").value);
+
+  try {
+    if ([diurno60, diurno90, serale90].some(v => isNaN(v) || v < 0)) throw new Error("Inserisci tre importi validi.");
+    await db.collection("impostazioni").doc("tariffePadel").set({ diurno60, diurno90, serale90 }, { merge: true });
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // ---------- Helper lista generica con toggle attivo ----------
 
 function renderSimpleList(containerId, items, labelFn, metaFn, collectionName, reloadFn, onEdit) {
@@ -866,6 +897,7 @@ requireAuth(async (profile) => {
   populateSelect(document.getElementById("new-quotacampo-posizione"), POSIZIONI_CAMPO, "— tutti —");
 
   document.getElementById("impostazioni-form").addEventListener("submit", onSaveImpostazioni);
+  document.getElementById("tariffe-padel-form").addEventListener("submit", onSaveTariffePadel);
   document.getElementById("new-disciplina-form").addEventListener("submit", onCreateDisciplina);
   document.getElementById("cancel-edit-disciplina-btn").addEventListener("click", cancelEditDisciplina);
   document.getElementById("new-allievo-form").addEventListener("submit", onCreateAllievo);
@@ -886,6 +918,7 @@ requireAuth(async (profile) => {
   document.getElementById("cancel-edit-articolo-btn").addEventListener("click", cancelEditArticolo);
 
   await loadImpostazioniForm();
+  await loadTariffePadelForm();
   await loadDisciplineList();
   await loadAllievi();
   await loadTipiUtenza();

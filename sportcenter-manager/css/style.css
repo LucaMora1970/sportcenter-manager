@@ -132,6 +132,17 @@ button.topbar-link {
 
 .topbar-actions { display: flex; gap: 8px; align-items: center; }
 
+/* Toggle tema: lampadina spenta (scuro, default) / accesa (chiaro) */
+#theme-toggle-btn {
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 4px 7px;
+  opacity: 0.5;
+  filter: grayscale(1);
+  transition: opacity 0.15s ease, filter 0.15s ease;
+}
+#theme-toggle-btn.is-on { opacity: 1; filter: none; }
+
 /* Tariffe orarie per disciplina inline nella scheda utente (Team) */
 .user-tariffa-row {
   display: flex;
@@ -671,6 +682,10 @@ select:focus, input:focus, textarea:focus {
 }
 .busy .name { font-size: 0.74rem; font-weight: 700; color: var(--line-white); }
 .busy .time { font-family: 'Space Mono', monospace; font-size: 0.68rem; color: var(--chalk-grey); }
+.busy[data-bloccato="true"] {
+  background: color-mix(in srgb, var(--danger) 16%, var(--court-blue-900));
+  border-color: var(--danger); border-left-color: var(--danger);
+}
 
 .slot {
   position: absolute; left: 52px; right: 8px; border-radius: 8px;
@@ -695,6 +710,7 @@ select:focus, input:focus, textarea:focus {
   background: var(--court-blue-900); border: 1px solid var(--ball); border-radius: var(--radius); padding: 12px 14px;
 }
 .summary-info .t { font-family: 'Space Mono', monospace; font-size: 1.2rem; font-weight: 700; color: var(--line-white); }
+.summary-info .p { font-size: 0.72rem; color: var(--chalk-grey); margin-top: 2px; }
 .summary-cta {
   font-family: 'Inter', sans-serif; font-weight: 700; font-size: 0.8rem;
   background: var(--ball); color: var(--court-blue-950); border: none; border-radius: 8px;

@@ -29,6 +29,7 @@ async function getCurrentUserProfile() {
     ruoloId: userData.ruoloId || null,
     ruoloNome: userData.ruoloNome || "",
     attivo: userData.attivo !== false,
+    soggettoQuotaCampo: !!userData.soggettoQuotaCampo,
     permessi
   };
 }

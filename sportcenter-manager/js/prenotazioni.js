@@ -20,13 +20,50 @@
 
 let currentProfile = null;
 
-const OPEN = 8 * 60;       // 08:00
-const CLOSE = 23 * 60;     // 23:00
-const BOUNDARY = 17 * 60;  // 17:00 — 6h fino alla chiusura = esattamente 4 blocchi da 90', zero buchi residui
+const OPEN = 8 * 60;               // 08:00
+const CLOSE = 23 * 60;             // 23:00 nei giorni feriali
+const CLOSE_WEEKEND = 20 * 60 + 30; // 20:30 sabato, domenica e festivi
+const BOUNDARY = 17 * 60;  // 17:00 — 6h fino alla chiusura feriale = esattamente 4 blocchi da 90', zero buchi residui
+const SLOT_FISSO_PRANZO = 12 * 60 + 15; // 12:15 — fascia pranzo fissa (60' o 90'), offerta anche se non allineata alla griglia dei 30'
 const PX_PER_MIN = 1.1;    // 60' = 66px, 90' = 99px: comodo da toccare su mobile
 const EDGE_PAD = 10;       // margine sopra/sotto perché le etichette 08:00 e 23:00 non debordino dalla card
 const GIORNI_BREVI = ["Dom", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab"]; // Date.getDay(): 0=Dom
 const NR_GIORNI_STRIP = 14;
+
+// Date festive (YYYY-MM-DD) in cui vale l'orario ridotto del weekend anche
+// se cadono in un giorno feriale — da completare con l'elenco esatto
+// osservato dal circolo (non ancora fornito).
+const FESTIVI = [];
+
+function chiusuraGiorno(dataIso) {
+  const giorno = new Date(dataIso + "T00:00:00").getDay(); // 0=dom, 6=sab
+  return (giorno === 0 || giorno === 6 || FESTIVI.includes(dataIso)) ? CLOSE_WEEKEND : CLOSE;
+}
+
+// Tariffe configurabili da Configurazione (impostazioni/tariffePadel):
+// diurno = inizio prima delle 17:00, serale = inizio dalle 17:00 in poi
+// (i 60' non esistono mai in fascia serale, la griglia non li propone).
+let TARIFFE_PADEL = { diurno60: null, diurno90: null, serale90: null };
+
+async function loadTariffePadel() {
+  try {
+    const doc = await db.collection("impostazioni").doc("tariffePadel").get();
+    if (doc.exists) TARIFFE_PADEL = { ...TARIFFE_PADEL, ...doc.data() };
+  } catch (err) {
+    console.warn("loadTariffePadel: lettura fallita:", err.message);
+  }
+}
+
+// I maestri (soggettoQuotaCampo, stesso flag già usato per la quota campo
+// del diario) non pagano la prenotazione — la tariffa teorica resta
+// comunque registrata sulla prenotazione per il conteggio a fattura.
+function fasciaTariffa(startMin, duration) {
+  return duration === 60 ? "diurno60" : (startMin < BOUNDARY ? "diurno90" : "serale90");
+}
+
+function prezzoSlot(startMin, duration) {
+  return TARIFFE_PADEL[fasciaTariffa(startMin, duration)];
+}
 
 let state = { data: null, duration: null, selected: null, bookings: [] };
 let bookingsUnsub = null;
@@ -42,7 +79,7 @@ function orarioToMin(orario) {
 
 // ---------- Logica anti-buchi (invariata dal mockup validato) ----------
 
-function freeIntervals(bookings) {
+function freeIntervals(bookings, close) {
   const sorted = [...bookings].sort((a, b) => a.start - b.start);
   const free = [];
   let cursor = OPEN;
@@ -50,7 +87,7 @@ function freeIntervals(bookings) {
     if (b.start > cursor) free.push([cursor, b.start]);
     cursor = Math.max(cursor, b.end);
   });
-  if (cursor < CLOSE) free.push([cursor, CLOSE]);
+  if (cursor < close) free.push([cursor, close]);
   return free;
 }
 
@@ -64,6 +101,12 @@ function slotsInInterval(a, b, duration) {
     for (let t = Math.max(a, BOUNDARY); t + 90 <= b; t += 90) {
       starts.push(t);
     }
+    // 12:15 è una fascia pranzo fissa, offerta anche se non cade sulla
+    // griglia dei 30' calcolata a partire da "a" — stessa regola anti-buco.
+    if (SLOT_FISSO_PRANZO >= a && SLOT_FISSO_PRANZO + 90 <= b) {
+      const remain = b - (SLOT_FISSO_PRANZO + 90);
+      if (remain === 0 || remain >= 60) starts.push(SLOT_FISSO_PRANZO);
+    }
   } else {
     // Per i 60' il limite è mezz'ora oltre BOUNDARY: consente un ultimo
     // inizio alle 16:30 (finisce 17:30) invece di fermarsi alle 16:00 —
@@ -75,12 +118,16 @@ function slotsInInterval(a, b, duration) {
       const remain = limit - (t + 60);
       if (remain === 0 || remain >= 60) starts.push(t);
     }
+    if (SLOT_FISSO_PRANZO >= a && SLOT_FISSO_PRANZO + 60 <= limit) {
+      const remain = limit - (SLOT_FISSO_PRANZO + 60);
+      if (remain === 0 || remain >= 60) starts.push(SLOT_FISSO_PRANZO);
+    }
   }
   return starts;
 }
 
-function validStarts(bookings, duration) {
-  const free = freeIntervals(bookings);
+function validStarts(bookings, duration, close) {
+  const free = freeIntervals(bookings, close);
   let starts = [];
   free.forEach(([a, b]) => { starts = starts.concat(slotsInInterval(a, b, duration)); });
   return [...new Set(starts)].sort((x, y) => x - y);
@@ -135,7 +182,10 @@ function ascoltaPrenotazioniGiorno() {
       (snap) => {
         state.bookings = snap.docs.map(d => {
           const p = d.data();
-          return { id: d.id, userId: p.userId, start: orarioToMin(p.oraInizio), end: orarioToMin(p.oraFine), label: p.userNome || "Prenotato" };
+          return {
+            id: d.id, userId: p.userId, start: orarioToMin(p.oraInizio), end: orarioToMin(p.oraFine),
+            label: p.userNome || "Prenotato", bloccato: !!p.bloccato
+          };
         });
         render();
       },
@@ -147,11 +197,23 @@ function ascoltaPrenotazioniGiorno() {
 
 async function prenotaSlot() {
   if (!state.selected || !state.duration) return;
+
+  const bloccoCb = document.getElementById("blocco-toggle");
+  const bloccato = !!(bloccoCb && bloccoCb.checked && hasPermission(currentProfile, "prenotazioni:gestisci"));
+  let motivoBlocco = null;
+  if (bloccato) {
+    motivoBlocco = prompt("Motivo del blocco (es. manutenzione campo, evento privato):", "Manutenzione campo");
+    if (motivoBlocco === null) return;
+  }
+
   const btn = document.getElementById("summaryCta");
   const errorEl = document.getElementById("tabellone-error");
   errorEl.innerHTML = "";
   btn.disabled = true;
-  btn.textContent = "Prenotazione…";
+  btn.textContent = bloccato ? "Blocco…" : "Prenotazione…";
+
+  const prezzoTeorico = bloccato ? null : prezzoSlot(state.selected.start, state.duration);
+  const esente = !bloccato && !!currentProfile.soggettoQuotaCampo;
 
   try {
     await db.collection("prenotazioniPadel").add({
@@ -160,11 +222,18 @@ async function prenotaSlot() {
       oraFine: label(state.selected.end),
       durataMinuti: state.duration,
       userId: currentProfile.uid,
-      userNome: currentProfile.nome,
+      userNome: bloccato ? `Bloccato — ${motivoBlocco}` : currentProfile.nome,
+      bloccato: !!bloccato,
+      motivoBlocco: bloccato ? motivoBlocco : null,
+      fasciaTariffa: bloccato ? null : fasciaTariffa(state.selected.start, state.duration),
+      prezzoTeorico: prezzoTeorico,
+      esente: esente,
+      prezzo: esente ? 0 : prezzoTeorico,
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
     state.selected = null;
     state.duration = null;
+    if (bloccoCb) bloccoCb.checked = false;
     document.querySelectorAll("#durationSeg button").forEach(b => b.setAttribute("aria-pressed", "false"));
     render();
   } catch (err) {
@@ -177,13 +246,14 @@ async function prenotaSlot() {
 
 // ---------- Render griglia ----------
 
-function hourGridHtml() {
+function hourGridHtml(close) {
   let html = `<div class="gutter-line"></div>`;
-  for (let h = 8; h <= 23; h++) {
+  const ultimaOra = Math.floor(close / 60);
+  for (let h = 8; h <= ultimaOra; h++) {
     const top = px(h * 60);
     html += `<div class="hour-row" style="top:${top}px"></div>
              <div class="hour-label" style="top:${top}px">${pad2(h)}:00</div>`;
-    if (h < 23) {
+    if (h * 60 + 30 <= close) {
       const halfTop = px(h * 60 + 30);
       html += `<div class="half-row" style="top:${halfTop}px"></div>
                <div class="half-label" style="top:${halfTop}px">${pad2(h)}:30</div>`;
@@ -197,14 +267,15 @@ function hourGridHtml() {
 
 function render() {
   const timelineEl = document.getElementById("timeline");
-  const totalPx = px(CLOSE) + EDGE_PAD;
+  const close = chiusuraGiorno(state.data);
+  const totalPx = px(close) + EDGE_PAD;
   timelineEl.style.height = totalPx + "px";
 
-  let html = hourGridHtml();
+  let html = hourGridHtml(close);
 
   const puoGestireTutte = hasPermission(currentProfile, "prenotazioni:gestisci");
   html += state.bookings.map(b => `
-    <div class="busy" style="top:${px(b.start)}px;height:${px(b.end) - px(b.start)}px">
+    <div class="busy" data-bloccato="${b.bloccato}" style="top:${px(b.start)}px;height:${px(b.end) - px(b.start)}px">
       <span class="name">${escapeHtml(b.label)}</span>
       <span class="time">${label(b.start)}–${label(b.end)}</span>
       ${(b.userId === currentProfile.uid || puoGestireTutte) ? `<button type="button" class="delete-booking-btn" data-id="${b.id}" style="align-self:flex-start;background:none;border:none;color:var(--danger);font-size:0.65rem;text-decoration:underline;cursor:pointer;padding:0;">Elimina</button>` : ""}
@@ -212,7 +283,7 @@ function render() {
   `).join("");
 
   if (state.duration) {
-    const starts = validStarts(state.bookings, state.duration);
+    const starts = validStarts(state.bookings, state.duration, close);
     html += starts.map(s => {
       const end = s + state.duration;
       const isSel = state.selected && state.selected.start === s;
@@ -249,9 +320,22 @@ function render() {
   });
 
   const bar = document.getElementById("summaryBar");
+  const priceEl = document.getElementById("summaryPrice");
   if (state.selected) {
     document.getElementById("summaryTitle").textContent = `${label(state.selected.start)}–${label(state.selected.end)}`;
     bar.classList.add("show");
+    const bloccoCb = document.getElementById("blocco-toggle");
+    const inBlocco = !!(bloccoCb && bloccoCb.checked);
+    document.getElementById("summaryCta").textContent = inBlocco ? "Blocca slot" : "Prenota";
+
+    if (inBlocco) {
+      priceEl.textContent = "";
+    } else {
+      const prezzo = prezzoSlot(state.selected.start, state.duration);
+      priceEl.textContent = currentProfile.soggettoQuotaCampo
+        ? `Esente (maestro) — tariffa CHF ${prezzo != null ? prezzo.toFixed(2) : "—"}`
+        : (prezzo != null ? `CHF ${prezzo.toFixed(2)}` : "Tariffa non configurata");
+    }
   } else {
     bar.classList.remove("show");
   }
@@ -262,6 +346,13 @@ function render() {
 requireAuth(async (profile) => {
   currentProfile = profile;
   document.getElementById("user-chip").textContent = profile.nome + (profile.ruoloNome ? " · " + profile.ruoloNome : "");
+
+  await loadTariffePadel();
+
+  if (hasPermission(profile, "prenotazioni:gestisci")) {
+    document.getElementById("blocco-row").classList.remove("hidden");
+    document.getElementById("blocco-toggle").addEventListener("change", render);
+  }
 
   state.data = toISO(new Date());
   buildDayStrip();

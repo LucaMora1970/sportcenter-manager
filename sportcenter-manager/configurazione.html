@@ -63,6 +63,28 @@
 
       <hr class="court-divider">
 
+      <!-- Tariffe padel -->
+      <div class="section-title"><h2>Tariffe padel</h2></div>
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Prezzo mostrato e registrato a chi prenota dal tabellone. I maestri (utenti "Soggetto a quota campo" in Team) sono esenti — la tariffa teorica resta comunque registrata per il conteggio a fattura.</p>
+      <form id="tariffe-padel-form">
+        <div class="field">
+          <label for="tariffa-diurno-60">Diurno (fino alle 17:00) — 60' (CHF)</label>
+          <input type="number" id="tariffa-diurno-60" min="0" step="0.5" required placeholder="es. 56">
+        </div>
+        <div class="field">
+          <label for="tariffa-diurno-90">Diurno (fino alle 17:00) — 90' (CHF)</label>
+          <input type="number" id="tariffa-diurno-90" min="0" step="0.5" required placeholder="es. 64">
+        </div>
+        <div class="field">
+          <label for="tariffa-serale-90">Serale (dalle 17:00) — 90' (CHF)</label>
+          <input type="number" id="tariffa-serale-90" min="0" step="0.5" required placeholder="es. 90">
+        </div>
+        <div class="error-msg" id="tariffe-padel-error"></div>
+        <button type="submit" class="btn btn-ghost" id="salva-tariffe-padel-btn">Salva</button>
+      </form>
+
+      <hr class="court-divider">
+
       <!-- Discipline -->
       <div class="section-title"><h2>Discipline</h2></div>
       <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Voci selezionabili come disciplina nel diario. Tennis, Padel e Squash usano i campi; le altre (es. Preparatore atletico, Mental Coach) possono restare senza campo assegnato.</p>

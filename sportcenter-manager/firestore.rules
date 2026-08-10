@@ -223,11 +223,15 @@ service cloud.firestore {
     // login come tutte le altre pagine, nessun accesso pubblico ancora —
     // vedi memoria di progetto sul perché (le regole sono il vero confine
     // di sicurezza, non l'URL). Chiunque loggato vede e crea prenotazioni
-    // (serve al tabellone condiviso); l'eliminazione è riservata al
-    // proprietario o a chi ha prenotazioni:gestisci.
+    // (serve al tabellone condiviso); un blocco (bloccato:true, usato dal
+    // responsabile per manutenzione/eventi) richiede invece
+    // prenotazioni:gestisci, altrimenti chiunque potrebbe bloccare orari
+    // altrui aggirando il controllo lato client. L'eliminazione è
+    // riservata al proprietario o a chi ha prenotazioni:gestisci.
     match /prenotazioniPadel/{id} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid
+        && (request.resource.data.bloccato != true || hasPermission("prenotazioni:gestisci"));
       allow delete: if isSignedIn() && (
         resource.data.userId == request.auth.uid
         || hasPermission("prenotazioni:gestisci")
