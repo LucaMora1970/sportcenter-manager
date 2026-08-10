@@ -14,6 +14,7 @@ let currentProfile = null;
 let corsiCache = [];
 let campiCache = [];
 let iscrizioniConfermateCache = [];
+let iscrizioniInAttesaCache = [];
 let editingCorsoId = null;
 
 function formatDataBreve(dataStr) {
@@ -172,6 +173,7 @@ function renderCorsi() {
         <div class="entry-main">
           <span class="badge" style="${c.approvato ? "border-color:#7f9e4a;color:#c1e08f;" : "border-color:var(--chalk-grey-dim);color:var(--chalk-grey);"}">${c.approvato ? "Approvato" : "Bozza"}</span>
           <span class="badge ${c.disciplina}">${escapeHtml(disciplinaLabel(c.disciplina))}</span>
+          ${puoVedereIscrizioni && c.approvato ? contatoreIscrittiHtml(c) : ""}
           <div class="entry-tipo">${escapeHtml(c.nome)}</div>
           <div class="entry-meta">${formatDataBreve(c.dal)}${c.al ? " – " + formatDataBreve(c.al) : ""} · ${c.nrSessioni || "—"} sessioni da ${c.durataSessioneMinuti || "—"}' · campi: ${campiLabel}</div>
           <div class="entry-meta">Proposta: ${giorniOrariLabel}</div>
@@ -558,6 +560,7 @@ async function confermaGruppoSlot(corsoId, giorno, orario, container) {
     ));
     await ricaricaIscrizioniCorso(corsoId);
     await ricaricaPanoramicaSeAperta(corsoId);
+    await aggiornaContatoriDopoModifica(corsoId);
   } catch (err) {
     showError(document.getElementById("corsi-list-error"), "Errore: " + err.message);
   }
@@ -655,6 +658,7 @@ async function confermaIscrizione(iscrizioneId, corsoId, giorno, orario, nome, c
     await registraLog(iscrizioneId, corsoId, nome, "confermato", `Confermato su ${giornoLabel} ${orario}${campo ? " Campo " + campo : ""}`);
     await ricaricaIscrizioniCorso(corsoId);
     await ricaricaPanoramicaSeAperta(corsoId);
+    await aggiornaContatoriDopoModifica(corsoId);
   } catch (err) {
     showError(document.getElementById("corsi-list-error"), "Errore: " + err.message);
   }
@@ -676,6 +680,7 @@ async function rifiutaIscrizione(iscrizioneId, corsoId, nome) {
     await registraLog(iscrizioneId, corsoId, nome, "rifiutato", motivo);
     await ricaricaIscrizioniCorso(corsoId);
     await ricaricaPanoramicaSeAperta(corsoId);
+    await aggiornaContatoriDopoModifica(corsoId);
   } catch (err) {
     showError(document.getElementById("corsi-list-error"), "Errore: " + err.message);
   }
@@ -686,6 +691,43 @@ async function rifiutaIscrizione(iscrizioneId, corsoId, nome) {
 async function loadIscrizioniConfermate() {
   const snap = await db.collection("iscrizioniCorsi").where("stato", "==", "confermata").get();
   iscrizioniConfermateCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+async function loadIscrizioniInAttesa() {
+  const snap = await db.collection("iscrizioniCorsi").where("stato", "==", "in_attesa").get();
+  iscrizioniInAttesaCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+// Conteggio iscritti per corso, visibile in elenco senza dover aprire
+// Iscrizioni/Panoramica — usa le stesse cache già caricate per il
+// riepilogo giornaliero/settimanale (nessuna lettura extra a Firestore).
+function conteggioIscrittiCorso(corsoId) {
+  const confermati = iscrizioniConfermateCache.filter(i => i.corsoId === corsoId).length;
+  const inAttesa = iscrizioniInAttesaCache.filter(i => i.corsoId === corsoId).length;
+  return { confermati, inAttesa, totale: confermati + inAttesa };
+}
+
+function contatoreIscrittiHtml(corso) {
+  const { confermati, inAttesa, totale } = conteggioIscrittiCorso(corso.id);
+  const bastante = corso.minIscrittiConferma && confermati >= corso.minIscrittiConferma;
+  return `<span class="badge" id="corso-contatore-${corso.id}" style="${bastante ? "border-color:#7f9e4a;color:#c1e08f;" : ""}">${totale} iscritt${totale === 1 ? "o" : "i"} (${confermati} conf. · ${inAttesa} in attesa)</span>`;
+}
+
+// Aggiorna solo il badge contatore di un corso nel DOM (senza ridisegnare
+// l'intera scheda) dopo conferma/rifiuto/formazione gruppo, così eventuali
+// pannelli Iscrizioni/Panoramica/Storico già aperti restano al loro posto.
+function aggiornaContatoreCorso(corsoId) {
+  const el = document.getElementById(`corso-contatore-${corsoId}`);
+  const corso = corsiCache.find(c => c.id === corsoId);
+  if (!el || !corso) return;
+  el.outerHTML = contatoreIscrittiHtml(corso);
+}
+
+async function aggiornaContatoriDopoModifica(corsoId) {
+  await loadIscrizioniConfermate();
+  await loadIscrizioniInAttesa();
+  aggiornaContatoreCorso(corsoId);
+  if (hasPermission(currentProfile, "iscrizioni:gestisci")) aggiornaRiepiloghi();
 }
 
 // Raggruppa le iscrizioni confermate per corso+giorno+orario assegnati, poi
@@ -1042,6 +1084,7 @@ requireAuth(async (profile) => {
     document.getElementById("riepilogo-data").addEventListener("change", aggiornaRiepiloghi);
     document.getElementById("stampa-settimanale-btn").addEventListener("click", stampaRiepilogoSettimanale);
     await loadIscrizioniConfermate();
+    await loadIscrizioniInAttesa();
   }
 
   await loadCorsi();
