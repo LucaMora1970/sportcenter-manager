@@ -49,15 +49,23 @@ function generaCalendarioSessioni(dal, nrSessioni, giornoId, oraInizio, durataMi
 let DISCIPLINE = [];
 
 async function loadDiscipline() {
-  const snap = await db.collection("discipline").get();
-  DISCIPLINE = snap.docs
-    .map(d => ({ id: d.id, label: d.data().nome, attivo: d.data().attivo, ordine: d.data().ordine }))
-    .filter(d => d.attivo !== false)
-    .sort((a, b) => {
-      const ao = a.ordine != null ? a.ordine : 99;
-      const bo = b.ordine != null ? b.ordine : 99;
-      return ao - bo || a.label.localeCompare(b.label);
-    });
+  // Come loadImpostazioni(): se la lettura fallisce (es. pagina pubblica
+  // senza login, o regole non ancora pubblicate) non deve bloccare
+  // l'inizializzazione dell'intera pagina — restano le etichette grezze
+  // (id invece del nome) invece di uno stallo su "Caricamento…".
+  try {
+    const snap = await db.collection("discipline").get();
+    DISCIPLINE = snap.docs
+      .map(d => ({ id: d.id, label: d.data().nome, attivo: d.data().attivo, ordine: d.data().ordine }))
+      .filter(d => d.attivo !== false)
+      .sort((a, b) => {
+        const ao = a.ordine != null ? a.ordine : 99;
+        const bo = b.ordine != null ? b.ordine : 99;
+        return ao - bo || a.label.localeCompare(b.label);
+      });
+  } catch (err) {
+    console.warn("loadDiscipline: lettura fallita, uso le etichette grezze:", err.message);
+  }
 }
 
 function disciplinaLabel(id) {

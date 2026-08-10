@@ -127,10 +127,13 @@ service cloud.firestore {
     }
 
     // Discipline (tennis, padel, squash, e altre configurabili come
-    // preparatore atletico, sparring, mental coach...). Lettura per
-    // chiunque loggato, scrittura riservata a config:gestisci.
+    // preparatore atletico, sparring, mental coach...). Lettura pubblica
+    // (non sono dati sensibili: sono solo le etichette "Tennis"/"Padel"
+    // già mostrate nella pagina pubblica di iscrizione, che essendo senza
+    // login non potrebbe altrimenti leggerle — stesso ragionamento già
+    // fatto per "corsi"). Scrittura riservata a config:gestisci.
     match /discipline/{id} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow write: if hasPermission("config:gestisci");
     }
 
