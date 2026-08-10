@@ -235,7 +235,11 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid
         && (request.resource.data.bloccato != true || hasPermission("prenotazioni:gestisci"));
-      allow delete: if isSignedIn() && (
+      // Eliminabili solo i blocchi (nessun pagamento legato) — una
+      // prenotazione pagata non è più cancellabile da qui: liberare lo
+      // slot senza un rimborso vero lascerebbe chi ha pagato senza slot
+      // e senza soldi indietro.
+      allow delete: if isSignedIn() && resource.data.bloccato == true && (
         resource.data.userId == request.auth.uid
         || hasPermission("prenotazioni:gestisci")
       );

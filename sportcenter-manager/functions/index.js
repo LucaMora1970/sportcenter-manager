@@ -41,7 +41,7 @@ const POSTFINANCE_USER_ID = defineSecret("POSTFINANCE_USER_ID");
 const POSTFINANCE_APP_KEY = defineSecret("POSTFINANCE_APP_KEY");
 
 // URL base dell'app su GitHub Pages, per i redirect di successo/fallimento.
-const APP_URL = "https://lucamora1970.github.io/sportcenter-manager/";
+const APP_URL = "https://lucamora1970.github.io/sportcenter-manager/sportcenter-manager/";
 
 const BOUNDARY = 17 * 60; // 17:00 — stessa soglia diurno/serale di prenotazioni.js
 

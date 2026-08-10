@@ -296,12 +296,16 @@ function render() {
 
   let html = hourGridHtml(close);
 
+  // Eliminazione self-service disponibile solo sui blocchi (nessun
+  // pagamento legato) — una prenotazione pagata non è più cancellabile da
+  // qui: liberare lo slot senza un rimborso vero lascerebbe chi ha pagato
+  // senza slot e senza soldi indietro.
   const puoGestireTutte = hasPermission(currentProfile, "prenotazioni:gestisci");
   html += state.bookings.map(b => `
     <div class="busy" data-bloccato="${b.bloccato}" style="top:${px(b.start)}px;height:${px(b.end) - px(b.start)}px">
       <span class="name">${escapeHtml(b.label)}</span>
       <span class="time">${label(b.start)}–${label(b.end)}</span>
-      ${(b.userId === currentProfile.uid || puoGestireTutte) ? `<button type="button" class="delete-booking-btn" data-id="${b.id}" style="align-self:flex-start;background:none;border:none;color:var(--danger);font-size:0.65rem;text-decoration:underline;cursor:pointer;padding:0;">Elimina</button>` : ""}
+      ${(b.bloccato && (b.userId === currentProfile.uid || puoGestireTutte)) ? `<button type="button" class="delete-booking-btn" data-id="${b.id}" style="align-self:flex-start;background:none;border:none;color:var(--danger);font-size:0.65rem;text-decoration:underline;cursor:pointer;padding:0;">Elimina</button>` : ""}
     </div>
   `).join("");
 
