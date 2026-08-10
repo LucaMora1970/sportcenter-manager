@@ -215,10 +215,11 @@ function onInviaEmailTeam() {
 
   const oggetto = document.getElementById("team-email-oggetto").value.trim();
   const corpo = document.getElementById("team-email-corpo").value.trim();
+  const calce = `Tennis Club Mendrisio\nSportcenter Manager OS\n${basePageUrl()}index.html`;
+  const corpoConCalce = (corpo ? corpo + "\n\n" : "") + "--\n" + calce;
 
-  const parti = [`bcc=${encodeURIComponent(emails.join(","))}`];
+  const parti = [`bcc=${encodeURIComponent(emails.join(","))}`, `body=${encodeURIComponent(corpoConCalce)}`];
   if (oggetto) parti.push(`subject=${encodeURIComponent(oggetto)}`);
-  if (corpo) parti.push(`body=${encodeURIComponent(corpo)}`);
 
   window.location.href = `mailto:?${parti.join("&")}`;
 }
