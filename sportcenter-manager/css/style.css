@@ -481,6 +481,13 @@ select:focus, input:focus, textarea:focus {
 
 .dipendente-block { margin-bottom: 10px; }
 .dipendente-block .entry-card { margin-bottom: 0; border-radius: var(--radius) var(--radius) 0 0; }
+
+/* Scheda corso in Corsi: più badge e righe meta impilate rispetto alle
+   altre schede — merita più respiro tra un elemento e l'altro. */
+.corso-card .badge { margin-bottom: 6px; }
+.corso-card .entry-tipo { margin-top: 2px; margin-bottom: 6px; }
+.corso-card .entry-meta { margin-top: 6px; line-height: 1.5; }
+.corso-card .giorni-toggle { color: var(--ball); cursor: pointer; }
 .dipendente-actions {
   display: flex;
   gap: 8px;

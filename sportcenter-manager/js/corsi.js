@@ -163,20 +163,22 @@ function renderCorsi() {
   const puoVedereIscrizioni = hasPermission(currentProfile, "iscrizioni:gestisci");
 
   list.innerHTML = corsiCache.map(c => {
-    const giorniOrariLabel = Object.entries(c.giorniOrari || {})
-      .map(([g, orari]) => `${(GIORNI_SETTIMANA.find(x => x.id === g) || {}).label || g} ${orari.join("/")}`)
-      .join(" · ") || "—";
+    const giorniOrariRighe = Object.entries(c.giorniOrari || {})
+      .map(([g, orari]) => `<div class="entry-meta">${(GIORNI_SETTIMANA.find(x => x.id === g) || {}).label || g}: ${orari.join(", ")}</div>`)
+      .join("") || `<div class="entry-meta">—</div>`;
     const campiLabel = (c.campiNumeri || []).map(n => "Campo " + n).join(", ") || "—";
     return `
-    <div class="dipendente-block" data-id="${c.id}">
+    <div class="dipendente-block corso-card" data-id="${c.id}">
       <div class="entry-card">
         <div class="entry-main">
           <span class="badge" style="${c.approvato ? "border-color:#7f9e4a;color:#c1e08f;" : "border-color:var(--chalk-grey-dim);color:var(--chalk-grey);"}">${c.approvato ? "Approvato" : "Bozza"}</span>
           <span class="badge ${c.disciplina}">${escapeHtml(disciplinaLabel(c.disciplina))}</span>
-          ${puoVedereIscrizioni && c.approvato ? contatoreIscrittiHtml(c) : ""}
           <div class="entry-tipo">${escapeHtml(c.nome)}</div>
+          ${puoVedereIscrizioni && c.approvato ? contatoreIscrittiHtml(c) : ""}
+          ${terminIscrizioneHtml(c)}
           <div class="entry-meta">${formatDataBreve(c.dal)}${c.al ? " – " + formatDataBreve(c.al) : ""} · ${c.nrSessioni || "—"} sessioni da ${c.durataSessioneMinuti || "—"}' · campi: ${campiLabel}</div>
-          <div class="entry-meta">Proposta: ${giorniOrariLabel}</div>
+          <div class="entry-meta giorni-toggle" data-id="${c.id}">+ Giorni e orari proposti</div>
+          <div class="hidden" id="giorni-dettaglio-${c.id}">${giorniOrariRighe}</div>
           <div class="entry-meta">Creato da ${escapeHtml(c.creatoDaNome || "—")}${c.approvato ? " · approvato da " + escapeHtml(c.approvatoDaNome || "—") : ""}</div>
         </div>
         <div style="display:flex;flex-direction:column;gap:6px;">
@@ -197,6 +199,15 @@ function renderCorsi() {
     </div>
   `;
   }).join("");
+
+  list.querySelectorAll(".giorni-toggle").forEach(el => {
+    el.addEventListener("click", () => {
+      const dettaglio = document.getElementById(`giorni-dettaglio-${el.dataset.id}`);
+      const aperto = !dettaglio.classList.contains("hidden");
+      dettaglio.classList.toggle("hidden");
+      el.textContent = (aperto ? "+ " : "− ") + "Giorni e orari proposti";
+    });
+  });
 
   list.querySelectorAll(".edit-corso-btn").forEach(btn => {
     btn.addEventListener("click", () => startEditCorso(corsiCache.find(c => c.id === btn.dataset.id)));
@@ -711,6 +722,27 @@ function contatoreIscrittiHtml(corso) {
   const { confermati, inAttesa, totale } = conteggioIscrittiCorso(corso.id);
   const bastante = corso.minIscrittiConferma && confermati >= corso.minIscrittiConferma;
   return `<span class="badge" id="corso-contatore-${corso.id}" style="${bastante ? "border-color:#7f9e4a;color:#c1e08f;" : ""}">${totale} iscritt${totale === 1 ? "o" : "i"} (${confermati} conf. · ${inAttesa} in attesa)</span>`;
+}
+
+// Data di chiusura iscrizioni ben visibile in elenco, colorata in base
+// all'urgenza — chiusa/entro 7 giorni/normale — così non serve aprire il
+// corso per accorgersi che le iscrizioni stanno per finire.
+function terminIscrizioneHtml(corso) {
+  if (!corso.terminIscrizione) return "";
+  const oggi = new Date(new Date().toISOString().slice(0, 10) + "T00:00:00");
+  const termine = new Date(corso.terminIscrizione + "T00:00:00");
+  const giorni = Math.round((termine - oggi) / 86400000);
+
+  let stile = "border-color:var(--chalk-grey-dim);color:var(--chalk-grey);";
+  let testo = `Chiusura iscrizioni: ${formatDataBreve(corso.terminIscrizione)}`;
+  if (giorni < 0) {
+    stile = "border-color:var(--danger);color:var(--danger);";
+    testo = `Iscrizioni chiuse dal ${formatDataBreve(corso.terminIscrizione)}`;
+  } else if (giorni <= 7) {
+    stile = "border-color:#d4b83a;color:#e0c85a;";
+    testo = `Chiusura iscrizioni tra ${giorni}g (${formatDataBreve(corso.terminIscrizione)})`;
+  }
+  return `<span class="badge" style="${stile}">${testo}</span>`;
 }
 
 // Aggiorna solo il badge contatore di un corso nel DOM (senza ridisegnare
