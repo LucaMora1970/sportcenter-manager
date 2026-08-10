@@ -314,7 +314,7 @@ main {
   margin-bottom: 6px;
 }
 
-select, input[type=text], input[type=email], input[type=password], input[type=date], input[type=time], input[type=number], textarea {
+select, input[type=text], input[type=email], input[type=password], input[type=date], input[type=time], input[type=number], input[type=tel], textarea {
   width: 100%;
   background: var(--court-blue-800);
   border: 1px solid var(--court-blue-700);
