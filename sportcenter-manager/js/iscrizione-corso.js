@@ -105,6 +105,7 @@ function renderCorsiAperti() {
         <span class="badge ${c.disciplina}">${escapeHtml(disciplinaLabel(c.disciplina))}</span>
         <div class="entry-tipo">${escapeHtml(c.nome)}</div>
         <div class="entry-meta">${formatDataBreve(c.dal)}${c.al ? " – " + formatDataBreve(c.al) : ""} · ${c.nrSessioni || "—"} sessioni · CHF ${(c.prezzoRichiesto || 0).toFixed(2)}</div>
+        ${c.terminIscrizione ? `<div class="entry-meta">Iscrizioni entro il ${formatDataBreve(c.terminIscrizione)}</div>` : ""}
       </div>
       <button type="button" class="btn btn-primary seleziona-corso-btn" style="width:auto;padding:10px 16px;font-size:0.75rem;" data-id="${c.id}">Iscriviti</button>
     </div>
