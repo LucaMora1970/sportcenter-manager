@@ -117,6 +117,7 @@ function leggiFormCorso() {
     maxIscrittiPerSessione: num("corso-max-iscritti"),
     minIscrittiConferma: num("corso-min-iscritti"),
     terminIscrizione: document.getElementById("corso-termine-iscrizione").value || null,
+    ordine: num("corso-ordine"),
     condizioniGenerali: document.getElementById("corso-condizioni").value.trim(),
     livelloIstruttori,
     costoIstruttoreOra: num("corso-costo-istruttore"),
@@ -926,6 +927,7 @@ function startEditCorso(corso) {
   document.getElementById("corso-max-iscritti").value = corso.maxIscrittiPerSessione != null ? corso.maxIscrittiPerSessione : "";
   document.getElementById("corso-min-iscritti").value = corso.minIscrittiConferma != null ? corso.minIscrittiConferma : "";
   document.getElementById("corso-termine-iscrizione").value = corso.terminIscrizione || "";
+  document.getElementById("corso-ordine").value = corso.ordine != null ? corso.ordine : "";
   document.getElementById("corso-condizioni").value = corso.condizioniGenerali || "";
   document.getElementById("corso-liv-maestro").checked = (corso.livelloIstruttori || []).includes("maestro");
   document.getElementById("corso-liv-monitore").checked = (corso.livelloIstruttori || []).includes("monitore");

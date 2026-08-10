@@ -78,7 +78,8 @@ async function loadCorsiAperti() {
   const oggi = todayISO();
   corsiApertiCache = snap.docs
     .map(d => ({ id: d.id, ...d.data() }))
-    .filter(c => c.attivo !== false && (!c.terminIscrizione || c.terminIscrizione >= oggi));
+    .filter(c => c.attivo !== false && (!c.terminIscrizione || c.terminIscrizione >= oggi))
+    .sort((a, b) => (a.ordine ?? Infinity) - (b.ordine ?? Infinity) || a.dal.localeCompare(b.dal));
 
   renderCorsiAperti();
 

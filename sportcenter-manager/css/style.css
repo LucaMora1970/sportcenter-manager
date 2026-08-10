@@ -76,6 +76,14 @@ a { color: var(--ball); }
 
 .topbar h1 { font-size: 1.15rem; white-space: nowrap; }
 
+.topbar-kicker {
+  font-size: 0.68rem;
+  color: var(--chalk-grey);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 2px;
+}
+
 .topbar .user-chip {
   font-size: 0.75rem;
   color: var(--chalk-grey);
