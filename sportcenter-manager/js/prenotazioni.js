@@ -212,32 +212,55 @@ async function prenotaSlot() {
   btn.disabled = true;
   btn.textContent = bloccato ? "Blocco…" : "Prenotazione…";
 
-  const prezzoTeorico = bloccato ? null : prezzoSlot(state.selected.start, state.duration);
-  const esente = !bloccato && !!currentProfile.soggettoQuotaCampo;
-
   try {
-    await db.collection("prenotazioniPadel").add({
-      data: state.data,
-      oraInizio: label(state.selected.start),
-      oraFine: label(state.selected.end),
-      durataMinuti: state.duration,
-      userId: currentProfile.uid,
-      userNome: bloccato ? `Bloccato — ${motivoBlocco}` : currentProfile.nome,
-      bloccato: !!bloccato,
-      motivoBlocco: bloccato ? motivoBlocco : null,
-      fasciaTariffa: bloccato ? null : fasciaTariffa(state.selected.start, state.duration),
-      prezzoTeorico: prezzoTeorico,
-      esente: esente,
-      prezzo: esente ? 0 : prezzoTeorico,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-    state.selected = null;
-    state.duration = null;
-    if (bloccoCb) bloccoCb.checked = false;
-    document.querySelectorAll("#durationSeg button").forEach(b => b.setAttribute("aria-pressed", "false"));
-    render();
+    if (bloccato) {
+      // I blocchi non prevedono pagamento: restano una scrittura diretta,
+      // come prima — solo il permesso prenotazioni:gestisci la consente
+      // (vedi firestore.rules).
+      await db.collection("prenotazioniPadel").add({
+        data: state.data,
+        oraInizio: label(state.selected.start),
+        oraFine: label(state.selected.end),
+        durataMinuti: state.duration,
+        userId: currentProfile.uid,
+        userNome: `Bloccato — ${motivoBlocco}`,
+        bloccato: true,
+        motivoBlocco: motivoBlocco,
+        fasciaTariffa: null,
+        prezzoTeorico: null,
+        esente: false,
+        prezzo: null,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      state.selected = null;
+      state.duration = null;
+      if (bloccoCb) bloccoCb.checked = false;
+      document.querySelectorAll("#durationSeg button").forEach(b => b.setAttribute("aria-pressed", "false"));
+      render();
+    } else {
+      // Prenotazione vera: passa dalla Cloud Function, che ricalcola il
+      // prezzo lato server (mai fidarsi di quello mostrato dal client),
+      // riserva subito lo slot e crea la transazione PostFinance — si
+      // viene reindirizzati alla sua pagina di pagamento ospitata.
+      const creaPagamento = firebase.functions().httpsCallable("creaPagamentoPrenotazione");
+      const result = await creaPagamento({
+        data: state.data,
+        oraInizio: label(state.selected.start),
+        oraFine: label(state.selected.end),
+        durataMinuti: state.duration
+      });
+
+      if (result.data.esente) {
+        state.selected = null;
+        state.duration = null;
+        document.querySelectorAll("#durationSeg button").forEach(b => b.setAttribute("aria-pressed", "false"));
+        render();
+      } else {
+        window.location.href = result.data.paymentPageUrl;
+      }
+    }
   } catch (err) {
-    showError(errorEl, "Errore nella prenotazione: " + err.message);
+    showError(errorEl, "Errore nella prenotazione: " + (err.message || err));
   } finally {
     btn.disabled = false;
     btn.textContent = "Prenota";
@@ -346,6 +369,19 @@ function render() {
 requireAuth(async (profile) => {
   currentProfile = profile;
   document.getElementById("user-chip").textContent = profile.nome + (profile.ruoloNome ? " · " + profile.ruoloNome : "");
+
+  // Ritorno dalla pagina di pagamento PostFinance (successUrl/failedUrl):
+  // qui si mostra solo un avviso — la conferma reale della prenotazione
+  // (pagamento:"pagato") arriva in modo indipendente dal webhook, che può
+  // impiegare qualche istante.
+  const esitoPagamento = new URLSearchParams(location.search).get("pagamento");
+  if (esitoPagamento === "ok") {
+    alert("Pagamento completato — la prenotazione verrà confermata a breve.");
+    history.replaceState(null, "", location.pathname);
+  } else if (esitoPagamento === "fallito") {
+    alert("Pagamento non riuscito o annullato: lo slot è stato liberato, riprova pure.");
+    history.replaceState(null, "", location.pathname);
+  }
 
   await loadTariffePadel();
 
