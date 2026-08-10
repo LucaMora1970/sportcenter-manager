@@ -95,26 +95,45 @@ async function loadUsers() {
   list.innerHTML = users.map(u => {
     const roleLabel = u.ruoloNome || u.ruoloId || "—";
     const tariffe = tariffeSummary(u);
+    const attivo = u.attivo !== false;
     return `
-      <div class="entry-card" data-uid="${u.id}">
-        <div class="entry-main">
-          <div class="entry-tipo">${escapeHtml(u.nome || u.id)}</div>
-          <div class="entry-meta">${escapeHtml(u.email || "")} · ${escapeHtml(roleLabel)}${u.soggettoQuotaCampo ? " · quota campo" : ""}${tariffe ? " · " + escapeHtml(tariffe) : ""}</div>
-          <div class="user-tariffa-row">
+      <div class="team-card" data-uid="${u.id}">
+        <div class="team-card-header">
+          <div>
+            <div class="team-card-name">${escapeHtml(u.nome || u.id)}</div>
+            <div class="team-card-meta">${escapeHtml(u.email || "")} · ${escapeHtml(roleLabel)}${u.soggettoQuotaCampo ? " · quota campo" : ""}${tariffe ? " · " + escapeHtml(tariffe) : ""}</div>
+          </div>
+          <span class="badge" style="${attivo ? "border-color:#7f9e4a;color:#c1e08f;" : "border-color:var(--danger);color:var(--danger);"}">${attivo ? "Attivo" : "Disattivato"}</span>
+        </div>
+
+        <div class="team-card-section">
+          <div class="team-card-section-label">Ruolo</div>
+          <div class="team-card-row">
+            <select class="user-ruolo-select" data-uid="${u.id}">
+              ${rolesCache.map(r => `<option value="${r.id}" ${r.id === u.ruoloId ? "selected" : ""}>${escapeHtml(r.id)}</option>`).join("")}
+            </select>
+            <button class="btn btn-ghost save-ruolo-btn" data-uid="${u.id}">Salva</button>
+          </div>
+        </div>
+
+        <div class="team-card-section">
+          <div class="team-card-section-label">Tariffe orarie (CHF)</div>
+          <div class="team-card-row">
             ${DISCIPLINE.map(d => `
               <input type="number" class="user-tariffa-input" min="0" step="0.5" placeholder="${d.label}" value="${(u.tariffeOrarie && u.tariffeOrarie[d.id]) || ""}" data-uid="${u.id}" data-disciplina="${d.id}">
             `).join("")}
             <button class="btn btn-ghost save-tariffa-btn" data-uid="${u.id}">Salva</button>
           </div>
         </div>
-        <div style="display:flex;flex-direction:column;gap:6px;">
-          <button class="btn btn-ghost toggle-active-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-uid="${u.id}" data-attivo="${u.attivo !== false}">
-            ${u.attivo !== false ? "Attivo" : "Disattivato"}
+
+        <div class="team-card-actions">
+          <button class="btn btn-ghost toggle-quotacampo-btn" data-uid="${u.id}" data-quotacampo="${!!u.soggettoQuotaCampo}">
+            ${u.soggettoQuotaCampo ? "Rimuovi quota campo" : "Assegna quota campo"}
           </button>
-          <button class="btn btn-ghost toggle-quotacampo-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-uid="${u.id}" data-quotacampo="${!!u.soggettoQuotaCampo}">
-            ${u.soggettoQuotaCampo ? "Quota: sì" : "Quota: no"}
+          <button class="btn btn-ghost toggle-active-btn" data-uid="${u.id}" data-attivo="${attivo}">
+            ${attivo ? "Disattiva" : "Riattiva"}
           </button>
-          <button class="btn btn-ghost send-reset-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-email="${escapeHtml(u.email || "")}">
+          <button class="btn btn-ghost send-reset-btn" data-email="${escapeHtml(u.email || "")}">
             Reset password
           </button>
         </div>
@@ -130,6 +149,9 @@ async function loadUsers() {
   });
   list.querySelectorAll(".save-tariffa-btn").forEach(btn => {
     btn.addEventListener("click", onSaveTariffa);
+  });
+  list.querySelectorAll(".save-ruolo-btn").forEach(btn => {
+    btn.addEventListener("click", onSaveRuolo);
   });
   list.querySelectorAll(".send-reset-btn").forEach(btn => {
     btn.addEventListener("click", onSendPasswordReset);
@@ -197,6 +219,20 @@ async function onSaveTariffa(e) {
   btn.disabled = true;
   try {
     await db.collection("users").doc(uid).update({ tariffeOrarie });
+    await loadUsers();
+  } catch (err) {
+    showError(document.getElementById("users-list-error"), "Errore: " + err.message);
+    btn.disabled = false;
+  }
+}
+
+async function onSaveRuolo(e) {
+  const btn = e.currentTarget;
+  const uid = btn.dataset.uid;
+  const ruoloId = document.querySelector(`.user-ruolo-select[data-uid="${uid}"]`).value;
+  btn.disabled = true;
+  try {
+    await db.collection("users").doc(uid).update({ ruoloId, ruoloNome: ruoloId });
     await loadUsers();
   } catch (err) {
     showError(document.getElementById("users-list-error"), "Errore: " + err.message);

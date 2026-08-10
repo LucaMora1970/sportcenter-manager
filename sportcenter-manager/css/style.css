@@ -114,6 +114,46 @@ a { color: var(--ball); }
 .user-tariffa-row input[type=number] { flex: 1 1 70px; min-width: 70px; }
 .user-tariffa-row button { width: auto; padding: 8px 12px; font-size: 0.7rem; flex: 0 0 auto; }
 
+/* Scheda utente in Team: sezioni impilate verticalmente (identità,
+   ruolo, tariffe, azioni) invece del layout a due colonne di
+   .entry-card, che non regge bene con più controlli nella stessa
+   scheda — align-items:center schiaccia una colonna azioni corta
+   contro un contenuto principale che invece cresce parecchio. */
+.team-card {
+  background: var(--court-blue-900);
+  border: 1px solid var(--court-blue-700);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-bottom: 10px;
+}
+
+.team-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.team-card-name { font-size: 0.95rem; font-weight: 600; color: var(--line-white); }
+.team-card-meta { font-size: 0.78rem; color: var(--chalk-grey); margin-top: 2px; }
+
+.team-card-section { margin-top: 14px; }
+.team-card-section-label {
+  font-size: 0.68rem;
+  color: var(--chalk-grey);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+}
+
+.team-card-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.team-card-row select,
+.team-card-row input[type=number] { flex: 1 1 90px; min-width: 80px; }
+.team-card-row .btn { width: auto; flex: 0 0 auto; padding: 8px 12px; font-size: 0.7rem; }
+
+.team-card-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.team-card-actions .btn { width: auto; flex: 1 1 auto; padding: 8px 10px; font-size: 0.7rem; }
+
 main {
   flex: 1;
   padding: var(--gap);
