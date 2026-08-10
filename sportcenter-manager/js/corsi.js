@@ -572,6 +572,12 @@ async function confermaGruppoSlot(corsoId, giorno, orario, container) {
     await ricaricaIscrizioniCorso(corsoId);
     await ricaricaPanoramicaSeAperta(corsoId);
     await aggiornaContatoriDopoModifica(corsoId);
+
+    const emails = daConfermare.map(i => i.email).filter(Boolean);
+    if (emails.length > 0 && confirm(`Aprire un'email di conferma per i ${emails.length} iscritti confermati (in copia nascosta)?`)) {
+      apriEmailCcn(emails, `Conferma iscrizione corso — ${corso.nome}`,
+        `Gentile iscritto/a,\n\nSiamo lieti di confermarti nel corso "${corso.nome}":\n\nGiorno: ${giornoLabel}\nOrario: ${orario}\n\nA presto!`);
+    }
   } catch (err) {
     showError(document.getElementById("corsi-list-error"), "Errore: " + err.message);
   }
@@ -630,8 +636,8 @@ function renderIscrizioniCorso(container, corso, iscrizioni) {
         </div>
         <div style="display:flex;flex-direction:column;gap:6px;">
           ${selectSlot}
-          ${i.stato === "in_attesa" ? `<button class="btn btn-primary conferma-iscrizione-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}" data-corso="${corso.id}" data-nome="${escapeHtml(i.nome + " " + i.cognome)}">Conferma in questo slot</button>` : ""}
-          ${i.stato === "in_attesa" ? `<button class="btn btn-danger annulla-iscrizione-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}" data-corso="${corso.id}" data-nome="${escapeHtml(i.nome + " " + i.cognome)}">Rifiuta</button>` : ""}
+          ${i.stato === "in_attesa" ? `<button class="btn btn-primary conferma-iscrizione-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}" data-corso="${corso.id}" data-nome="${escapeHtml(i.nome + " " + i.cognome)}" data-email="${escapeHtml(i.email || "")}">Conferma in questo slot</button>` : ""}
+          ${i.stato === "in_attesa" ? `<button class="btn btn-danger annulla-iscrizione-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}" data-corso="${corso.id}" data-nome="${escapeHtml(i.nome + " " + i.cognome)}" data-email="${escapeHtml(i.email || "")}">Rifiuta</button>` : ""}
         </div>
       </div>
     `;
@@ -643,18 +649,35 @@ function renderIscrizioniCorso(container, corso, iscrizioni) {
       const [giorno, orario] = select.value.split("|");
       const campoSelect = container.querySelector(`.assegna-campo-select[data-id="${btn.dataset.id}"]`);
       const campo = campoSelect ? campoSelect.value : ((corso.campiNumeri || []).length === 1 ? corso.campiNumeri[0] : null);
-      confermaIscrizione(btn.dataset.id, btn.dataset.corso, giorno, orario, btn.dataset.nome, campo);
+      confermaIscrizione(btn.dataset.id, btn.dataset.corso, giorno, orario, btn.dataset.nome, campo, btn.dataset.email);
     });
   });
   container.querySelectorAll(".annulla-iscrizione-btn").forEach(btn => {
-    btn.addEventListener("click", () => rifiutaIscrizione(btn.dataset.id, btn.dataset.corso, btn.dataset.nome));
+    btn.addEventListener("click", () => rifiutaIscrizione(btn.dataset.id, btn.dataset.corso, btn.dataset.nome, btn.dataset.email));
   });
+}
+
+// Bozza email pronta ma invio manuale (nessun backend per l'invio
+// automatico): apre il client di posta dello staff già compilato, che
+// resta libero di rivedere il testo e decidere se/quando inviarlo.
+function corpoEmailConCalce(corpo) {
+  const calce = `Tennis Club Mendrisio\nSportcenter Manager OS\n${basePageUrl()}index.html`;
+  return corpo + "\n\n--\n" + calce;
+}
+
+function apriEmailA(to, oggetto, corpo) {
+  window.location.href = `mailto:?to=${encodeURIComponent(to)}&subject=${encodeURIComponent(oggetto)}&body=${encodeURIComponent(corpoEmailConCalce(corpo))}`;
+}
+
+function apriEmailCcn(emails, oggetto, corpo) {
+  window.location.href = `mailto:?bcc=${encodeURIComponent(emails.join(","))}&subject=${encodeURIComponent(oggetto)}&body=${encodeURIComponent(corpoEmailConCalce(corpo))}`;
 }
 
 // Conferma l'iscritto nello slot scelto nel select — può essere diverso da
 // quanto aveva flaggato come disponibile (spostamento previo suo accordo,
 // concordato fuori dall'app: qui si registra solo l'esito).
-async function confermaIscrizione(iscrizioneId, corsoId, giorno, orario, nome, campo) {
+async function confermaIscrizione(iscrizioneId, corsoId, giorno, orario, nome, campo, email) {
+  const corso = corsiCache.find(c => c.id === corsoId);
   const giornoLabel = (GIORNI_SETTIMANA.find(g => g.id === giorno) || {}).label || giorno;
   try {
     await db.collection("iscrizioniCorsi").doc(iscrizioneId).update({
@@ -670,6 +693,11 @@ async function confermaIscrizione(iscrizioneId, corsoId, giorno, orario, nome, c
     await ricaricaIscrizioniCorso(corsoId);
     await ricaricaPanoramicaSeAperta(corsoId);
     await aggiornaContatoriDopoModifica(corsoId);
+
+    if (email && confirm(`Aprire l'email di conferma per ${nome}?`)) {
+      apriEmailA(email, `Conferma iscrizione corso — ${corso?.nome || ""}`,
+        `Gentile ${nome},\n\nSiamo lieti di confermarti nel corso "${corso?.nome || ""}":\n\nGiorno: ${giornoLabel}\nOrario: ${orario}${campo ? "\nCampo: " + campo : ""}\n\nA presto!`);
+    }
   } catch (err) {
     showError(document.getElementById("corsi-list-error"), "Errore: " + err.message);
   }
@@ -677,7 +705,8 @@ async function confermaIscrizione(iscrizioneId, corsoId, giorno, orario, nome, c
 
 // Chiede un motivo (es. "numero insufficiente di iscritti nella fascia
 // richiesta") così lo staff ha una nota pronta per avvisare l'interessato.
-async function rifiutaIscrizione(iscrizioneId, corsoId, nome) {
+async function rifiutaIscrizione(iscrizioneId, corsoId, nome, email) {
+  const corso = corsiCache.find(c => c.id === corsoId);
   const motivo = prompt("Motivo del rifiuto (es. numero insufficiente di iscritti nella fascia richiesta) — verrà usato per avvisare l'interessato:", "Numero insufficiente di iscritti nella fascia richiesta");
   if (motivo === null) return;
 
@@ -692,6 +721,11 @@ async function rifiutaIscrizione(iscrizioneId, corsoId, nome) {
     await ricaricaIscrizioniCorso(corsoId);
     await ricaricaPanoramicaSeAperta(corsoId);
     await aggiornaContatoriDopoModifica(corsoId);
+
+    if (email && confirm(`Aprire l'email di avviso per ${nome}?`)) {
+      apriEmailA(email, `Esito iscrizione corso — ${corso?.nome || ""}`,
+        `Gentile ${nome},\n\nTi scriviamo in merito alla tua iscrizione al corso "${corso?.nome || ""}".\n\nPurtroppo non è stato possibile confermarti in nessuno degli orari proposti: ${motivo}\n\nRestiamo a disposizione per qualsiasi chiarimento.`);
+    }
   } catch (err) {
     showError(document.getElementById("corsi-list-error"), "Errore: " + err.message);
   }

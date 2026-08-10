@@ -233,3 +233,43 @@ function initLinkCopyBox(inputId, btnId, targetPage) {
 
   btn.addEventListener("click", () => copyToClipboard(input.value, btn));
 }
+
+// ---------- Tema chiaro/scuro ----------
+// Preferenza salvata sul dispositivo (non nel profilo utente): l'app resta
+// scura di default, il chiaro è un'opzione esplicita. L'attributo
+// data-theme viene già impostato da uno script inline in <head> di ogni
+// pagina (prima del CSS) per evitare il flash del tema scuro — qui si
+// sincronizzano solo il meta theme-color e il pulsante.
+const TEMA_STORAGE_KEY = "sportos-tema";
+const TEMA_COLORE_META = { dark: "#0d1f30", light: "#eef2f4" };
+
+function temaAttuale() {
+  return document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
+}
+
+function applyStoredTheme() {
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = TEMA_COLORE_META[temaAttuale()];
+}
+applyStoredTheme();
+
+function initThemeToggle(btnId) {
+  const btn = document.getElementById(btnId || "theme-toggle-btn");
+  if (!btn) return;
+
+  const sync = () => {
+    btn.textContent = temaAttuale() === "light" ? "Tema scuro" : "Tema chiaro";
+  };
+
+  btn.addEventListener("click", () => {
+    const nuovo = temaAttuale() === "light" ? "dark" : "light";
+    if (nuovo === "light") document.documentElement.setAttribute("data-theme", "light");
+    else document.documentElement.removeAttribute("data-theme");
+    localStorage.setItem(TEMA_STORAGE_KEY, nuovo);
+    applyStoredTheme();
+    sync();
+  });
+
+  sync();
+}
+initThemeToggle();

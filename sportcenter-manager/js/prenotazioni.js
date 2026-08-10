@@ -65,7 +65,12 @@ function slotsInInterval(a, b, duration) {
       starts.push(t);
     }
   } else {
-    const limit = Math.min(b, BOUNDARY);
+    // Per i 60' il limite è mezz'ora oltre BOUNDARY: consente un ultimo
+    // inizio alle 16:30 (finisce 17:30) invece di fermarsi alle 16:00 —
+    // l'anti-buco fa comunque il suo lavoro: se le 16:30 lasciassero un
+    // residuo <60' prima del prossimo impegno, verrebbero escluse come
+    // qualsiasi altro inizio.
+    const limit = Math.min(b, BOUNDARY + 30);
     for (let t = a; t + 60 <= limit; t += 30) {
       const remain = limit - (t + 60);
       if (remain === 0 || remain >= 60) starts.push(t);

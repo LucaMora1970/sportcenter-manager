@@ -20,6 +20,24 @@
   font-size: 16px;
 }
 
+/* Tema chiaro, opzionale (attivato via data-theme="light" su <html>,
+   scelta salvata sul dispositivo — vedi initThemeToggle in utils.js).
+   Stessi ruoli semantici delle variabili sopra, solo invertiti in
+   chiarezza: il resto del CSS non cambia, legge sempre le stesse
+   custom property. */
+:root[data-theme="light"] {
+  --court-blue-950: #eef2f4;
+  --court-blue-900: #ffffff;
+  --court-blue-800: #e4eaed;
+  --court-blue-700: #c7d3d9;
+  --line-white: #16283a;
+  --chalk-grey: #52697a;
+  --chalk-grey-dim: #8199a8;
+  --ball: #6f8f00;
+  --ball-dim: #576f00;
+  --danger: #c23b2e;
+}
+
 * { box-sizing: border-box; }
 
 html, body {
@@ -103,6 +121,16 @@ a { color: var(--ball); }
   white-space: nowrap;
 }
 .topbar-link:hover { color: var(--ball); border-color: var(--ball); }
+
+/* Reset per usare .topbar-link anche su <button> (toggle tema) invece
+   che solo su <a> — niente chrome di default del browser. */
+button.topbar-link {
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.topbar-actions { display: flex; gap: 8px; align-items: center; }
 
 /* Tariffe orarie per disciplina inline nella scheda utente (Team) */
 .user-tariffa-row {
