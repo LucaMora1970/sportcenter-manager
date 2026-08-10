@@ -179,6 +179,7 @@ function renderCorsi() {
         <div style="display:flex;flex-direction:column;gap:6px;">
           ${puoGestire ? `<button class="btn btn-ghost edit-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Modifica</button>` : ""}
           ${puoApprovare && !c.approvato ? `<button class="btn btn-primary approva-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Approva</button>` : ""}
+          ${c.approvato ? `<button class="btn btn-ghost link-diretto-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Copia link diretto</button>` : ""}
           ${puoVedereIscrizioni && c.approvato ? `<button class="btn btn-ghost iscrizioni-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Iscrizioni</button>` : ""}
           ${puoVedereIscrizioni && c.approvato ? `<button class="btn btn-ghost panoramica-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Panoramica</button>` : ""}
           ${puoVedereIscrizioni && c.approvato ? `<button class="btn btn-ghost stampa-lista-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Stampa / PDF</button>` : ""}
@@ -225,6 +226,13 @@ function renderCorsi() {
         showError(document.getElementById("corsi-list-error"), "Errore: " + err.message);
         btn.disabled = false;
       }
+    });
+  });
+
+  list.querySelectorAll(".link-diretto-corso-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const link = basePageUrl() + "iscrizione-corso.html?corso=" + btn.dataset.id;
+      copyToClipboard(link, btn);
     });
   });
 

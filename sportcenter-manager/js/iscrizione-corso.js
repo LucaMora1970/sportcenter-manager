@@ -58,6 +58,13 @@ async function loadCorsiAperti() {
     .filter(c => c.attivo !== false && (!c.terminIscrizione || c.terminIscrizione >= oggi));
 
   renderCorsiAperti();
+
+  // Link diretto (?corso=ID, generato dallo staff in Corsi): se il corso è
+  // tra quelli aperti alle iscrizioni si passa dritti al form, altrimenti
+  // (non più approvato/aperto) resta il solito elenco.
+  const corsoId = new URLSearchParams(location.search).get("corso");
+  const corsoDaLink = corsoId ? corsiApertiCache.find(c => c.id === corsoId) : null;
+  if (corsoDaLink) selezionaCorso(corsoDaLink);
 }
 
 function renderCorsiAperti() {

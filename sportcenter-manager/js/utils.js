@@ -195,26 +195,41 @@ function showError(el, message) {
   el.innerHTML = renderErrorMessage(message);
 }
 
+// Cartella della pagina corrente come URL assoluto (funziona sia in locale
+// sia sotto un sotto-percorso su GitHub Pages) — usata per costruire link
+// ad altre pagine dell'app senza hardcodare il dominio.
+function basePageUrl() {
+  return location.href.replace(/[^/]*$/, "");
+}
+
+// Copia un testo negli appunti e mostra un feedback "Copiato!" temporaneo
+// sul pulsante che ha scatenato l'azione.
+async function copyToClipboard(text, btn) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const tmp = document.createElement("textarea");
+    tmp.value = text;
+    document.body.appendChild(tmp);
+    tmp.select();
+    document.execCommand("copy");
+    document.body.removeChild(tmp);
+  }
+  if (btn) {
+    const originale = btn.textContent;
+    btn.textContent = "Copiato!";
+    setTimeout(() => { btn.textContent = originale; }, 1500);
+  }
+}
+
 // Riempie un campo readonly con l'URL assoluto di un'altra pagina dell'app
-// (calcolato da location, funziona sia in locale che sotto sotto-percorso
-// su GitHub Pages) e collega un pulsante "Copia" negli appunti.
+// e collega un pulsante "Copia" negli appunti.
 function initLinkCopyBox(inputId, btnId, targetPage) {
   const input = document.getElementById(inputId);
   const btn = document.getElementById(btnId);
   if (!input || !btn) return;
 
-  const base = location.href.replace(/[^/]*$/, "");
-  input.value = base + targetPage;
+  input.value = basePageUrl() + targetPage;
 
-  btn.addEventListener("click", async () => {
-    try {
-      await navigator.clipboard.writeText(input.value);
-      const originale = btn.textContent;
-      btn.textContent = "Copiato!";
-      setTimeout(() => { btn.textContent = originale; }, 1500);
-    } catch {
-      input.select();
-      document.execCommand("copy");
-    }
-  });
+  btn.addEventListener("click", () => copyToClipboard(input.value, btn));
 }
