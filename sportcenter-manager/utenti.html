@@ -40,9 +40,32 @@
 
       <hr class="court-divider">
 
+      <!-- Comunicazione al team -->
+      <div class="section-title"><h2>Comunicazione al team</h2></div>
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Apre il tuo programma email con i destinatari selezionati in copia nascosta (CCN) — nessuno vede gli indirizzi degli altri.</p>
+      <div class="row2" style="margin-bottom:10px;">
+        <button type="button" class="btn btn-ghost" id="team-email-tutti-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;">Seleziona tutti</button>
+        <button type="button" class="btn btn-ghost" id="team-email-nessuno-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;">Deseleziona tutti</button>
+      </div>
+      <div class="checkbox-list" id="team-email-list">
+        <div class="empty-state"><div class="display">Caricamento…</div></div>
+      </div>
+      <div class="field">
+        <label for="team-email-oggetto">Oggetto (opzionale)</label>
+        <input type="text" id="team-email-oggetto" placeholder="es. Comunicazione Tennis Club Mendrisio">
+      </div>
+      <div class="field">
+        <label for="team-email-corpo">Testo (opzionale)</label>
+        <textarea id="team-email-corpo" rows="3" placeholder="Testo del messaggio"></textarea>
+      </div>
+      <div class="error-msg" id="team-email-error"></div>
+      <button type="button" class="btn btn-primary" id="team-email-invia-btn">Invia email (CCN)</button>
+
+      <hr class="court-divider">
+
       <!-- Nuovo utente -->
       <div class="section-title"><h2>Nuovo utente</h2></div>
-      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Alla creazione il collaboratore riceve un'email per impostare da solo la propria password.</p>
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Alla creazione puoi comunicare tu stesso la password iniziale al collaboratore (es. WhatsApp) — lui potrà cambiarla in un secondo momento dalla pagina "Password".</p>
       <form id="new-user-form">
         <div class="field">
           <label for="new-user-nome">Nome</label>
@@ -56,6 +79,13 @@
           <label for="new-user-ruolo">Ruolo</label>
           <select id="new-user-ruolo" required></select>
         </div>
+        <div class="field">
+          <label for="new-user-password">Password iniziale</label>
+          <div class="team-card-row">
+            <input type="text" id="new-user-password" required placeholder="es. corte-42-blu" minlength="6">
+            <button type="button" class="btn btn-ghost" id="genera-password-btn">Genera</button>
+          </div>
+        </div>
         <div class="checkbox-row" style="margin-bottom:16px;">
           <input type="checkbox" id="new-user-quotacampo">
           <label for="new-user-quotacampo">Soggetto a quota campo (maestro)</label>
@@ -67,6 +97,14 @@
         <div class="error-msg" id="new-user-error"></div>
         <button type="submit" class="btn btn-primary" id="create-user-btn">Crea utente</button>
       </form>
+
+      <div id="new-user-fatto" class="hidden" style="margin-top:16px;">
+        <div class="team-card">
+          <div class="team-card-section-label">Utente creato — comunica queste credenziali</div>
+          <p id="new-user-credenziali-testo" style="font-family:'Space Mono', monospace; font-size:0.82rem; white-space:pre-line; color:var(--line-white); margin:8px 0 12px;"></p>
+          <button type="button" class="btn btn-ghost" id="copia-credenziali-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;">Copia messaggio</button>
+        </div>
+      </div>
 
       <hr class="court-divider">
 

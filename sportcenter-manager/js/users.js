@@ -5,6 +5,7 @@
 
 let currentProfile = null;
 let rolesCache = []; // [{id, permessi:[...]}]
+let usersCache = [];
 
 const KNOWN_PERMISSIONS = [
   { id: "*", label: "Amministratore (tutti i permessi)" },
@@ -71,11 +72,29 @@ function getSecondaryAuth() {
   return secondaryApp.auth();
 }
 
-// Password iniziale mai comunicata a nessuno: l'account viene creato con
-// questo valore casuale ma il collaboratore imposta la propria password
-// reale tramite l'email di reset inviata subito dopo la creazione.
-function generateRandomPassword() {
-  return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+// Password iniziale leggibile (due parole a tema + numero) da comunicare
+// direttamente al collaboratore — pensata per essere facile da leggere/
+// dettare a voce o via WhatsApp, non per restare quella definitiva.
+const PASSWORD_WORDS = ["corte", "rete", "match", "set", "volee", "servizio", "campo", "palla", "rovescio", "diritto", "smash", "slice"];
+function generateReadablePassword() {
+  const w1 = PASSWORD_WORDS[Math.floor(Math.random() * PASSWORD_WORDS.length)];
+  let w2 = PASSWORD_WORDS[Math.floor(Math.random() * PASSWORD_WORDS.length)];
+  while (w2 === w1) w2 = PASSWORD_WORDS[Math.floor(Math.random() * PASSWORD_WORDS.length)];
+  const n = Math.floor(10 + Math.random() * 90);
+  return `${w1}-${w2}-${n}`;
+}
+
+// Messaggio pronto da incollare (WhatsApp, email, di persona) con le
+// credenziali del collaboratore appena creato.
+function mostraCredenzialiCreate(nome, email, password) {
+  const link = basePageUrl() + "index.html";
+  const testo = `Ciao ${nome},\n\nEcco le tue credenziali di accesso a Sportcenter Manager Os (il gestionale del Tennis Club Mendrisio):\n\nLink: ${link}\nEmail: ${email}\nPassword: ${password}\n\nAl primo accesso puoi cambiarla dalla pagina "Password" in alto.`;
+
+  document.getElementById("new-user-credenziali-testo").textContent = testo;
+  document.getElementById("new-user-fatto").classList.remove("hidden");
+
+  const copiaBtn = document.getElementById("copia-credenziali-btn");
+  copiaBtn.onclick = () => copyToClipboard(testo, copiaBtn);
 }
 
 // ---------- Utenti ----------
@@ -86,6 +105,8 @@ async function loadUsers() {
 
   const snap = await db.collection("users").orderBy("nome").get();
   const users = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  usersCache = users;
+  renderTeamEmailPicker();
 
   if (users.length === 0) {
     list.innerHTML = `<div class="empty-state"><div class="display">Nessun utente</div></div>`;
@@ -156,6 +177,50 @@ async function loadUsers() {
   list.querySelectorAll(".send-reset-btn").forEach(btn => {
     btn.addEventListener("click", onSendPasswordReset);
   });
+}
+
+// ---------- Comunicazione al team (mailto con destinatari in CCN) ----------
+
+function renderTeamEmailPicker() {
+  const container = document.getElementById("team-email-list");
+  if (!container) return;
+
+  const conEmail = usersCache.filter(u => u.email);
+  if (conEmail.length === 0) {
+    container.innerHTML = `<div class="empty-state"><div class="display">Nessun utente con email</div></div>`;
+    return;
+  }
+
+  container.innerHTML = conEmail.map(u => `
+    <div class="checkbox-row">
+      <input type="checkbox" class="team-email-cb" value="${escapeHtml(u.email)}" id="team-email-${u.id}" ${u.attivo !== false ? "checked" : ""}>
+      <label for="team-email-${u.id}">${escapeHtml(u.nome || u.email)}${u.attivo === false ? " (disattivato)" : ""}</label>
+    </div>
+  `).join("");
+}
+
+// mailto standard: destinatari passati come parametro "bcc" invece che nella
+// parte principale dell'indirizzo, così nessuno vede gli indirizzi altrui —
+// niente da inviare/gestire lato server, si appoggia al programma email già
+// configurato su chi clicca.
+function onInviaEmailTeam() {
+  const errorEl = document.getElementById("team-email-error");
+  errorEl.textContent = "";
+
+  const emails = Array.from(document.querySelectorAll(".team-email-cb:checked")).map(cb => cb.value);
+  if (emails.length === 0) {
+    showError(errorEl, "Seleziona almeno un destinatario.");
+    return;
+  }
+
+  const oggetto = document.getElementById("team-email-oggetto").value.trim();
+  const corpo = document.getElementById("team-email-corpo").value.trim();
+
+  const parti = [`bcc=${encodeURIComponent(emails.join(","))}`];
+  if (oggetto) parti.push(`subject=${encodeURIComponent(oggetto)}`);
+  if (corpo) parti.push(`body=${encodeURIComponent(corpo)}`);
+
+  window.location.href = `mailto:?${parti.join("&")}`;
 }
 
 async function onSendPasswordReset(e) {
@@ -258,6 +323,7 @@ async function onCreateUser(e) {
   const nome = document.getElementById("new-user-nome").value.trim();
   const email = document.getElementById("new-user-email").value.trim();
   const ruoloId = document.getElementById("new-user-ruolo").value;
+  const password = document.getElementById("new-user-password").value;
   const soggettoQuotaCampo = document.getElementById("new-user-quotacampo").checked;
 
   const tariffeOrarie = {};
@@ -268,7 +334,7 @@ async function onCreateUser(e) {
 
   try {
     const secondaryAuth = getSecondaryAuth();
-    const cred = await secondaryAuth.createUserWithEmailAndPassword(email, generateRandomPassword());
+    const cred = await secondaryAuth.createUserWithEmailAndPassword(email, password);
     const uid = cred.user.uid;
 
     await db.collection("users").doc(uid).set({
@@ -282,9 +348,11 @@ async function onCreateUser(e) {
     });
 
     await secondaryAuth.signOut();
-    await auth.sendPasswordResetEmail(email);
+
+    mostraCredenzialiCreate(nome, email, password);
 
     document.getElementById("new-user-form").reset();
+    document.getElementById("new-user-password").value = generateReadablePassword();
     await loadUsers();
   } catch (err) {
     showError(errorEl, "Errore: " + err.message);
@@ -369,6 +437,17 @@ requireAuth(async (profile) => {
   document.getElementById("new-user-form").addEventListener("submit", onCreateUser);
   document.getElementById("new-role-form").addEventListener("submit", onCreateRole);
   document.getElementById("perm-admin").addEventListener("change", syncAdminExclusive);
+  document.getElementById("genera-password-btn").addEventListener("click", () => {
+    document.getElementById("new-user-password").value = generateReadablePassword();
+  });
+  document.getElementById("new-user-password").value = generateReadablePassword();
+  document.getElementById("team-email-tutti-btn").addEventListener("click", () => {
+    document.querySelectorAll(".team-email-cb").forEach(cb => { cb.checked = true; });
+  });
+  document.getElementById("team-email-nessuno-btn").addEventListener("click", () => {
+    document.querySelectorAll(".team-email-cb").forEach(cb => { cb.checked = false; });
+  });
+  document.getElementById("team-email-invia-btn").addEventListener("click", onInviaEmailTeam);
 
   await loadDiscipline();
   renderNewUserTariffeFields();
