@@ -55,6 +55,27 @@ function eOggi(dataIso) {
   return dataIso === oraLocaleZurigo().dataIso;
 }
 
+// Una prenotazione "in pagamento" scaduta (pagamento mai concluso: pagina
+// abbandonata, o problemi col webhook) non deve bloccare lo slot per
+// sempre — la cancellazione fisica avviene lato server (Cloud Function),
+// qui si tratta solo come "libera" a scopo di visualizzazione/calcolo.
+// Duplicato in js/prenotazioni.js e functions/index.js.
+const PENDING_SCADUTO_MINUTI = 15;
+function pendingScaduto(booking) {
+  if (booking.status !== "PENDING_PAYMENT") return false;
+  if (!booking.createdAt || typeof booking.createdAt.toMillis !== "function") return false;
+  return (Date.now() - booking.createdAt.toMillis()) > PENDING_SCADUTO_MINUTI * 60000;
+}
+
+// Timestamp dell'acquisto mostrato sullo slot "Occupato" — elemento di
+// verifica in più (confrontabile col biglietto), non una credenziale.
+function formatTimestamp(ts) {
+  if (!ts || typeof ts.toDate !== "function") return "";
+  const d = ts.toDate();
+  const p = n => String(n).padStart(2, "0");
+  return `${p(d.getDate())}.${p(d.getMonth() + 1)} alle ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 function chiusuraGiorno(dataIso) {
   const giorno = new Date(dataIso + "T00:00:00").getDay();
   return (giorno === 0 || giorno === 6 || FESTIVI.includes(dataIso)) ? CLOSE_WEEKEND : CLOSE;
@@ -214,8 +235,8 @@ function ascoltaPrenotazioniGiorno() {
       (snap) => {
         state.bookings = snap.docs
           .map(d => d.data())
-          .filter(b => b.status === "PENDING_PAYMENT" || b.status === "CONFIRMED" || b.status === "COMPLETED")
-          .map(b => ({ start: orarioToMin(b.startTime), end: orarioToMin(b.endTime) }));
+          .filter(b => (b.status === "PENDING_PAYMENT" && !pendingScaduto(b)) || b.status === "CONFIRMED" || b.status === "COMPLETED")
+          .map(b => ({ start: orarioToMin(b.startTime), end: orarioToMin(b.endTime), createdAt: b.createdAt }));
         render();
       },
       (err) => {
@@ -291,6 +312,7 @@ function render() {
     <div class="busy" style="top:${px(b.start)}px;height:${px(b.end) - px(b.start)}px">
       <span class="name">Occupato</span>
       <span class="time">${label(b.start)}–${label(b.end)}</span>
+      ${b.createdAt ? `<span class="timestamp">Prenotato il ${formatTimestamp(b.createdAt)}</span>` : ""}
     </div>
   `).join("");
 
@@ -334,6 +356,9 @@ function render() {
 // ---------- Init ----------
 
 (async function init() {
+  await loadDatiCentro();
+  document.getElementById("centro-kicker").textContent = DATI_CENTRO.nome;
+
   const esitoPagamento = new URLSearchParams(location.search).get("pagamento");
   if (esitoPagamento === "fallito") {
     alert("Pagamento non riuscito o annullato: lo slot è stato liberato, riprova pure.");

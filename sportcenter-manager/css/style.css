@@ -682,6 +682,7 @@ select:focus, input:focus, textarea:focus {
 }
 .busy .name { font-size: 0.74rem; font-weight: 700; color: var(--line-white); }
 .busy .time { font-family: 'Space Mono', monospace; font-size: 0.68rem; color: var(--chalk-grey); }
+.busy .timestamp { font-size: 0.6rem; color: var(--chalk-grey-dim); }
 .busy[data-bloccato="true"] {
   background: color-mix(in srgb, var(--danger) 16%, var(--court-blue-900));
   border-color: var(--danger); border-left-color: var(--danger);
@@ -744,6 +745,8 @@ select:focus, input:focus, textarea:focus {
   }
   #print-area h1 { font-size: 1.3rem; margin: 0 0 4px; text-transform: none; }
   #print-area p { margin: 4px 0; font-size: 0.9rem; }
+  .stampa-intestazione { margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid #999; font-size: 0.8rem; color: #333; }
+  .stampa-intestazione strong { display: block; font-size: 1rem; color: #000; margin-bottom: 2px; }
   #print-area table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.82rem; }
   #print-area th, #print-area td { border: 1px solid #999; padding: 6px 8px; text-align: left; }
   #print-area th { background: #eee; }

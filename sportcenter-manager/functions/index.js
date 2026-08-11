@@ -85,6 +85,17 @@ const SLOT_FISSO_PRANZO = 12 * 60 + 15;
 const SLOT_FISSO_SERALE = 17 * 60 + 30; // 17:30, solo lun-ven, solo 90'
 const FESTIVI = [];
 
+// Una prenotazione resta "PENDING_PAYMENT" tra la creazione e l'esito del
+// pagamento — se il webhook non arriva mai (pagamento abbandonato,
+// problemi di configurazione) resterebbe bloccata per sempre senza
+// questo limite. Duplicato in js/prenota-padel.js e js/prenotazioni.js.
+const PENDING_SCADUTO_MINUTI = 15;
+function pendingScaduto(booking) {
+  if (booking.status !== "PENDING_PAYMENT") return false;
+  if (!booking.createdAt || typeof booking.createdAt.toMillis !== "function") return false;
+  return (Date.now() - booking.createdAt.toMillis()) > PENDING_SCADUTO_MINUTI * 60000;
+}
+
 function orarioToMin(orario) {
   const [h, m] = orario.split(":").map(Number);
   return h * 60 + m;
@@ -325,16 +336,22 @@ const COURT_ID = "1";
 async function confermaPrenotazionePubblica({ bookingId, courtId, date, startTime, endTime, prezzo, token, paymentId, creditCode, creditoScalato }) {
   const bookingCode = await generaCodicePrenotazioneUnivoco();
 
+  // L'id transazione di PostFinance è un numero (Transaction.id: number
+  // nell'SDK) — .doc() di Firestore richiede sempre una stringa, senza
+  // questa conversione la scrittura lancia un errore e l'intero webhook
+  // fallisce silenziosamente (biglietto mai creato).
+  const paymentIdStr = paymentId != null ? String(paymentId) : null;
+
   const batch = db.batch();
   batch.update(db.collection("bookings").doc(bookingId), { status: "CONFIRMED" });
   batch.set(db.collection("bookingTickets").doc(token), {
     bookingId, bookingCode, courtId, date, startTime, endTime,
-    price: prezzo, currency: "CHF", paymentId: paymentId || null,
+    price: prezzo, currency: "CHF", paymentId: paymentIdStr,
     createdAt: FieldValue.serverTimestamp()
   });
   batch.set(db.collection("bookingCodes").doc(bookingCode), { bookingId, token });
-  if (paymentId) {
-    batch.set(db.collection("payments").doc(paymentId), {
+  if (paymentIdStr) {
+    batch.set(db.collection("payments").doc(paymentIdStr), {
       bookingId, amount: prezzo - (creditoScalato || 0), currency: "CHF",
       status: "PAID", createdAt: FieldValue.serverTimestamp()
     });
@@ -382,7 +399,15 @@ exports.creaPrenotazionePubblica = onCall(
       .where("date", "==", date)
       .where("courtId", "==", court)
       .get();
+
+    // Pulizia delle "PENDING_PAYMENT" scadute (pagamento mai concluso, es.
+    // abbandonato o webhook mai arrivato) — altrimenti resterebbero a
+    // bloccare lo slot per sempre.
+    const scadute = existingSnap.docs.filter(d => pendingScaduto(d.data()));
+    if (scadute.length > 0) await Promise.all(scadute.map(d => d.ref.delete()));
+
     const existingBookings = existingSnap.docs
+      .filter(d => !scadute.includes(d))
       .map(d => d.data())
       .filter(b => b.status === "PENDING_PAYMENT" || b.status === "CONFIRMED" || b.status === "COMPLETED")
       .map(b => ({ start: orarioToMin(b.startTime), end: orarioToMin(b.endTime) }));
@@ -522,7 +547,12 @@ exports.creaPrenotazioneOperatore = onCall(async (request) => {
     .where("date", "==", date)
     .where("courtId", "==", court)
     .get();
+
+  const scadute = existingSnap.docs.filter(d => pendingScaduto(d.data()));
+  if (scadute.length > 0) await Promise.all(scadute.map(d => d.ref.delete()));
+
   const existingBookings = existingSnap.docs
+    .filter(d => !scadute.includes(d))
     .map(d => d.data())
     .filter(b => b.status === "PENDING_PAYMENT" || b.status === "CONFIRMED" || b.status === "COMPLETED")
     .map(b => ({ start: orarioToMin(b.startTime), end: orarioToMin(b.endTime) }));

@@ -37,6 +37,48 @@
 
       <div class="error-msg" id="config-list-error"></div>
 
+      <!-- Dati del centro -->
+      <div class="section-title"><h2>Dati del centro</h2></div>
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Usati sul biglietto delle prenotazioni padel e sui documenti stampati (liste, panoramiche, riepiloghi).</p>
+      <form id="centro-form">
+        <div class="field">
+          <label for="centro-nome">Nome centro</label>
+          <input type="text" id="centro-nome" required placeholder="es. Tennis Club Mendrisio">
+        </div>
+        <div class="field">
+          <label for="centro-indirizzo">Indirizzo</label>
+          <input type="text" id="centro-indirizzo" placeholder="es. Via dei Campi 1">
+        </div>
+        <div class="row2">
+          <div class="field" style="flex:0 0 110px;">
+            <label for="centro-cap">CAP</label>
+            <input type="text" id="centro-cap" placeholder="es. 6850">
+          </div>
+          <div class="field">
+            <label for="centro-localita">Località</label>
+            <input type="text" id="centro-localita" placeholder="es. Mendrisio">
+          </div>
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label for="centro-telefono">Telefono</label>
+            <input type="tel" id="centro-telefono" placeholder="es. 091 123 45 67">
+          </div>
+          <div class="field">
+            <label for="centro-email">Email</label>
+            <input type="email" id="centro-email" placeholder="es. info@circolo.ch">
+          </div>
+        </div>
+        <div class="field">
+          <label for="centro-homepage">Homepage</label>
+          <input type="text" id="centro-homepage" placeholder="es. www.circolo.ch">
+        </div>
+        <div class="error-msg" id="centro-error"></div>
+        <button type="submit" class="btn btn-ghost" id="salva-centro-btn">Salva</button>
+      </form>
+
+      <hr class="court-divider">
+
       <!-- Link prenotazione padel pubblica -->
       <div class="section-title"><h2>Link prenotazione campo padel</h2></div>
       <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 10px;">Pagina pubblica, nessun login richiesto — condividila con i soci.</p>

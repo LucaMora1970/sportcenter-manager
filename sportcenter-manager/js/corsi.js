@@ -452,6 +452,7 @@ function stampaPanoramicaCorso(corsoId, iscrizioni) {
   });
 
   document.getElementById("print-area").innerHTML = `
+    ${intestazioneStampaHtml()}
     <h1>Panoramica — ${escapeHtml(corso.nome)}</h1>
     <p>Istantanea del ${new Date().toLocaleString("it-CH")}</p>
     <table>
@@ -661,7 +662,7 @@ function renderIscrizioniCorso(container, corso, iscrizioni) {
 // automatico): apre il client di posta dello staff già compilato, che
 // resta libero di rivedere il testo e decidere se/quando inviarlo.
 function corpoEmailConCalce(corpo) {
-  const calce = `Tennis Club Mendrisio\nSportcenter Manager OS\n${basePageUrl()}index.html`;
+  const calce = `${DATI_CENTRO.nome}\nSportcenter Manager OS\n${basePageUrl()}index.html`;
   return corpo + "\n\n--\n" + calce;
 }
 
@@ -910,6 +911,7 @@ function stampaRiepilogoSettimanale() {
   }
 
   document.getElementById("print-area").innerHTML = `
+    ${intestazioneStampaHtml()}
     <h1>Riepilogo settimanale corsi</h1>
     <p>Settimana dal ${formatDataBreve(dalIso)}</p>
     <table>
@@ -952,6 +954,7 @@ async function stampaListaCorso(corsoId) {
   }).join("");
 
   document.getElementById("print-area").innerHTML = `
+    ${intestazioneStampaHtml()}
     <h1>${escapeHtml(corso.nome)}</h1>
     <p>${formatDataBreve(corso.dal)}${corso.al ? " – " + formatDataBreve(corso.al) : ""} · ${escapeHtml(disciplinaLabel(corso.disciplina))} · ${iscrizioni.length} iscritti</p>
     <table>
@@ -1129,6 +1132,7 @@ requireAuth(async (profile) => {
 
   initLinkCopyBox("link-iscrizione", "copia-link-iscrizione-btn", "iscrizione-corso.html");
 
+  await loadDatiCentro();
   await loadDiscipline();
   await loadCampi();
 

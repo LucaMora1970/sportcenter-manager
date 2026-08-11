@@ -17,6 +17,10 @@
 
 const TENTATIVI_MAX = 6;
 const ATTESA_TRA_TENTATIVI_MS = 2500;
+// Unica disciplina prenotabile con questo sistema per ora — indicata
+// sempre esplicitamente perché i campi sono numerati per disciplina
+// (es. "Campo 1" esiste sia per tennis sia per padel).
+const DISCIPLINA = "Padel";
 
 let ticketData = null;
 
@@ -51,6 +55,7 @@ async function caricaBiglietto(token) {
 
 function renderBiglietto(data, token) {
   document.getElementById("t-data").textContent = formatDataBreve(data.date);
+  document.getElementById("t-disciplina").textContent = DISCIPLINA;
   document.getElementById("t-campo").textContent = `Campo ${data.courtId}`;
   document.getElementById("t-orario").textContent = `${data.startTime} – ${data.endTime}`;
   document.getElementById("t-prezzo").textContent = `CHF ${(data.price || 0).toFixed(2)}`;
@@ -94,7 +99,7 @@ async function salvaBigliettoPng() {
   ctx.textAlign = "center";
   ctx.fillStyle = "#9fb1bf";
   ctx.font = "600 22px Arial";
-  ctx.fillText("TENNIS CLUB MENDRISIO", W / 2, 210);
+  ctx.fillText((DATI_CENTRO.nome || "").toUpperCase(), W / 2, 210);
 
   ctx.fillStyle = "#c1e08f";
   ctx.font = "700 34px Arial";
@@ -102,6 +107,7 @@ async function salvaBigliettoPng() {
 
   const righe = [
     ["Data", document.getElementById("t-data").textContent],
+    ["Disciplina", document.getElementById("t-disciplina").textContent],
     ["Campo", document.getElementById("t-campo").textContent],
     ["Orario", document.getElementById("t-orario").textContent],
     ["Pagato", document.getElementById("t-prezzo").textContent]
@@ -162,9 +168,9 @@ function aggiungiAlCalendario(data) {
     `DTSTAMP:${dtstamp}`,
     `DTSTART:${dataCompatta}T${oraInizio}`,
     `DTEND:${dataCompatta}T${oraFine}`,
-    "SUMMARY:Campo padel — Tennis Club Mendrisio",
+    `SUMMARY:${DISCIPLINA} — Campo ${data.courtId} — ${DATI_CENTRO.nome}`,
     `DESCRIPTION:Codice prenotazione: ${data.bookingCode}`,
-    "LOCATION:Tennis Club Mendrisio",
+    `LOCATION:${[DATI_CENTRO.nome, DATI_CENTRO.indirizzo, DATI_CENTRO.localita].filter(Boolean).join(", ")}`,
     "END:VEVENT",
     "END:VCALENDAR"
   ].join("\r\n");
@@ -178,6 +184,9 @@ function aggiungiAlCalendario(data) {
 }
 
 (async function init() {
+  await loadDatiCentro();
+  document.getElementById("centro-kicker").textContent = DATI_CENTRO.nome;
+
   const token = new URLSearchParams(location.search).get("t");
   if (!token) {
     document.getElementById("stato-caricamento").classList.add("hidden");
@@ -197,4 +206,17 @@ function aggiungiAlCalendario(data) {
 
   document.getElementById("salva-btn").addEventListener("click", salvaBigliettoPng);
   document.getElementById("calendario-btn").addEventListener("click", () => aggiungiAlCalendario(ticketData));
+
+  // Il biglietto è l'unica prova della prenotazione (nessun account, nessuna
+  // email automatica per ora) — chi torna al tabellone lo salva sempre,
+  // anche se non ha cliccato "Salva biglietto" da solo. Un piccolo ritardo
+  // prima di cambiare pagina: avviare un download e navigare nello stesso
+  // istante può interrompere il download su alcuni browser.
+  document.getElementById("torna-prenotazione-link").addEventListener("click", (e) => {
+    e.preventDefault();
+    const link = e.currentTarget;
+    salvaBigliettoPng();
+    link.textContent = "Biglietto salvato — torno alla prenotazione…";
+    setTimeout(() => { window.location.href = link.href; }, 600);
+  });
 })();

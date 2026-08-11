@@ -89,6 +89,36 @@ async function loadImpostazioni() {
   }
 }
 
+// Popolati da loadDatiCentro() (doc Firestore "impostazioni/centro",
+// configurabile da Configurazione → Dati del centro). Il default qui
+// sotto è solo un ripiego finché nessuno l'ha ancora compilato — usato
+// su biglietto e documenti stampati (liste, panoramiche, riepiloghi).
+let DATI_CENTRO = { nome: "Tennis Club Mendrisio", indirizzo: "", cap: "", localita: "", telefono: "", email: "", homepage: "" };
+
+async function loadDatiCentro() {
+  try {
+    const doc = await db.collection("impostazioni").doc("centro").get();
+    if (doc.exists) DATI_CENTRO = { ...DATI_CENTRO, ...doc.data() };
+  } catch (err) {
+    console.warn("loadDatiCentro: uso il default, lettura fallita:", err.message);
+  }
+}
+
+// Intestazione comune per i documenti stampati (#print-area) — nome del
+// centro, indirizzo e contatti, quando compilati in Configurazione.
+function intestazioneStampaHtml() {
+  const c = DATI_CENTRO;
+  const riga2 = [c.indirizzo, [c.cap, c.localita].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+  const riga3 = [c.telefono, c.email, c.homepage].filter(Boolean).join(" · ");
+  return `
+    <div class="stampa-intestazione">
+      <strong>${escapeHtml(c.nome)}</strong>
+      ${riga2 ? `<div>${escapeHtml(riga2)}</div>` : ""}
+      ${riga3 ? `<div>${escapeHtml(riga3)}</div>` : ""}
+    </div>
+  `;
+}
+
 // Un dipendente può eliminare una propria voce diario solo entro i primi
 // IMPOSTAZIONI.minutiEliminazioneDiario minuti dall'inserimento; oltre,
 // serve il permesso diario:gestisci_tutti (admin/supervisore). Stessa

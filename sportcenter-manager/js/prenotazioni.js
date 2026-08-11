@@ -15,6 +15,7 @@
 let currentProfile = null;
 
 const COURT_ID = "1";
+const DISCIPLINA = "Padel"; // i campi sono numerati per disciplina, va sempre indicata
 const NR_GIORNI_STRIP = 14;
 const GIORNI_BREVI = ["Dom", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab"];
 
@@ -48,6 +49,14 @@ function escludiOrariPassati(starts, dataIso) {
 }
 function eOggi(dataIso) {
   return dataIso === oraLocaleZurigo().dataIso;
+}
+
+// Duplicato da js/prenota-padel.js e functions/index.js.
+const PENDING_SCADUTO_MINUTI = 15;
+function pendingScaduto(booking) {
+  if (booking.status !== "PENDING_PAYMENT") return false;
+  if (!booking.createdAt || typeof booking.createdAt.toMillis !== "function") return false;
+  return (Date.now() - booking.createdAt.toMillis()) > PENDING_SCADUTO_MINUTI * 60000;
 }
 
 function chiusuraGiorno(dataIso) {
@@ -229,8 +238,8 @@ async function caricaGiorno() {
     // giorno, in minuti, usati dall'anti-buco.
     state.bookingsMinuti = bookingsSnap.docs
       .map(d => d.data())
-      .filter(b => b.status === "PENDING_PAYMENT" || b.status === "CONFIRMED" || b.status === "COMPLETED")
-      .map(b => ({ start: orarioToMin(b.startTime), end: orarioToMin(b.endTime) }));
+      .filter(b => (b.status === "PENDING_PAYMENT" && !pendingScaduto(b)) || b.status === "CONFIRMED" || b.status === "COMPLETED")
+      .map(b => ({ start: orarioToMin(b.startTime), end: orarioToMin(b.endTime), createdAt: b.createdAt }));
     state.selected = null;
     renderPicker();
   } catch (err) {
@@ -249,6 +258,7 @@ function rigaHtml(t) {
       <div class="entry-main">
         <span class="badge" style="${stile}">${stato}</span>
         <div class="entry-tipo">${t.startTime} – ${t.endTime}</div>
+        <div class="entry-meta">${DISCIPLINA} · Campo ${escapeHtml(t.courtId || COURT_ID)}</div>
         <div class="entry-meta">Codice: ${escapeHtml(t.bookingCode)} · CHF ${(t.price || 0).toFixed(2)}</div>
         ${t.type === "BLOCK" && t.motivo ? `<div class="entry-meta">Motivo: ${escapeHtml(t.motivo)}</div>` : ""}
         <div class="entry-meta">Prenotato il ${formatTimestamp(t.createdAt)}</div>
@@ -324,6 +334,7 @@ function renderPicker() {
     <div class="busy" style="top:${px(b.start)}px;height:${px(b.end) - px(b.start)}px">
       <span class="name">Occupato</span>
       <span class="time">${label(b.start)}–${label(b.end)}</span>
+      ${b.createdAt ? `<span class="timestamp">Prenotato il ${formatTimestamp(b.createdAt)}</span>` : ""}
     </div>
   `).join("");
 
@@ -452,7 +463,8 @@ async function stampaListaGiorno() {
   ).join("");
 
   document.getElementById("print-area").innerHTML = `
-    <h1>Campo ${COURT_ID} — ${formatDataBreve(state.data)}</h1>
+    ${intestazioneStampaHtml()}
+    <h1>${DISCIPLINA} — Campo ${COURT_ID} — ${formatDataBreve(state.data)}</h1>
     <p>Lista generata il ${new Date().toLocaleString("it-CH")}</p>
     <table>
       <thead><tr><th>Orario</th><th>Codice</th><th>Stato</th><th>Prenotato il</th></tr></thead>
@@ -473,6 +485,8 @@ requireAuth(async (profile) => {
     document.getElementById("operatore-content").classList.add("hidden");
     return;
   }
+
+  await loadDatiCentro();
 
   state.data = toISO(new Date());
   buildDayStrip();

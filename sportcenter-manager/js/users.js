@@ -88,7 +88,7 @@ function generateReadablePassword() {
 // credenziali del collaboratore appena creato.
 function mostraCredenzialiCreate(nome, email, password) {
   const link = basePageUrl() + "index.html";
-  const testo = `Ciao ${nome},\n\nEcco le tue credenziali di accesso a Sportcenter Manager Os (il gestionale del Tennis Club Mendrisio):\n\nLink: ${link}\nEmail: ${email}\nPassword: ${password}\n\nAl primo accesso puoi cambiarla dalla pagina "Password" in alto.`;
+  const testo = `Ciao ${nome},\n\nEcco le tue credenziali di accesso a Sportcenter Manager Os (il gestionale del ${DATI_CENTRO.nome}):\n\nLink: ${link}\nEmail: ${email}\nPassword: ${password}\n\nAl primo accesso puoi cambiarla dalla pagina "Password" in alto.`;
 
   document.getElementById("new-user-credenziali-testo").textContent = testo;
   document.getElementById("new-user-fatto").classList.remove("hidden");
@@ -215,7 +215,7 @@ function onInviaEmailTeam() {
 
   const oggetto = document.getElementById("team-email-oggetto").value.trim();
   const corpo = document.getElementById("team-email-corpo").value.trim();
-  const calce = `Tennis Club Mendrisio\nSportcenter Manager OS\n${basePageUrl()}index.html`;
+  const calce = `${DATI_CENTRO.nome}\nSportcenter Manager OS\n${basePageUrl()}index.html`;
   const corpoConCalce = (corpo ? corpo + "\n\n" : "") + "--\n" + calce;
 
   const parti = [`bcc=${encodeURIComponent(emails.join(","))}`, `body=${encodeURIComponent(corpoConCalce)}`];
@@ -434,6 +434,8 @@ requireAuth(async (profile) => {
     document.getElementById("admin-content").classList.add("hidden");
     return;
   }
+
+  await loadDatiCentro();
 
   document.getElementById("new-user-form").addEventListener("submit", onCreateUser);
   document.getElementById("new-role-form").addEventListener("submit", onCreateRole);

@@ -39,6 +39,47 @@ function posizioneLabel(id) {
   return (POSIZIONI_CAMPO.find(p => p.id === id) || {}).label || id;
 }
 
+// ---------- Dati del centro ----------
+
+async function loadDatiCentroForm() {
+  await loadDatiCentro();
+  document.getElementById("centro-nome").value = DATI_CENTRO.nome || "";
+  document.getElementById("centro-indirizzo").value = DATI_CENTRO.indirizzo || "";
+  document.getElementById("centro-cap").value = DATI_CENTRO.cap || "";
+  document.getElementById("centro-localita").value = DATI_CENTRO.localita || "";
+  document.getElementById("centro-telefono").value = DATI_CENTRO.telefono || "";
+  document.getElementById("centro-email").value = DATI_CENTRO.email || "";
+  document.getElementById("centro-homepage").value = DATI_CENTRO.homepage || "";
+}
+
+async function onSaveDatiCentro(e) {
+  e.preventDefault();
+  const btn = document.getElementById("salva-centro-btn");
+  const errorEl = document.getElementById("centro-error");
+  errorEl.textContent = "";
+  btn.disabled = true;
+
+  const dati = {
+    nome: document.getElementById("centro-nome").value.trim(),
+    indirizzo: document.getElementById("centro-indirizzo").value.trim(),
+    cap: document.getElementById("centro-cap").value.trim(),
+    localita: document.getElementById("centro-localita").value.trim(),
+    telefono: document.getElementById("centro-telefono").value.trim(),
+    email: document.getElementById("centro-email").value.trim(),
+    homepage: document.getElementById("centro-homepage").value.trim()
+  };
+
+  try {
+    if (!dati.nome) throw new Error("Il nome del centro è obbligatorio.");
+    await db.collection("impostazioni").doc("centro").set(dati, { merge: true });
+    DATI_CENTRO = { ...DATI_CENTRO, ...dati };
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // ---------- Impostazioni generali ----------
 
 async function loadImpostazioniForm() {
@@ -897,6 +938,7 @@ requireAuth(async (profile) => {
   populateSelect(document.getElementById("new-quotacampo-disciplina"), DISCIPLINE);
   populateSelect(document.getElementById("new-quotacampo-posizione"), POSIZIONI_CAMPO, "— tutti —");
 
+  document.getElementById("centro-form").addEventListener("submit", onSaveDatiCentro);
   document.getElementById("impostazioni-form").addEventListener("submit", onSaveImpostazioni);
   document.getElementById("tariffe-padel-form").addEventListener("submit", onSaveTariffePadel);
   document.getElementById("new-disciplina-form").addEventListener("submit", onCreateDisciplina);
@@ -919,6 +961,7 @@ requireAuth(async (profile) => {
   document.getElementById("cancel-edit-articolo-btn").addEventListener("click", cancelEditArticolo);
 
   await loadImpostazioniForm();
+  await loadDatiCentroForm();
   await loadTariffePadelForm();
   await loadDisciplineList();
   await loadAllievi();

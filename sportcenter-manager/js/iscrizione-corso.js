@@ -209,4 +209,9 @@ document.getElementById("cambia-corso-btn").addEventListener("click", tornaAllaS
 document.getElementById("iscrizione-form").addEventListener("submit", onSubmitIscrizione);
 document.getElementById("isc-datanascita").addEventListener("change", syncGenitoreObbligatorio);
 
+(async function () {
+  await loadDatiCentro();
+  document.getElementById("centro-kicker").textContent = DATI_CENTRO.nome;
+})();
+
 loadCorsiAperti();
