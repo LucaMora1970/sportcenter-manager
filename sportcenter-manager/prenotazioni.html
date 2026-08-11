@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Prenotazioni — Sport-OS</title>
+<title>Prenotazioni padel — Sport-OS</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <script>if(localStorage.getItem("sportos-tema")==="light")document.documentElement.setAttribute("data-theme","light");</script>
@@ -18,7 +18,7 @@
 <div class="app">
 
   <div class="topbar">
-    <h1>Prenotazioni</h1>
+    <h1>Prenotazioni padel</h1>
     <div class="user-chip" id="user-chip">—</div>
     <div class="topbar-actions">
       <button type="button" class="topbar-link" id="theme-toggle-btn">Tema chiaro</button>
@@ -28,43 +28,53 @@
 
   <main>
 
-    <div id="prenotazioni-content">
+    <div id="access-denied" class="empty-state hidden">
+      <div class="display">Accesso non consentito</div>
+      <p>Questa sezione è riservata a chi gestisce le prenotazioni.</p>
+    </div>
 
-      <p style="color:var(--chalk-grey);font-size:0.8rem;margin:-4px 0 16px;">Fase di test interna — visibile solo al team, non ancora aperta ai soci. Il pagamento passa da PostFinance in ambiente di test: nessun addebito reale.</p>
+    <div id="operatore-content">
 
-      <div class="day-strip" id="dayStrip" role="tablist" aria-label="Giorno"></div>
+      <p style="color:var(--chalk-grey);font-size:0.8rem;margin:-4px 0 16px;">Pannello operatore — le prenotazioni si fanno dalla <a href="prenota-padel.html" target="_blank">pagina pubblica</a>. Verifica al campo: QR → codice → lista stampata, in quest'ordine.</p>
 
-      <div class="duration-row" style="margin-top:16px;">
-        <div>
-          <div class="picker-label" style="margin-bottom:10px;">1. Scegli la durata</div>
-          <div class="seg" id="durationSeg" role="group" aria-label="Durata prenotazione">
-            <button type="button" data-dur="60" aria-pressed="false">60'</button>
-            <button type="button" data-dur="90" aria-pressed="false">90'</button>
-          </div>
+      <!-- Ricerca per codice -->
+      <div class="section-title"><h2>Verifica per codice</h2></div>
+      <div class="row2">
+        <div class="field" style="margin-bottom:0;flex:1;">
+          <input type="text" id="ricerca-codice" placeholder="es. P4X8-K7M2">
         </div>
-        <div class="tabellone-legend">
-          <span><i class="i-occ"></i>Occupato</span>
-          <span><i class="i-free"></i>Libero</span>
-          <span><i class="i-slot"></i>Disponibile</span>
-        </div>
+        <button type="button" class="btn btn-ghost" id="ricerca-btn" style="width:auto;padding:10px 16px;">Cerca</button>
       </div>
-
-      <div class="checkbox-row hidden" id="blocco-row" style="margin-top:10px;">
-        <input type="checkbox" id="blocco-toggle">
-        <label for="blocco-toggle">Blocca questo slot invece di prenotarlo (manutenzione, evento…)</label>
-      </div>
+      <div class="error-msg" id="ricerca-error"></div>
+      <div id="ricerca-risultato"></div>
 
       <hr class="court-divider">
 
-      <div>
-        <div class="court-head" style="margin-bottom:8px;">
-          <h2>Campo Padel</h2>
-          <span class="tag">unico campo</span>
-        </div>
-        <div class="picker-label" style="margin-bottom:8px;">2. Tocca dove posizionarti</div>
-        <div class="error-msg" id="tabellone-error"></div>
-        <div class="timeline" id="timeline"></div>
+      <!-- Tabellone del giorno -->
+      <div class="section-title"><h2>Giorno</h2></div>
+      <div class="day-strip" id="dayStrip" role="tablist" aria-label="Giorno"></div>
+
+      <div class="error-msg" id="lista-error"></div>
+      <div id="lista-giorno" style="margin-top:14px;">
+        <div class="empty-state"><div class="display">Caricamento…</div></div>
       </div>
+
+      <button type="button" class="btn btn-ghost" id="stampa-lista-btn" style="margin-top:14px;">Stampa lista giornaliera</button>
+
+      <hr class="court-divider">
+
+      <!-- Blocco slot / prenotazione esente maestro -->
+      <div class="section-title"><h2>Blocca uno slot o prenota per un maestro</h2></div>
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Nessun pagamento in entrambi i casi — usa il giorno selezionato sopra.</p>
+
+      <div class="picker-label" style="margin-bottom:10px;">Durata</div>
+      <div class="seg" id="durationSeg" role="group" aria-label="Durata">
+        <button type="button" data-dur="60" aria-pressed="false">60'</button>
+        <button type="button" data-dur="90" aria-pressed="false">90'</button>
+      </div>
+
+      <div class="error-msg" id="picker-error" style="margin-top:10px;"></div>
+      <div class="timeline" id="timeline" style="margin-top:10px;"></div>
 
     </div>
 
@@ -89,14 +99,18 @@
 </div>
 
 <div class="summary-bar" id="summaryBar">
-  <div class="summary-card">
+  <div class="summary-card" style="flex-direction:column;align-items:stretch;gap:10px;">
     <div class="summary-info">
       <div class="t" id="summaryTitle">—</div>
-      <div class="p" id="summaryPrice"></div>
     </div>
-    <button type="button" class="summary-cta" id="summaryCta">Prenota</button>
+    <div style="display:flex;gap:8px;">
+      <button type="button" class="btn btn-ghost" id="blocca-btn" style="width:auto;flex:1;padding:10px 12px;font-size:0.75rem;">Blocca slot</button>
+      <button type="button" class="btn btn-primary" id="esente-btn" style="width:auto;flex:1;padding:10px 12px;font-size:0.75rem;">Prenota (esente)</button>
+    </div>
   </div>
 </div>
+
+<div id="print-area"></div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>

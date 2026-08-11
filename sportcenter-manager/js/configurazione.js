@@ -885,6 +885,7 @@ requireAuth(async (profile) => {
     return;
   }
 
+  initLinkCopyBox("link-prenota-padel", "copia-link-prenota-padel-btn", "prenota-padel.html");
   initLinkCopyBox("link-tabellone", "copia-link-tabellone-btn", "prenotazioni.html");
 
   await seedDisciplineIfEmpty();

@@ -158,10 +158,13 @@ service cloud.firestore {
       allow read, write: if hasPermission("vendite:gestisci");
     }
 
-    // Impostazioni generali (doc singolo "generale"): minutiEliminazioneDiario
-    // e altri parametri globali configurabili da Configurazione.
+    // Impostazioni generali (doc "generale": minutiEliminazioneDiario; doc
+    // "tariffePadel": prezzi campo). Lettura pubblica perché la pagina
+    // pubblica di prenotazione padel, senza login, deve poter mostrare il
+    // prezzo prima del pagamento — non sono dati sensibili (stesso
+    // ragionamento già fatto per "corsi" e "discipline").
     match /impostazioni/{id} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow write: if hasPermission("config:gestisci");
     }
 
@@ -245,8 +248,72 @@ service cloud.firestore {
       );
     }
 
-    // Placeholder per collezioni future (camp, pagamenti): aggiungere qui
-    // blocchi match dedicati man mano che si sviluppano le pagine,
-    // seguendo lo stesso pattern basato su hasPermission().
+    // ============================================================
+    // Prenotazione padel pubblica (senza login) con pagamento reale:
+    // tutte le scritture passano da Cloud Functions con Admin SDK, che
+    // bypassa queste regole — qui sotto ci sono SOLO permessi di lettura,
+    // mai di scrittura diretta dal client. La vecchia collection
+    // "prenotazioniPadel" sopra resta per compatibilità con i dati di
+    // test già presenti, ma non viene più scritta da questo flusso.
+    // ============================================================
+
+    // Solo i campi pubblici (niente nome/telefono/email/codice): serve al
+    // tabellone pubblico e al calcolo degli slot liberi lato client.
+    match /bookings/{id} {
+      allow get, list: if true;
+      allow write: if false;
+    }
+
+    // L'ID del documento È il token privato lungo e casuale: conoscerlo
+    // (dal link o dal QR) è di per sé l'autorizzazione a leggere QUEL
+    // biglietto (allow get). Non deve però essere possibile interrogare
+    // la collection ed enumerare i biglietti di tutti — quello resta
+    // riservato al pannello operatore (allow list).
+    match /bookingTickets/{token} {
+      allow get: if true;
+      allow list: if hasPermission("prenotazioni:gestisci");
+      allow write: if false;
+    }
+
+    // Indice codice breve → prenotazione, per la ricerca manuale
+    // dell'operatore (secondo livello di verifica al campo, se il QR non
+    // funziona). Il codice si comunica di persona, non va reso
+    // interrogabile pubblicamente.
+    match /bookingCodes/{code} {
+      allow get, list: if hasPermission("prenotazioni:gestisci");
+      allow write: if false;
+    }
+
+    // Motivo di un blocco slot (manutenzione, evento) creato dal
+    // responsabile — separato da "bookings" per non esporre pubblicamente
+    // un testo libero interno; solo il pannello operatore lo legge.
+    match /blockDetails/{bookingId} {
+      allow get, list: if hasPermission("prenotazioni:gestisci");
+      allow write: if false;
+    }
+
+    match /payments/{id} {
+      allow get, list: if hasPermission("prenotazioni:gestisci");
+      allow write: if false;
+    }
+
+    // Il credito generato da un annullamento; l'uso da parte del cliente
+    // passa sempre da una Cloud Function (mai lettura/scrittura diretta),
+    // quindi qui basta il permesso per il pannello operatore.
+    match /credits/{code} {
+      allow get, list: if hasPermission("prenotazioni:gestisci");
+      allow write: if false;
+    }
+
+    // Log immutabile dei movimenti di credito — stesso pattern di
+    // iscrizioniLog: niente update né delete, nemmeno per l'operatore.
+    match /creditTransactions/{id} {
+      allow get, list: if hasPermission("prenotazioni:gestisci");
+      allow write: if false;
+    }
+
+    // Placeholder per collezioni future (camp): aggiungere qui blocchi
+    // match dedicati man mano che si sviluppano le pagine, seguendo lo
+    // stesso pattern basato su hasPermission().
   }
 }

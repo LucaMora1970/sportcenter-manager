@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Il tuo biglietto — Tennis Club Mendrisio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script>if(localStorage.getItem("sportos-tema")==="light")document.documentElement.setAttribute("data-theme","light");</script>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d1f30">
+<style>
+  .ticket-card {
+    background: var(--court-blue-900);
+    border: 1px solid var(--court-blue-700);
+    border-radius: var(--radius);
+    padding: 24px var(--gap);
+    text-align: center;
+  }
+  .ticket-logo { width: 64px; height: 64px; margin: 0 auto 12px; display: block; border-radius: 12px; }
+  .ticket-status {
+    display: inline-block; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;
+    border: 1px solid #7f9e4a; color: #c1e08f; border-radius: 4px; padding: 3px 10px; margin-bottom: 14px;
+  }
+  .ticket-rows { text-align: left; margin: 18px 0; }
+  .ticket-row { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px dashed var(--court-blue-700); font-size: 0.88rem; }
+  .ticket-row:last-child { border-bottom: none; }
+  .ticket-row .k { color: var(--chalk-grey); }
+  .ticket-row .v { font-weight: 600; text-align: right; }
+  .ticket-code { font-family: 'Space Mono', monospace; font-size: 1.6rem; letter-spacing: 0.06em; color: var(--ball); margin: 10px 0; }
+  .ticket-timestamp { color: var(--chalk-grey); font-size: 0.72rem; margin-bottom: 16px; }
+  #qr-container { display: flex; justify-content: center; margin: 16px 0; }
+  #qr-container img, #qr-container canvas { border-radius: 8px; }
+  .ticket-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
+  .ticket-actions .btn:disabled { opacity: 0.45; cursor: default; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <div>
+      <div class="topbar-kicker">Tennis Club Mendrisio</div>
+      <h1>Il tuo biglietto</h1>
+    </div>
+    <div></div>
+    <button type="button" class="topbar-link" id="theme-toggle-btn">Tema chiaro</button>
+  </div>
+
+  <main>
+
+    <div id="stato-caricamento" class="empty-state">
+      <div class="display">Verifica in corso…</div>
+      <p>Se hai appena pagato, la conferma può richiedere qualche secondo.</p>
+    </div>
+
+    <div id="stato-non-trovato" class="empty-state hidden">
+      <div class="display">Biglietto non trovato</div>
+      <p>Il link non è valido oppure il pagamento non è ancora stato confermato. Se hai appena pagato, aggiorna la pagina tra qualche istante; altrimenti contatta il circolo.</p>
+    </div>
+
+    <div id="ticket-content" class="hidden">
+      <div class="ticket-card" id="ticket-card">
+        <img src="icons/icon-512.png" alt="" class="ticket-logo" id="ticket-logo">
+        <div class="ticket-status">Prenotazione confermata</div>
+        <div class="ticket-rows">
+          <div class="ticket-row"><span class="k">Data</span><span class="v" id="t-data">—</span></div>
+          <div class="ticket-row"><span class="k">Campo</span><span class="v" id="t-campo">—</span></div>
+          <div class="ticket-row"><span class="k">Orario</span><span class="v" id="t-orario">—</span></div>
+          <div class="ticket-row"><span class="k">Pagato</span><span class="v" id="t-prezzo">—</span></div>
+        </div>
+        <div class="ticket-code" id="t-codice">—</div>
+        <div id="qr-container"></div>
+        <div class="ticket-timestamp" id="t-timestamp">—</div>
+      </div>
+
+      <div class="ticket-actions">
+        <button type="button" class="btn btn-primary" id="salva-btn">Salva biglietto</button>
+        <button type="button" class="btn btn-ghost" id="calendario-btn">Aggiungi al calendario</button>
+        <button type="button" class="btn btn-ghost" disabled title="Presto disponibile">Aggiungi a Wallet — presto disponibile</button>
+        <button type="button" class="btn btn-ghost" disabled title="Presto disponibile">Invia via e-mail — presto disponibile</button>
+      </div>
+    </div>
+
+  </main>
+
+</div>
+
+<canvas id="ticket-canvas" width="720" height="1080" class="hidden"></canvas>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/biglietto.js"></script>
+</body>
+</html>

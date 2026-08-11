@@ -1,83 +1,61 @@
 // ============================================================
-// prenotazioni.js — tabellone prenotazione campo padel.
-// Fase di test interna: dietro login (come tutte le altre pagine),
-// nessun accesso pubblico/anonimo ancora — vedi memoria di progetto per
-// il perché (le firestore.rules sono il vero confine di sicurezza, non
-// l'URL). Nessun pagamento in questa fase: la prenotazione si conferma
-// subito alla pressione di "Prenota"; il collegamento a PostFinance
-// Checkout arriva in una fase successiva.
+// prenotazioni.js — pannello OPERATORE (dietro login, permesso
+// prenotazioni:gestisci) per il campo padel. Le prenotazioni vere si
+// fanno dalla pagina pubblica prenota-padel.html; qui l'operatore
+// verifica/gestisce: ricerca per codice, tabellone del giorno, annulla
+// e converti in credito, lista giornaliera stampabile (terzo livello di
+// verifica al campo se QR e codice non sono disponibili, es. senza
+// internet).
 //
-// Logica anti-buchi confermata (vedi mockup validato):
-// - fino alle 17:00: inizi ogni 30', validi solo se non lasciano un buco
-//   riutilizzabile < 60' prima del prossimo impegno
-// - dalle 17:00: blocchi da 90' incatenati subito dopo l'ultimo impegno
-//   (non su una griglia fissa assoluta) — se un'occupazione finisce es.
-//   alle 18:00, il prossimo slot proposto è 18:00, non il successivo
-//   multiplo di 90' da 17:00
-//
-// Richiede firebase-config.js, utils.js e auth.js già caricati.
+// Legge "bookingTickets" (dati completi, list riservata a
+// prenotazioni:gestisci — vedi firestore.rules) e "bookings" (stato
+// aggiornato) incrociandoli per bookingId.
 // ============================================================
 
 let currentProfile = null;
 
-const OPEN = 8 * 60;               // 08:00
-const CLOSE = 23 * 60;             // 23:00 nei giorni feriali
-const CLOSE_WEEKEND = 20 * 60 + 30; // 20:30 sabato, domenica e festivi
-const BOUNDARY = 17 * 60;  // 17:00 — 6h fino alla chiusura feriale = esattamente 4 blocchi da 90', zero buchi residui
-const SLOT_FISSO_PRANZO = 12 * 60 + 15; // 12:15 — fascia pranzo fissa (60' o 90'), offerta anche se non allineata alla griglia dei 30'
-const PX_PER_MIN = 1.1;    // 60' = 66px, 90' = 99px: comodo da toccare su mobile
-const EDGE_PAD = 10;       // margine sopra/sotto perché le etichette 08:00 e 23:00 non debordino dalla card
-const GIORNI_BREVI = ["Dom", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab"]; // Date.getDay(): 0=Dom
+const COURT_ID = "1";
 const NR_GIORNI_STRIP = 14;
+const GIORNI_BREVI = ["Dom", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab"];
 
-// Date festive (YYYY-MM-DD) in cui vale l'orario ridotto del weekend anche
-// se cadono in un giorno feriale — da completare con l'elenco esatto
-// osservato dal circolo (non ancora fornito).
+// Stessa logica anti-buco di js/prenota-padel.js e functions/index.js —
+// duplicata anche qui (terza copia): se cambia va cambiata ovunque.
+const OPEN = 8 * 60;
+const CLOSE = 23 * 60;
+const CLOSE_WEEKEND = 20 * 60 + 30;
+const BOUNDARY = 17 * 60;
+const SLOT_FISSO_PRANZO = 12 * 60 + 15;
+const PX_PER_MIN = 1.1;
+const EDGE_PAD = 10;
 const FESTIVI = [];
 
+// Duplicato da js/prenota-padel.js e functions/index.js — vedi lì per il
+// perché del fuso orario esplicito invece di new Date() nudo.
+function oraLocaleZurigo() {
+  const parti = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Zurich",
+      year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false
+    }).formatToParts(new Date()).map(p => [p.type, p.value])
+  );
+  return { dataIso: `${parti.year}-${parti.month}-${parti.day}`, minuti: parseInt(parti.hour, 10) * 60 + parseInt(parti.minute, 10) };
+}
+function escludiOrariPassati(starts, dataIso) {
+  const ora = oraLocaleZurigo();
+  if (dataIso !== ora.dataIso) return starts;
+  return starts.filter(s => s > ora.minuti);
+}
+
 function chiusuraGiorno(dataIso) {
-  const giorno = new Date(dataIso + "T00:00:00").getDay(); // 0=dom, 6=sab
+  const giorno = new Date(dataIso + "T00:00:00").getDay();
   return (giorno === 0 || giorno === 6 || FESTIVI.includes(dataIso)) ? CLOSE_WEEKEND : CLOSE;
 }
-
-// Tariffe configurabili da Configurazione (impostazioni/tariffePadel):
-// diurno = inizio prima delle 17:00, serale = inizio dalle 17:00 in poi
-// (i 60' non esistono mai in fascia serale, la griglia non li propone).
-let TARIFFE_PADEL = { diurno60: null, diurno90: null, serale90: null };
-
-async function loadTariffePadel() {
-  try {
-    const doc = await db.collection("impostazioni").doc("tariffePadel").get();
-    if (doc.exists) TARIFFE_PADEL = { ...TARIFFE_PADEL, ...doc.data() };
-  } catch (err) {
-    console.warn("loadTariffePadel: lettura fallita:", err.message);
-  }
-}
-
-// I maestri (soggettoQuotaCampo, stesso flag già usato per la quota campo
-// del diario) non pagano la prenotazione — la tariffa teorica resta
-// comunque registrata sulla prenotazione per il conteggio a fattura.
-function fasciaTariffa(startMin, duration) {
-  return duration === 60 ? "diurno60" : (startMin < BOUNDARY ? "diurno90" : "serale90");
-}
-
-function prezzoSlot(startMin, duration) {
-  return TARIFFE_PADEL[fasciaTariffa(startMin, duration)];
-}
-
-let state = { data: null, duration: null, selected: null, bookings: [] };
-let bookingsUnsub = null;
-
-function pad2(n) { return String(n).padStart(2, "0"); }
-function toISO(date) { return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`; }
 function px(min) { return (min - OPEN) * PX_PER_MIN + EDGE_PAD; }
-function label(min) { return pad2(Math.floor(min / 60)) + ":" + pad2(min % 60); }
 function orarioToMin(orario) {
   const [h, m] = orario.split(":").map(Number);
   return h * 60 + m;
 }
-
-// ---------- Logica anti-buchi (invariata dal mockup validato) ----------
+function label(min) { return pad2(Math.floor(min / 60)) + ":" + pad2(min % 60); }
 
 function freeIntervals(bookings, close) {
   const sorted = [...bookings].sort((a, b) => a.start - b.start);
@@ -90,47 +68,72 @@ function freeIntervals(bookings, close) {
   if (cursor < close) free.push([cursor, close]);
   return free;
 }
-
+function gapPrimaOk(t, a) {
+  const gap = t - a;
+  return gap === 0 || gap >= 60;
+}
 function slotsInInterval(a, b, duration) {
   const starts = [];
   if (duration === 90) {
     for (let t = a; t < BOUNDARY && t + 90 <= b; t += 30) {
       const remain = b - (t + 90);
-      if (remain === 0 || remain >= 60) starts.push(t);
+      if ((remain === 0 || remain >= 60) && gapPrimaOk(t, a)) starts.push(t);
     }
-    for (let t = Math.max(a, BOUNDARY); t + 90 <= b; t += 90) {
-      starts.push(t);
+    const primoChain = Math.max(a, BOUNDARY);
+    if (gapPrimaOk(primoChain, a)) {
+      for (let t = primoChain; t + 90 <= b; t += 90) starts.push(t);
     }
-    // 12:15 è una fascia pranzo fissa, offerta anche se non cade sulla
-    // griglia dei 30' calcolata a partire da "a" — stessa regola anti-buco.
-    if (SLOT_FISSO_PRANZO >= a && SLOT_FISSO_PRANZO + 90 <= b) {
+    if (SLOT_FISSO_PRANZO >= a && SLOT_FISSO_PRANZO + 90 <= b && gapPrimaOk(SLOT_FISSO_PRANZO, a)) {
       const remain = b - (SLOT_FISSO_PRANZO + 90);
       if (remain === 0 || remain >= 60) starts.push(SLOT_FISSO_PRANZO);
     }
   } else {
-    // Per i 60' il limite è mezz'ora oltre BOUNDARY: consente un ultimo
-    // inizio alle 16:30 (finisce 17:30) invece di fermarsi alle 16:00 —
-    // l'anti-buco fa comunque il suo lavoro: se le 16:30 lasciassero un
-    // residuo <60' prima del prossimo impegno, verrebbero escluse come
-    // qualsiasi altro inizio.
     const limit = Math.min(b, BOUNDARY + 30);
     for (let t = a; t + 60 <= limit; t += 30) {
       const remain = limit - (t + 60);
-      if (remain === 0 || remain >= 60) starts.push(t);
+      if ((remain === 0 || remain >= 60) && gapPrimaOk(t, a)) starts.push(t);
     }
-    if (SLOT_FISSO_PRANZO >= a && SLOT_FISSO_PRANZO + 60 <= limit) {
+    if (SLOT_FISSO_PRANZO >= a && SLOT_FISSO_PRANZO + 60 <= limit && gapPrimaOk(SLOT_FISSO_PRANZO, a)) {
       const remain = limit - (SLOT_FISSO_PRANZO + 60);
       if (remain === 0 || remain >= 60) starts.push(SLOT_FISSO_PRANZO);
     }
   }
   return starts;
 }
-
 function validStarts(bookings, duration, close) {
   const free = freeIntervals(bookings, close);
   let starts = [];
   free.forEach(([a, b]) => { starts = starts.concat(slotsInInterval(a, b, duration)); });
   return [...new Set(starts)].sort((x, y) => x - y);
+}
+
+const STATO_LABEL = {
+  PENDING_PAYMENT: "In pagamento",
+  CONFIRMED: "Confermata",
+  COMPLETED: "Completata",
+  CANCELLED: "Annullata",
+  CREDITED: "Convertita in credito"
+};
+const STATO_STILE = {
+  CONFIRMED: "border-color:#7f9e4a;color:#c1e08f;",
+  COMPLETED: "border-color:#7f9e4a;color:#c1e08f;",
+  PENDING_PAYMENT: "border-color:var(--chalk-grey-dim);color:var(--chalk-grey);",
+  CANCELLED: "border-color:var(--danger);color:var(--danger);",
+  CREDITED: "border-color:#4a7f9e;color:#8fc1e0;"
+};
+
+let state = { data: null, duration: null, selected: null, bookingsMinuti: [] };
+
+function pad2(n) { return String(n).padStart(2, "0"); }
+function toISO(date) { return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`; }
+function formatDataBreve(dataStr) {
+  const [y, m, d] = dataStr.split("-");
+  return `${d}.${m}.${y}`;
+}
+function formatTimestamp(ts) {
+  if (!ts || typeof ts.toDate !== "function") return "—";
+  const d = ts.toDate();
+  return `${pad2(d.getDate())}.${pad2(d.getMonth() + 1)} alle ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
 // ---------- Day strip ----------
@@ -158,116 +161,119 @@ function buildDayStrip() {
   }).join("");
 
   el.querySelectorAll(".day-btn").forEach(btn => {
-    btn.addEventListener("click", () => selezionaGiorno(btn.dataset.data));
+    btn.addEventListener("click", () => {
+      state.data = btn.dataset.data;
+      document.querySelectorAll(".day-btn").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.data === state.data)));
+      caricaGiorno();
+    });
   });
 }
 
-function selezionaGiorno(dataIso) {
-  state.data = dataIso;
-  state.selected = null;
-  document.querySelectorAll(".day-btn").forEach(b => {
-    b.setAttribute("aria-pressed", String(b.dataset.data === dataIso));
-  });
-  ascoltaPrenotazioniGiorno();
-}
+// ---------- Tabellone del giorno ----------
 
-// ---------- Dati Firestore ----------
-
-function ascoltaPrenotazioniGiorno() {
-  if (bookingsUnsub) bookingsUnsub();
-
-  bookingsUnsub = db.collection("prenotazioniPadel")
-    .where("data", "==", state.data)
-    .onSnapshot(
-      (snap) => {
-        state.bookings = snap.docs.map(d => {
-          const p = d.data();
-          return {
-            id: d.id, userId: p.userId, start: orarioToMin(p.oraInizio), end: orarioToMin(p.oraFine),
-            label: p.userNome || "Prenotato", bloccato: !!p.bloccato
-          };
-        });
-        render();
-      },
-      (err) => {
-        showError(document.getElementById("tabellone-error"), "Errore nel caricamento: " + err.message);
-      }
-    );
-}
-
-async function prenotaSlot() {
-  if (!state.selected || !state.duration) return;
-
-  const bloccoCb = document.getElementById("blocco-toggle");
-  const bloccato = !!(bloccoCb && bloccoCb.checked && hasPermission(currentProfile, "prenotazioni:gestisci"));
-  let motivoBlocco = null;
-  if (bloccato) {
-    motivoBlocco = prompt("Motivo del blocco (es. manutenzione campo, evento privato):", "Manutenzione campo");
-    if (motivoBlocco === null) return;
-  }
-
-  const btn = document.getElementById("summaryCta");
-  const errorEl = document.getElementById("tabellone-error");
+async function caricaGiorno() {
+  const list = document.getElementById("lista-giorno");
+  const errorEl = document.getElementById("lista-error");
   errorEl.innerHTML = "";
-  btn.disabled = true;
-  btn.textContent = bloccato ? "Blocco…" : "Prenotazione…";
+  list.innerHTML = `<div class="empty-state"><div class="display">Caricamento…</div></div>`;
 
   try {
-    if (bloccato) {
-      // I blocchi non prevedono pagamento: restano una scrittura diretta,
-      // come prima — solo il permesso prenotazioni:gestisci la consente
-      // (vedi firestore.rules).
-      await db.collection("prenotazioniPadel").add({
-        data: state.data,
-        oraInizio: label(state.selected.start),
-        oraFine: label(state.selected.end),
-        durataMinuti: state.duration,
-        userId: currentProfile.uid,
-        userNome: `Bloccato — ${motivoBlocco}`,
-        bloccato: true,
-        motivoBlocco: motivoBlocco,
-        fasciaTariffa: null,
-        prezzoTeorico: null,
-        esente: false,
-        prezzo: null,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-      state.selected = null;
-      state.duration = null;
-      if (bloccoCb) bloccoCb.checked = false;
-      document.querySelectorAll("#durationSeg button").forEach(b => b.setAttribute("aria-pressed", "false"));
-      render();
-    } else {
-      // Prenotazione vera: passa dalla Cloud Function, che ricalcola il
-      // prezzo lato server (mai fidarsi di quello mostrato dal client),
-      // riserva subito lo slot e crea la transazione PostFinance — si
-      // viene reindirizzati alla sua pagina di pagamento ospitata.
-      const creaPagamento = firebase.functions().httpsCallable("creaPagamentoPrenotazione");
-      const result = await creaPagamento({
-        data: state.data,
-        oraInizio: label(state.selected.start),
-        oraFine: label(state.selected.end),
-        durataMinuti: state.duration
-      });
+    const [ticketsSnap, bookingsSnap] = await Promise.all([
+      db.collection("bookingTickets").where("date", "==", state.data).where("courtId", "==", COURT_ID).get(),
+      db.collection("bookings").where("date", "==", state.data).where("courtId", "==", COURT_ID).get()
+    ]);
 
-      if (result.data.esente) {
-        state.selected = null;
-        state.duration = null;
-        document.querySelectorAll("#durationSeg button").forEach(b => b.setAttribute("aria-pressed", "false"));
-        render();
-      } else {
-        window.location.href = result.data.paymentPageUrl;
-      }
+    const infoPerBookingId = {};
+    bookingsSnap.docs.forEach(d => { infoPerBookingId[d.id] = d.data(); });
+
+    let righe = ticketsSnap.docs
+      .map(d => ({ token: d.id, ...d.data() }))
+      .map(t => ({
+        ...t,
+        status: (infoPerBookingId[t.bookingId] || {}).status || "CONFIRMED",
+        type: (infoPerBookingId[t.bookingId] || {}).type || "CUSTOMER"
+      }))
+      .sort((a, b) => a.startTime.localeCompare(b.startTime));
+
+    // I blocchi hanno un motivo in una collection separata (non
+    // pubblica, vedi firestore.rules) — lo si recupera solo per loro.
+    const idBlocchi = righe.filter(t => t.type === "BLOCK").map(t => t.bookingId);
+    if (idBlocchi.length > 0) {
+      const motivi = await Promise.all(idBlocchi.map(id => db.collection("blockDetails").doc(id).get()));
+      const motivoPerBookingId = {};
+      motivi.forEach(doc => { if (doc.exists) motivoPerBookingId[doc.id] = doc.data().motivo; });
+      righe = righe.map(t => t.type === "BLOCK" ? { ...t, motivo: motivoPerBookingId[t.bookingId] } : t);
     }
+
+    renderGiorno(list, righe);
+
+    // Per il selettore orario sotto (blocco/esente): stessi impegni del
+    // giorno, in minuti, usati dall'anti-buco.
+    state.bookingsMinuti = bookingsSnap.docs
+      .map(d => d.data())
+      .filter(b => b.status === "PENDING_PAYMENT" || b.status === "CONFIRMED" || b.status === "COMPLETED")
+      .map(b => ({ start: orarioToMin(b.startTime), end: orarioToMin(b.endTime) }));
+    state.selected = null;
+    renderPicker();
   } catch (err) {
-    showError(errorEl, "Errore nella prenotazione: " + (err.message || err));
-  } finally {
-    btn.disabled = false;
-    btn.textContent = "Prenota";
+    showError(errorEl, "Errore nel caricamento: " + err.message);
+    list.innerHTML = "";
   }
 }
 
-// ---------- Render griglia ----------
+function rigaHtml(t) {
+  const stato = t.type === "BLOCK" ? "Bloccato" : (t.type === "STAFF_EXEMPT" ? "Esente (maestro)" : (STATO_LABEL[t.status] || t.status));
+  const stile = t.type === "BLOCK" ? "border-color:var(--danger);color:var(--danger);"
+    : t.type === "STAFF_EXEMPT" ? "border-color:#9e4a7f;color:#e08fc1;"
+    : (STATO_STILE[t.status] || "");
+  return `
+    <div class="entry-card" data-booking-id="${t.bookingId}">
+      <div class="entry-main">
+        <span class="badge" style="${stile}">${stato}</span>
+        <div class="entry-tipo">${t.startTime} – ${t.endTime}</div>
+        <div class="entry-meta">Codice: ${escapeHtml(t.bookingCode)} · CHF ${(t.price || 0).toFixed(2)}</div>
+        ${t.type === "BLOCK" && t.motivo ? `<div class="entry-meta">Motivo: ${escapeHtml(t.motivo)}</div>` : ""}
+        <div class="entry-meta">Prenotato il ${formatTimestamp(t.createdAt)}</div>
+      </div>
+      ${(t.type === "CUSTOMER" && (t.status === "CONFIRMED" || t.status === "COMPLETED")) ? `<button type="button" class="btn btn-danger annulla-credito-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-booking-id="${t.bookingId}">Annulla e converti in credito</button>` : ""}
+    </div>
+  `;
+}
+
+function renderGiorno(list, righe) {
+  if (righe.length === 0) {
+    list.innerHTML = `<div class="empty-state"><div class="display">Nessuna prenotazione</div></div>`;
+    return;
+  }
+  list.innerHTML = righe.map(rigaHtml).join("");
+  wireAnnullaCredito(list);
+}
+
+function wireAnnullaCredito(container) {
+  container.querySelectorAll(".annulla-credito-btn").forEach(btn => {
+    btn.addEventListener("click", () => annullaEConverti(btn.dataset.bookingId, btn));
+  });
+}
+
+async function annullaEConverti(bookingId, btn) {
+  if (!confirm("Annullare questa prenotazione e convertirla in credito per il cliente?")) return;
+  btn.disabled = true;
+  try {
+    const fn = firebase.functions().httpsCallable("annullaEConvertiInCredito");
+    const result = await fn({ bookingId });
+    alert(`Credito creato: ${result.data.creditCode} — CHF ${result.data.importo.toFixed(2)}\n\nComunicalo al cliente per una prenotazione futura.`);
+    await caricaGiorno();
+  } catch (err) {
+    alert("Errore: " + err.message);
+    btn.disabled = false;
+  }
+}
+
+// ---------- Selettore orario: blocco slot / prenotazione esente ----------
+//
+// Stesso giorno scelto sopra. Entrambi i casi passano dalla Cloud
+// Function creaPrenotazioneOperatore (mai una scrittura diretta), che
+// ricontrolla permessi e slot lato server.
 
 function hourGridHtml(close) {
   let html = `<div class="gutter-line"></div>`;
@@ -288,29 +294,23 @@ function hourGridHtml(close) {
   return html;
 }
 
-function render() {
+function renderPicker() {
   const timelineEl = document.getElementById("timeline");
+  if (!timelineEl || !state.data) return;
+
   const close = chiusuraGiorno(state.data);
-  const totalPx = px(close) + EDGE_PAD;
-  timelineEl.style.height = totalPx + "px";
+  timelineEl.style.height = (px(close) + EDGE_PAD) + "px";
 
   let html = hourGridHtml(close);
-
-  // Eliminazione self-service disponibile solo sui blocchi (nessun
-  // pagamento legato) — una prenotazione pagata non è più cancellabile da
-  // qui: liberare lo slot senza un rimborso vero lascerebbe chi ha pagato
-  // senza slot e senza soldi indietro.
-  const puoGestireTutte = hasPermission(currentProfile, "prenotazioni:gestisci");
-  html += state.bookings.map(b => `
-    <div class="busy" data-bloccato="${b.bloccato}" style="top:${px(b.start)}px;height:${px(b.end) - px(b.start)}px">
-      <span class="name">${escapeHtml(b.label)}</span>
+  html += state.bookingsMinuti.map(b => `
+    <div class="busy" style="top:${px(b.start)}px;height:${px(b.end) - px(b.start)}px">
+      <span class="name">Occupato</span>
       <span class="time">${label(b.start)}–${label(b.end)}</span>
-      ${(b.bloccato && (b.userId === currentProfile.uid || puoGestireTutte)) ? `<button type="button" class="delete-booking-btn" data-id="${b.id}" style="align-self:flex-start;background:none;border:none;color:var(--danger);font-size:0.65rem;text-decoration:underline;cursor:pointer;padding:0;">Elimina</button>` : ""}
     </div>
   `).join("");
 
   if (state.duration) {
-    const starts = validStarts(state.bookings, state.duration, close);
+    const starts = escludiOrariPassati(validStarts(state.bookingsMinuti, state.duration, close), state.data);
     html += starts.map(s => {
       const end = s + state.duration;
       const isSel = state.selected && state.selected.start === s;
@@ -325,47 +325,123 @@ function render() {
 
   timelineEl.innerHTML = html;
 
-  timelineEl.querySelectorAll(".delete-booking-btn").forEach(btn => {
-    btn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      if (!confirm("Eliminare questa prenotazione?")) return;
-      try {
-        await db.collection("prenotazioniPadel").doc(btn.dataset.id).delete();
-      } catch (err) {
-        showError(document.getElementById("tabellone-error"), "Errore nell'eliminazione: " + err.message);
-      }
-    });
-  });
-
   timelineEl.querySelectorAll(".slot").forEach(el => {
     const activate = () => {
       state.selected = { start: parseInt(el.dataset.start, 10), end: parseInt(el.dataset.end, 10) };
-      render();
+      renderPicker();
     };
     el.addEventListener("click", activate);
     el.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); activate(); } });
   });
 
   const bar = document.getElementById("summaryBar");
-  const priceEl = document.getElementById("summaryPrice");
   if (state.selected) {
     document.getElementById("summaryTitle").textContent = `${label(state.selected.start)}–${label(state.selected.end)}`;
     bar.classList.add("show");
-    const bloccoCb = document.getElementById("blocco-toggle");
-    const inBlocco = !!(bloccoCb && bloccoCb.checked);
-    document.getElementById("summaryCta").textContent = inBlocco ? "Blocca slot" : "Prenota";
-
-    if (inBlocco) {
-      priceEl.textContent = "";
-    } else {
-      const prezzo = prezzoSlot(state.selected.start, state.duration);
-      priceEl.textContent = currentProfile.soggettoQuotaCampo
-        ? `Esente (maestro) — tariffa CHF ${prezzo != null ? prezzo.toFixed(2) : "—"}`
-        : (prezzo != null ? `CHF ${prezzo.toFixed(2)}` : "Tariffa non configurata");
-    }
   } else {
     bar.classList.remove("show");
   }
+}
+
+async function creaPrenotazioneOperatore(tipo) {
+  if (!state.selected || !state.duration) return;
+  const errorEl = document.getElementById("picker-error");
+  errorEl.innerHTML = "";
+
+  let motivo = null;
+  if (tipo === "BLOCK") {
+    motivo = prompt("Motivo del blocco (es. manutenzione campo, evento privato):", "Manutenzione campo");
+    if (motivo === null) return;
+  } else if (!confirm(`Confermare la prenotazione esente per ${label(state.selected.start)}–${label(state.selected.end)}?`)) {
+    return;
+  }
+
+  try {
+    const fn = firebase.functions().httpsCallable("creaPrenotazioneOperatore");
+    await fn({
+      courtId: COURT_ID,
+      date: state.data,
+      startTime: label(state.selected.start),
+      endTime: label(state.selected.end),
+      durationMinutes: state.duration,
+      tipo,
+      motivo
+    });
+    state.selected = null;
+    state.duration = null;
+    document.querySelectorAll("#durationSeg button").forEach(b => b.setAttribute("aria-pressed", "false"));
+    await caricaGiorno();
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+  }
+}
+
+// ---------- Ricerca per codice ----------
+
+async function cercaCodice() {
+  const input = document.getElementById("ricerca-codice");
+  const errorEl = document.getElementById("ricerca-error");
+  const risultato = document.getElementById("ricerca-risultato");
+  errorEl.innerHTML = "";
+  risultato.innerHTML = "";
+
+  const code = input.value.trim().toUpperCase();
+  if (!code) return;
+
+  try {
+    const idx = await db.collection("bookingCodes").doc(code).get();
+    if (!idx.exists) {
+      showError(errorEl, "Nessuna prenotazione trovata con questo codice.");
+      return;
+    }
+    const { bookingId, token } = idx.data();
+    const [ticketSnap, bookingSnap] = await Promise.all([
+      db.collection("bookingTickets").doc(token).get(),
+      db.collection("bookings").doc(bookingId).get()
+    ]);
+    if (!ticketSnap.exists) {
+      showError(errorEl, "Biglietto non trovato.");
+      return;
+    }
+    const t = { token, ...ticketSnap.data(), status: bookingSnap.exists ? bookingSnap.data().status : "CONFIRMED" };
+    risultato.innerHTML = rigaHtml(t);
+    wireAnnullaCredito(risultato);
+  } catch (err) {
+    showError(errorEl, "Errore nella ricerca: " + err.message);
+  }
+}
+
+// ---------- Stampa lista giornaliera ----------
+//
+// Terzo livello di verifica al campo (dopo QR e codice): una lista
+// leggibile anche offline se internet/Firebase/il computer non
+// funzionano — va stampata prima di quel momento, non durante.
+async function stampaListaGiorno() {
+  const [ticketsSnap, bookingsSnap] = await Promise.all([
+    db.collection("bookingTickets").where("date", "==", state.data).where("courtId", "==", COURT_ID).get(),
+    db.collection("bookings").where("date", "==", state.data).where("courtId", "==", COURT_ID).get()
+  ]);
+  const statoPerBookingId = {};
+  bookingsSnap.docs.forEach(d => { statoPerBookingId[d.id] = d.data().status; });
+
+  const righe = ticketsSnap.docs
+    .map(d => d.data())
+    .map(t => ({ ...t, status: statoPerBookingId[t.bookingId] || "CONFIRMED" }))
+    .sort((a, b) => a.startTime.localeCompare(b.startTime));
+
+  const corpo = righe.map(t =>
+    `<tr><td>${t.startTime}-${t.endTime}</td><td>${escapeHtml(t.bookingCode)}</td><td>${STATO_LABEL[t.status] || t.status}</td><td>${formatTimestamp(t.createdAt)}</td></tr>`
+  ).join("");
+
+  document.getElementById("print-area").innerHTML = `
+    <h1>Campo ${COURT_ID} — ${formatDataBreve(state.data)}</h1>
+    <p>Lista generata il ${new Date().toLocaleString("it-CH")}</p>
+    <table>
+      <thead><tr><th>Orario</th><th>Codice</th><th>Stato</th><th>Prenotato il</th></tr></thead>
+      <tbody>${corpo || "<tr><td colspan=4>Nessuna prenotazione</td></tr>"}</tbody>
+    </table>
+  `;
+  window.print();
 }
 
 // ---------- Init ----------
@@ -374,28 +450,18 @@ requireAuth(async (profile) => {
   currentProfile = profile;
   document.getElementById("user-chip").textContent = profile.nome + (profile.ruoloNome ? " · " + profile.ruoloNome : "");
 
-  // Ritorno dalla pagina di pagamento PostFinance (successUrl/failedUrl):
-  // qui si mostra solo un avviso — la conferma reale della prenotazione
-  // (pagamento:"pagato") arriva in modo indipendente dal webhook, che può
-  // impiegare qualche istante.
-  const esitoPagamento = new URLSearchParams(location.search).get("pagamento");
-  if (esitoPagamento === "ok") {
-    alert("Pagamento completato — la prenotazione verrà confermata a breve.");
-    history.replaceState(null, "", location.pathname);
-  } else if (esitoPagamento === "fallito") {
-    alert("Pagamento non riuscito o annullato: lo slot è stato liberato, riprova pure.");
-    history.replaceState(null, "", location.pathname);
-  }
-
-  await loadTariffePadel();
-
-  if (hasPermission(profile, "prenotazioni:gestisci")) {
-    document.getElementById("blocco-row").classList.remove("hidden");
-    document.getElementById("blocco-toggle").addEventListener("change", render);
+  if (!hasPermission(profile, "prenotazioni:gestisci")) {
+    document.getElementById("access-denied").classList.remove("hidden");
+    document.getElementById("operatore-content").classList.add("hidden");
+    return;
   }
 
   state.data = toISO(new Date());
   buildDayStrip();
+
+  document.getElementById("ricerca-btn").addEventListener("click", cercaCodice);
+  document.getElementById("ricerca-codice").addEventListener("keydown", e => { if (e.key === "Enter") cercaCodice(); });
+  document.getElementById("stampa-lista-btn").addEventListener("click", stampaListaGiorno);
 
   document.querySelectorAll("#durationSeg button").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -405,13 +471,13 @@ requireAuth(async (profile) => {
       document.querySelectorAll("#durationSeg button").forEach(b =>
         b.setAttribute("aria-pressed", String(parseInt(b.dataset.dur, 10) === state.duration))
       );
-      render();
+      renderPicker();
     });
   });
+  document.getElementById("blocca-btn").addEventListener("click", () => creaPrenotazioneOperatore("BLOCK"));
+  document.getElementById("esente-btn").addEventListener("click", () => creaPrenotazioneOperatore("STAFF_EXEMPT"));
 
-  document.getElementById("summaryCta").addEventListener("click", prenotaSlot);
-
-  ascoltaPrenotazioniGiorno();
+  await caricaGiorno();
 });
 
 document.getElementById("logout-link").addEventListener("click", (e) => {
