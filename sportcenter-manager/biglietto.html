@@ -37,6 +37,22 @@
   #qr-container img, #qr-container canvas { border-radius: 8px; }
   .ticket-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
   .ticket-actions .btn:disabled { opacity: 0.45; cursor: default; }
+
+  /* Azione primaria sempre a portata di pollice: il resto del biglietto
+     (QR compreso) può essere più alto dello schermo, ma "Salva" deve
+     restare visibile senza dover scorrere. */
+  .ticket-save-bar {
+    position: fixed;
+    left: 50%;
+    bottom: 0;
+    transform: translateX(-50%);
+    width: 100%;
+    max-width: 480px;
+    padding: 12px var(--gap) calc(12px + env(safe-area-inset-bottom));
+    background: var(--court-blue-950);
+    border-top: 1px solid var(--court-blue-700);
+    z-index: 10;
+  }
 </style>
 </head>
 <body>
@@ -80,10 +96,7 @@
       </div>
 
       <div class="ticket-actions">
-        <button type="button" class="btn btn-primary" id="salva-btn">Salva biglietto</button>
         <button type="button" class="btn btn-ghost" id="calendario-btn">Aggiungi al calendario</button>
-        <button type="button" class="btn btn-ghost" disabled title="Presto disponibile">Aggiungi a Wallet — presto disponibile</button>
-        <button type="button" class="btn btn-ghost" disabled title="Presto disponibile">Invia via e-mail — presto disponibile</button>
       </div>
 
       <p style="text-align:center;margin-top:18px;">
@@ -92,6 +105,10 @@
     </div>
 
   </main>
+
+  <div class="ticket-save-bar hidden" id="ticket-save-bar">
+    <button type="button" class="btn btn-primary" id="salva-btn">Salva biglietto</button>
+  </div>
 
 </div>
 

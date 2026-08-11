@@ -76,6 +76,48 @@
       <div class="error-msg" id="picker-error" style="margin-top:10px;"></div>
       <div class="timeline" id="timeline" style="margin-top:10px;"></div>
 
+      <hr class="court-divider">
+
+      <!-- Resoconto per periodo -->
+      <div class="section-title"><h2>Resoconto per periodo</h2></div>
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Vendita campi per durata e quota campo dovuta dai maestri per le prenotazioni esenti.</p>
+
+      <div class="row2" style="margin-bottom:16px;">
+        <button type="button" class="btn btn-ghost" id="preset-7giorni-resoconto">Ultimi 7 giorni</button>
+        <button type="button" class="btn btn-ghost" id="preset-mese-resoconto">Mese corrente</button>
+      </div>
+      <form id="resoconto-periodo-form">
+        <div class="row2">
+          <div class="field">
+            <label for="resoconto-dal">Dal</label>
+            <input type="date" id="resoconto-dal" required>
+          </div>
+          <div class="field">
+            <label for="resoconto-al">Al</label>
+            <input type="date" id="resoconto-al" required>
+          </div>
+        </div>
+        <div class="error-msg" id="resoconto-periodo-error"></div>
+        <button type="submit" class="btn btn-primary" id="calcola-resoconto-btn">Calcola</button>
+      </form>
+
+      <div id="resoconto-periodo-risultato" class="hidden">
+        <hr class="court-divider">
+        <div class="section-title"><h2>Vendita campi per durata</h2></div>
+        <div id="vendita-per-durata-table" style="overflow-x:auto;"></div>
+
+        <hr class="court-divider">
+        <div class="scoreboard">
+          <div>
+            <div class="label">Quota campo dovuta dai maestri</div>
+            <div class="value" id="totale-quotacampo-maestri" style="font-size:1.7rem;">CHF 0.00</div>
+          </div>
+        </div>
+        <div id="quotacampo-maestri-warning" class="error-msg" style="color:var(--chalk-grey);"></div>
+
+        <button type="button" class="btn btn-ghost" id="stampa-resoconto-periodo-btn" style="margin-top:14px;">Stampa / Salva PDF</button>
+      </div>
+
     </div>
 
   </main>

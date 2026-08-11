@@ -74,6 +74,7 @@ function renderBiglietto(data, token) {
 
   document.getElementById("stato-caricamento").classList.add("hidden");
   document.getElementById("ticket-content").classList.remove("hidden");
+  document.getElementById("ticket-save-bar").classList.remove("hidden");
 }
 
 // Ridisegna l'intero biglietto su <canvas> (logo + testi + QR) per

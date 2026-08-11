@@ -58,6 +58,7 @@ async function onSaveDatiCentro(e) {
   const errorEl = document.getElementById("centro-error");
   errorEl.textContent = "";
   btn.disabled = true;
+  const testoBtn = btn.textContent;
 
   const dati = {
     nome: document.getElementById("centro-nome").value.trim(),
@@ -73,7 +74,14 @@ async function onSaveDatiCentro(e) {
     if (!dati.nome) throw new Error("Il nome del centro è obbligatorio.");
     await db.collection("impostazioni").doc("centro").set(dati, { merge: true });
     DATI_CENTRO = { ...DATI_CENTRO, ...dati };
+    // Nessun'altra parte della pagina cambia aspetto dopo il salvataggio
+    // (a differenza di liste come Campi/Allievi che si ridisegnano da
+    // sole) — senza questa conferma esplicita sembra che il pulsante non
+    // faccia nulla, anche quando il salvataggio è andato a buon fine.
+    btn.textContent = "Salvato ✓";
+    setTimeout(() => { btn.textContent = testoBtn; }, 1800);
   } catch (err) {
+    console.error("onSaveDatiCentro:", err);
     showError(errorEl, "Errore: " + err.message);
   } finally {
     btn.disabled = false;

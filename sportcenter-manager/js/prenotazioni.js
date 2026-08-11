@@ -474,6 +474,175 @@ async function stampaListaGiorno() {
   window.print();
 }
 
+// ---------- Resoconto per periodo (vendita campi + quota campo maestri) ----------
+//
+// Due numeri utili per la segreteria: quanto si è incassato dai clienti
+// (per durata, es. per capire se conviene privilegiare slot da 60' o
+// 90') e quanto devono i maestri per le lezioni prenotate "esenti"
+// (nessun pagamento del cliente, ma il campo va comunque riaddebitato
+// al maestro in base alle Quote campo configurate — stessa logica di
+// quotaCampoPerEntry in js/resoconto.js, qui applicata alle
+// prenotazioni del tabellone invece che alle voci diario).
+
+let ultimoResocontoPeriodo = null;
+
+function currentMonthRange() {
+  const now = new Date();
+  const first = new Date(now.getFullYear(), now.getMonth(), 1);
+  const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  return [toISO(first), toISO(last)];
+}
+function last7DaysRange() {
+  const oggi = new Date();
+  const settimanaFa = new Date();
+  settimanaFa.setDate(oggi.getDate() - 6);
+  return [toISO(settimanaFa), toISO(oggi)];
+}
+
+function fasciaOrariaFor(oraInizio) {
+  return oraInizio < "17:00" ? "prima_17" : "dopo_17";
+}
+
+function quotaCampoPerPrenotazione(booking, quoteCampoList) {
+  const durata = orarioToMin(booking.endTime) - orarioToMin(booking.startTime);
+  const fascia = fasciaOrariaFor(booking.startTime);
+  const candidates = quoteCampoList
+    .filter(q => q.disciplina === "padel")
+    .filter(q => !q.periodoInizio || booking.date >= q.periodoInizio)
+    .filter(q => !q.periodoFine || booking.date <= q.periodoFine)
+    .filter(q => q.fasciaOraria === fascia && q.durataMinuti === durata)
+    .sort((a, b) => (b.periodoInizio || "").localeCompare(a.periodoInizio || ""));
+  return candidates.length > 0 ? candidates[0].importo : null;
+}
+
+function renderVenditaPerDurata(perDurata, totaleVendite) {
+  const el = document.getElementById("vendita-per-durata-table");
+  const durate = Object.keys(perDurata).map(Number).sort((a, b) => a - b);
+
+  if (durate.length === 0) {
+    el.innerHTML = `<div class="empty-state"><div class="display">Nessuna vendita nel periodo</div></div>`;
+    return;
+  }
+
+  el.innerHTML = `
+    <table class="app-table">
+      <thead><tr><th>Durata</th><th>Prenotazioni</th><th>Incasso</th></tr></thead>
+      <tbody>
+        ${durate.map(d => `
+          <tr>
+            <td>${d}'</td>
+            <td>${perDurata[d].count}</td>
+            <td>CHF ${perDurata[d].totale.toFixed(2)}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td><strong>Totale</strong></td>
+          <td><strong>${durate.reduce((s, d) => s + perDurata[d].count, 0)}</strong></td>
+          <td><strong>CHF ${totaleVendite.toFixed(2)}</strong></td>
+        </tr>
+      </tfoot>
+    </table>
+  `;
+}
+
+async function calcolaResocontoPeriodo(e) {
+  e.preventDefault();
+  const dal = document.getElementById("resoconto-dal").value;
+  const al = document.getElementById("resoconto-al").value;
+  const btn = document.getElementById("calcola-resoconto-btn");
+  const errorEl = document.getElementById("resoconto-periodo-error");
+  errorEl.innerHTML = "";
+  btn.disabled = true;
+  btn.textContent = "Calcolo…";
+
+  try {
+    const [ticketsSnap, bookingsSnap, quoteCampoSnap] = await Promise.all([
+      db.collection("bookingTickets").where("courtId", "==", COURT_ID).where("date", ">=", dal).where("date", "<=", al).get(),
+      db.collection("bookings").where("courtId", "==", COURT_ID).where("date", ">=", dal).where("date", "<=", al).get(),
+      db.collection("quoteCampo").get()
+    ]);
+
+    const infoPerBookingId = {};
+    bookingsSnap.docs.forEach(d => { infoPerBookingId[d.id] = d.data(); });
+
+    // Solo le prenotazioni davvero concluse: esclude PENDING_PAYMENT (mai
+    // pagate/scadute) e CREDITED (rimborsate in credito — se il credito
+    // viene riusato genera una nuova vendita, contarla anche qui sarebbe
+    // un doppio conteggio).
+    const righe = ticketsSnap.docs
+      .map(d => d.data())
+      .map(t => ({
+        ...t,
+        status: (infoPerBookingId[t.bookingId] || {}).status || "CONFIRMED",
+        type: (infoPerBookingId[t.bookingId] || {}).type || "CUSTOMER"
+      }))
+      .filter(t => t.status === "CONFIRMED" || t.status === "COMPLETED");
+
+    const quoteCampoList = quoteCampoSnap.docs.map(d => d.data());
+
+    const perDurata = {};
+    let totaleVendite = 0;
+    let totaleQuotaCampo = 0;
+    let numEsentiSenzaQuota = 0;
+
+    righe.forEach(t => {
+      const durata = orarioToMin(t.endTime) - orarioToMin(t.startTime);
+      if (t.type === "CUSTOMER") {
+        if (!perDurata[durata]) perDurata[durata] = { count: 0, totale: 0 };
+        perDurata[durata].count++;
+        perDurata[durata].totale += (t.price || 0);
+        totaleVendite += (t.price || 0);
+      } else if (t.type === "STAFF_EXEMPT") {
+        const quota = quotaCampoPerPrenotazione(t, quoteCampoList);
+        if (quota != null) {
+          totaleQuotaCampo += quota;
+        } else {
+          numEsentiSenzaQuota++;
+        }
+      }
+    });
+
+    ultimoResocontoPeriodo = { dal, al, perDurata, totaleVendite, totaleQuotaCampo };
+
+    renderVenditaPerDurata(perDurata, totaleVendite);
+    document.getElementById("totale-quotacampo-maestri").textContent = `CHF ${totaleQuotaCampo.toFixed(2)}`;
+    document.getElementById("quotacampo-maestri-warning").textContent = numEsentiSenzaQuota > 0
+      ? `${numEsentiSenzaQuota} prenotazioni esenti senza una Quota campo configurata per quella durata/fascia (escluse dal totale).`
+      : "";
+    document.getElementById("resoconto-periodo-risultato").classList.remove("hidden");
+  } catch (err) {
+    showError(errorEl, "Errore nel calcolo: " + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Calcola";
+  }
+}
+
+function stampaResocontoPeriodo() {
+  if (!ultimoResocontoPeriodo) return;
+  const { dal, al, perDurata, totaleVendite, totaleQuotaCampo } = ultimoResocontoPeriodo;
+  const durate = Object.keys(perDurata).map(Number).sort((a, b) => a - b);
+
+  const righe = durate.map(d => `
+    <tr><td>${d}'</td><td>${perDurata[d].count}</td><td>${perDurata[d].totale.toFixed(2)}</td></tr>
+  `).join("");
+
+  document.getElementById("print-area").innerHTML = `
+    ${intestazioneStampaHtml()}
+    <h1>Resoconto ${DISCIPLINA} — Campo ${COURT_ID}</h1>
+    <p>Periodo: ${formatDataBreve(dal)} – ${formatDataBreve(al)}</p>
+    <table>
+      <thead><tr><th>Durata</th><th>Prenotazioni</th><th>Incasso (CHF)</th></tr></thead>
+      <tbody>${righe || "<tr><td colspan=3>Nessuna vendita</td></tr>"}</tbody>
+      <tfoot><tr><th>Totale</th><th>${durate.reduce((s, d) => s + perDurata[d].count, 0)}</th><th>${totaleVendite.toFixed(2)}</th></tr></tfoot>
+    </table>
+    <p><strong>Quota campo dovuta dai maestri:</strong> CHF ${totaleQuotaCampo.toFixed(2)}</p>
+  `;
+  window.print();
+}
+
 // ---------- Init ----------
 
 requireAuth(async (profile) => {
@@ -508,6 +677,24 @@ requireAuth(async (profile) => {
   });
   document.getElementById("blocca-btn").addEventListener("click", () => creaPrenotazioneOperatore("BLOCK"));
   document.getElementById("esente-btn").addEventListener("click", () => creaPrenotazioneOperatore("STAFF_EXEMPT"));
+
+  const [meseDal, meseAl] = currentMonthRange();
+  document.getElementById("resoconto-dal").value = meseDal;
+  document.getElementById("resoconto-al").value = meseAl;
+  document.getElementById("resoconto-periodo-form").addEventListener("submit", calcolaResocontoPeriodo);
+  document.getElementById("preset-7giorni-resoconto").addEventListener("click", () => {
+    const [d, a] = last7DaysRange();
+    document.getElementById("resoconto-dal").value = d;
+    document.getElementById("resoconto-al").value = a;
+    calcolaResocontoPeriodo(new Event("submit"));
+  });
+  document.getElementById("preset-mese-resoconto").addEventListener("click", () => {
+    const [d, a] = currentMonthRange();
+    document.getElementById("resoconto-dal").value = d;
+    document.getElementById("resoconto-al").value = a;
+    calcolaResocontoPeriodo(new Event("submit"));
+  });
+  document.getElementById("stampa-resoconto-periodo-btn").addEventListener("click", stampaResocontoPeriodo);
 
   await caricaGiorno();
 });
