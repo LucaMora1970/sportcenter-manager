@@ -320,6 +320,13 @@ function render() {
   state.data = toISO(new Date());
   buildDayStrip();
 
+  // 90' selezionata di default: è la durata più richiesta, così la
+  // griglia mostra subito qualcosa senza dover prima scegliere.
+  state.duration = 90;
+  document.querySelectorAll("#durationSeg button").forEach(b =>
+    b.setAttribute("aria-pressed", String(parseInt(b.dataset.dur, 10) === state.duration))
+  );
+
   document.querySelectorAll("#durationSeg button").forEach(btn => {
     btn.addEventListener("click", () => {
       const dur = parseInt(btn.dataset.dur, 10);
