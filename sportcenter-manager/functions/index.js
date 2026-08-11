@@ -82,6 +82,7 @@ const OPEN = 8 * 60;
 const CLOSE = 23 * 60;
 const CLOSE_WEEKEND = 20 * 60 + 30;
 const SLOT_FISSO_PRANZO = 12 * 60 + 15;
+const SLOT_FISSO_SERALE = 17 * 60 + 30; // 17:30, solo lun-ven, solo 90'
 const FESTIVI = [];
 
 function orarioToMin(orario) {
@@ -92,6 +93,11 @@ function orarioToMin(orario) {
 function chiusuraGiorno(dataIso) {
   const giorno = new Date(dataIso + "T00:00:00").getDay();
   return (giorno === 0 || giorno === 6 || FESTIVI.includes(dataIso)) ? CLOSE_WEEKEND : CLOSE;
+}
+
+function feriale(dataIso) {
+  const giorno = new Date(dataIso + "T00:00:00").getDay();
+  return giorno >= 1 && giorno <= 5 && !FESTIVI.includes(dataIso);
 }
 
 // Data/ora corrente in fuso orario svizzero — Cloud Functions gira in
@@ -115,6 +121,10 @@ function eOrmaiPassato(dataIso, startMin) {
   return dataIso === ora.dataIso && startMin <= ora.minuti;
 }
 
+function eOggi(dataIso) {
+  return dataIso === oraLocaleZurigo().dataIso;
+}
+
 function freeIntervals(bookings, close) {
   const sorted = [...bookings].sort((a, b) => a.start - b.start);
   const free = [];
@@ -132,20 +142,32 @@ function gapPrimaOk(t, a) {
   return gap === 0 || gap >= 60;
 }
 
-function slotsInInterval(a, b, duration) {
+function slotsInInterval(a, b, duration, feriale, oggi) {
   const starts = [];
   if (duration === 90) {
     for (let t = a; t < BOUNDARY && t + 90 <= b; t += 30) {
       const remain = b - (t + 90);
       if ((remain === 0 || remain >= 60) && gapPrimaOk(t, a)) starts.push(t);
     }
+    // Oggi la catena dei 90' dopo le 17:00 usa un passo più fine (15'
+    // invece di 90') così non nasconde disponibilità reale nelle
+    // prossime ore (es. sono le 20:07, il prossimo scatto fisso sarebbe
+    // le 21:30 ma il campo è comunque libero anche prima) — chi chiama
+    // filtra comunque gli orari già passati con eOrmaiPassato.
     const primoChain = Math.max(a, BOUNDARY);
     if (gapPrimaOk(primoChain, a)) {
-      for (let t = primoChain; t + 90 <= b; t += 90) starts.push(t);
+      const passo = oggi ? 15 : 90;
+      for (let t = primoChain; t + 90 <= b; t += passo) starts.push(t);
     }
     if (SLOT_FISSO_PRANZO >= a && SLOT_FISSO_PRANZO + 90 <= b && gapPrimaOk(SLOT_FISSO_PRANZO, a)) {
       const remain = b - (SLOT_FISSO_PRANZO + 90);
       if (remain === 0 || remain >= 60) starts.push(SLOT_FISSO_PRANZO);
+    }
+    // 17:30 dal lunedì al venerdì: fascia serale fissa aggiuntiva, come
+    // il pranzo. Non nel weekend/festivi.
+    if (feriale && SLOT_FISSO_SERALE >= a && SLOT_FISSO_SERALE + 90 <= b && gapPrimaOk(SLOT_FISSO_SERALE, a)) {
+      const remain = b - (SLOT_FISSO_SERALE + 90);
+      if (remain === 0 || remain >= 60) starts.push(SLOT_FISSO_SERALE);
     }
   } else {
     const limit = Math.min(b, BOUNDARY + 30);
@@ -161,10 +183,10 @@ function slotsInInterval(a, b, duration) {
   return starts;
 }
 
-function validStarts(bookings, duration, close) {
+function validStarts(bookings, duration, close, feriale, oggi) {
   const free = freeIntervals(bookings, close);
   let starts = [];
-  free.forEach(([a, b]) => { starts = starts.concat(slotsInInterval(a, b, duration)); });
+  free.forEach(([a, b]) => { starts = starts.concat(slotsInInterval(a, b, duration, feriale, oggi)); });
   return [...new Set(starts)].sort((x, y) => x - y);
 }
 
@@ -365,7 +387,7 @@ exports.creaPrenotazionePubblica = onCall(
       .filter(b => b.status === "PENDING_PAYMENT" || b.status === "CONFIRMED" || b.status === "COMPLETED")
       .map(b => ({ start: orarioToMin(b.startTime), end: orarioToMin(b.endTime) }));
 
-    if (eOrmaiPassato(date, startMin) || !validStarts(existingBookings, durationMinutes, close).includes(startMin)) {
+    if (eOrmaiPassato(date, startMin) || !validStarts(existingBookings, durationMinutes, close, feriale(date), eOggi(date)).includes(startMin)) {
       throw new HttpsError("failed-precondition", "Questo slot non è più disponibile — scegline un altro.");
     }
 
@@ -505,7 +527,7 @@ exports.creaPrenotazioneOperatore = onCall(async (request) => {
     .filter(b => b.status === "PENDING_PAYMENT" || b.status === "CONFIRMED" || b.status === "COMPLETED")
     .map(b => ({ start: orarioToMin(b.startTime), end: orarioToMin(b.endTime) }));
 
-  if (eOrmaiPassato(date, startMin) || !validStarts(existingBookings, durationMinutes, close).includes(startMin)) {
+  if (eOrmaiPassato(date, startMin) || !validStarts(existingBookings, durationMinutes, close, feriale(date), eOggi(date)).includes(startMin)) {
     throw new HttpsError("failed-precondition", "Questo slot non è più disponibile.");
   }
 

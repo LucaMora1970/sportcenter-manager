@@ -25,6 +25,7 @@ const CLOSE = 23 * 60;
 const CLOSE_WEEKEND = 20 * 60 + 30;
 const BOUNDARY = 17 * 60;
 const SLOT_FISSO_PRANZO = 12 * 60 + 15;
+const SLOT_FISSO_SERALE = 17 * 60 + 30; // 17:30, solo lun-ven, solo 90'
 const PX_PER_MIN = 1.1;
 const EDGE_PAD = 10;
 const FESTIVI = [];
@@ -45,10 +46,17 @@ function escludiOrariPassati(starts, dataIso) {
   if (dataIso !== ora.dataIso) return starts;
   return starts.filter(s => s > ora.minuti);
 }
+function eOggi(dataIso) {
+  return dataIso === oraLocaleZurigo().dataIso;
+}
 
 function chiusuraGiorno(dataIso) {
   const giorno = new Date(dataIso + "T00:00:00").getDay();
   return (giorno === 0 || giorno === 6 || FESTIVI.includes(dataIso)) ? CLOSE_WEEKEND : CLOSE;
+}
+function feriale(dataIso) {
+  const giorno = new Date(dataIso + "T00:00:00").getDay();
+  return giorno >= 1 && giorno <= 5 && !FESTIVI.includes(dataIso);
 }
 function px(min) { return (min - OPEN) * PX_PER_MIN + EDGE_PAD; }
 function orarioToMin(orario) {
@@ -72,20 +80,30 @@ function gapPrimaOk(t, a) {
   const gap = t - a;
   return gap === 0 || gap >= 60;
 }
-function slotsInInterval(a, b, duration) {
+function slotsInInterval(a, b, duration, feriale, oggi) {
   const starts = [];
   if (duration === 90) {
     for (let t = a; t < BOUNDARY && t + 90 <= b; t += 30) {
       const remain = b - (t + 90);
       if ((remain === 0 || remain >= 60) && gapPrimaOk(t, a)) starts.push(t);
     }
+    // Oggi la catena dei 90' dopo le 17:00 usa un passo più fine (15'
+    // invece di 90') così non nasconde disponibilità reale nelle
+    // prossime ore — vedi js/prenota-padel.js per i dettagli.
     const primoChain = Math.max(a, BOUNDARY);
     if (gapPrimaOk(primoChain, a)) {
-      for (let t = primoChain; t + 90 <= b; t += 90) starts.push(t);
+      const passo = oggi ? 15 : 90;
+      for (let t = primoChain; t + 90 <= b; t += passo) starts.push(t);
     }
     if (SLOT_FISSO_PRANZO >= a && SLOT_FISSO_PRANZO + 90 <= b && gapPrimaOk(SLOT_FISSO_PRANZO, a)) {
       const remain = b - (SLOT_FISSO_PRANZO + 90);
       if (remain === 0 || remain >= 60) starts.push(SLOT_FISSO_PRANZO);
+    }
+    // 17:30 dal lunedì al venerdì: fascia serale fissa aggiuntiva, come
+    // il pranzo. Non nel weekend/festivi.
+    if (feriale && SLOT_FISSO_SERALE >= a && SLOT_FISSO_SERALE + 90 <= b && gapPrimaOk(SLOT_FISSO_SERALE, a)) {
+      const remain = b - (SLOT_FISSO_SERALE + 90);
+      if (remain === 0 || remain >= 60) starts.push(SLOT_FISSO_SERALE);
     }
   } else {
     const limit = Math.min(b, BOUNDARY + 30);
@@ -100,10 +118,10 @@ function slotsInInterval(a, b, duration) {
   }
   return starts;
 }
-function validStarts(bookings, duration, close) {
+function validStarts(bookings, duration, close, feriale, oggi) {
   const free = freeIntervals(bookings, close);
   let starts = [];
-  free.forEach(([a, b]) => { starts = starts.concat(slotsInInterval(a, b, duration)); });
+  free.forEach(([a, b]) => { starts = starts.concat(slotsInInterval(a, b, duration, feriale, oggi)); });
   return [...new Set(starts)].sort((x, y) => x - y);
 }
 
@@ -310,7 +328,7 @@ function renderPicker() {
   `).join("");
 
   if (state.duration) {
-    const starts = escludiOrariPassati(validStarts(state.bookingsMinuti, state.duration, close), state.data);
+    const starts = escludiOrariPassati(validStarts(state.bookingsMinuti, state.duration, close, feriale(state.data), eOggi(state.data)), state.data);
     html += starts.map(s => {
       const end = s + state.duration;
       const isSel = state.selected && state.selected.start === s;
