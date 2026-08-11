@@ -18,7 +18,8 @@ const KNOWN_PERMISSIONS = [
   { id: "corsi:gestisci", label: "Corsi: creare e modificare" },
   { id: "corsi:approva", label: "Corsi: approvare" },
   { id: "iscrizioni:gestisci", label: "Iscrizioni corsi: leggere e confermare/annullare (dati sensibili)" },
-  { id: "prenotazioni:gestisci", label: "Prenotazioni padel: eliminare prenotazioni altrui" }
+  { id: "prenotazioni:gestisci", label: "Prenotazioni padel: eliminare prenotazioni altrui" },
+  { id: "prenotazioni:proprie", label: "Prenotazioni padel: creare/eliminare solo le proprie e bloccare slot (es. maestri)" }
 ];
 
 function permessoLabel(id) {

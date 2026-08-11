@@ -35,6 +35,13 @@ service cloud.firestore {
         );
     }
 
+    // prenotazioni:gestisci (tutto, incluse le prenotazioni altrui) o
+    // prenotazioni:proprie (es. maestri: solo le proprie + blocchi) —
+    // entrambi devono poter vedere il tabellone operatore completo.
+    function puoOperarePrenotazioni() {
+      return hasPermission("prenotazioni:gestisci") || hasPermission("prenotazioni:proprie");
+    }
+
     // Ogni utente può leggere il proprio profilo; l'admin (users:gestisci)
     // tutti; chi ha "diario:leggi_tutti" può leggere tutti gli utenti
     // (serve al Resoconto per calcolare quota campo e compenso per
@@ -271,7 +278,7 @@ service cloud.firestore {
     // riservato al pannello operatore (allow list).
     match /bookingTickets/{token} {
       allow get: if true;
-      allow list: if hasPermission("prenotazioni:gestisci");
+      allow list: if puoOperarePrenotazioni();
       allow write: if false;
     }
 
@@ -280,16 +287,29 @@ service cloud.firestore {
     // funziona). Il codice si comunica di persona, non va reso
     // interrogabile pubblicamente.
     match /bookingCodes/{code} {
-      allow get, list: if hasPermission("prenotazioni:gestisci");
+      allow get, list: if puoOperarePrenotazioni();
       allow write: if false;
     }
 
-    // Motivo di un blocco slot (manutenzione, evento) creato dal
-    // responsabile — separato da "bookings" per non esporre pubblicamente
-    // un testo libero interno; solo il pannello operatore lo legge.
+    // Motivo di un blocco slot (manutenzione, evento/torneo) e chi ha
+    // creato la prenotazione (blocco o esente) — separato da "bookings"
+    // per non esporre pubblicamente un testo libero interno o l'identità
+    // di chi prenota; solo il pannello operatore lo legge. Chi ha solo
+    // prenotazioni:proprie lo usa anche per capire quali prenotazioni
+    // sono "sue" (createdByUid) e quindi eliminabili.
     match /blockDetails/{bookingId} {
-      allow get, list: if hasPermission("prenotazioni:gestisci");
+      allow get, list: if puoOperarePrenotazioni();
       allow write: if false;
+    }
+
+    // Giorni di chiusura totale del campo (doc ID = data ISO): lettura
+    // pubblica perché anche la pagina di prenotazione senza login deve
+    // sapere quali date non sono prenotabili; scrittura riservata a chi
+    // gestisce le prenotazioni (non ai maestri con prenotazioni:proprie —
+    // è una decisione del circolo, non del singolo maestro).
+    match /chiusurePadel/{data} {
+      allow read: if true;
+      allow write: if hasPermission("prenotazioni:gestisci");
     }
 
     match /payments/{id} {

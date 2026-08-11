@@ -37,18 +37,23 @@
 
       <p style="color:var(--chalk-grey);font-size:0.8rem;margin:-4px 0 16px;">Pannello operatore — le prenotazioni si fanno dalla <a href="prenota-padel.html" target="_blank">pagina pubblica</a>. Verifica al campo: QR → codice → lista stampata, in quest'ordine.</p>
 
-      <!-- Ricerca per codice -->
-      <div class="section-title"><h2>Verifica per codice</h2></div>
-      <div class="row2">
-        <div class="field" style="margin-bottom:0;flex:1;">
-          <input type="text" id="ricerca-codice" placeholder="es. P4X8-K7M2">
-        </div>
-        <button type="button" class="btn btn-ghost" id="ricerca-btn" style="width:auto;padding:10px 16px;">Cerca</button>
-      </div>
-      <div class="error-msg" id="ricerca-error"></div>
-      <div id="ricerca-risultato"></div>
+      <!-- Solo per chi gestisce tutte le prenotazioni (non i maestri con solo prenotazioni:proprie) -->
+      <div class="solo-gestisci">
 
-      <hr class="court-divider">
+        <!-- Ricerca per codice -->
+        <div class="section-title"><h2>Verifica per codice</h2></div>
+        <div class="row2">
+          <div class="field" style="margin-bottom:0;flex:1;">
+            <input type="text" id="ricerca-codice" placeholder="es. P4X8-K7M2">
+          </div>
+          <button type="button" class="btn btn-ghost" id="ricerca-btn" style="width:auto;padding:10px 16px;">Cerca</button>
+        </div>
+        <div class="error-msg" id="ricerca-error"></div>
+        <div id="ricerca-risultato"></div>
+
+        <hr class="court-divider">
+
+      </div>
 
       <!-- Tabellone del giorno -->
       <div class="section-title"><h2>Giorno</h2></div>
@@ -59,7 +64,7 @@
         <div class="empty-state"><div class="display">Caricamento…</div></div>
       </div>
 
-      <button type="button" class="btn btn-ghost" id="stampa-lista-btn" style="margin-top:14px;">Stampa lista giornaliera</button>
+      <button type="button" class="btn btn-ghost solo-gestisci" id="stampa-lista-btn" style="margin-top:14px;">Stampa lista giornaliera</button>
 
       <hr class="court-divider">
 
@@ -76,46 +81,71 @@
       <div class="error-msg" id="picker-error" style="margin-top:10px;"></div>
       <div class="timeline" id="timeline" style="margin-top:10px;"></div>
 
-      <hr class="court-divider">
-
-      <!-- Resoconto per periodo -->
-      <div class="section-title"><h2>Resoconto per periodo</h2></div>
-      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Vendita campi per durata e quota campo dovuta dai maestri per le prenotazioni esenti.</p>
-
-      <div class="row2" style="margin-bottom:16px;">
-        <button type="button" class="btn btn-ghost" id="preset-7giorni-resoconto">Ultimi 7 giorni</button>
-        <button type="button" class="btn btn-ghost" id="preset-mese-resoconto">Mese corrente</button>
-      </div>
-      <form id="resoconto-periodo-form">
-        <div class="row2">
-          <div class="field">
-            <label for="resoconto-dal">Dal</label>
-            <input type="date" id="resoconto-dal" required>
-          </div>
-          <div class="field">
-            <label for="resoconto-al">Al</label>
-            <input type="date" id="resoconto-al" required>
-          </div>
-        </div>
-        <div class="error-msg" id="resoconto-periodo-error"></div>
-        <button type="submit" class="btn btn-primary" id="calcola-resoconto-btn">Calcola</button>
-      </form>
-
-      <div id="resoconto-periodo-risultato" class="hidden">
-        <hr class="court-divider">
-        <div class="section-title"><h2>Vendita campi per durata</h2></div>
-        <div id="vendita-per-durata-table" style="overflow-x:auto;"></div>
+      <div class="solo-gestisci">
 
         <hr class="court-divider">
-        <div class="scoreboard">
-          <div>
-            <div class="label">Quota campo dovuta dai maestri</div>
-            <div class="value" id="totale-quotacampo-maestri" style="font-size:1.7rem;">CHF 0.00</div>
+
+        <!-- Giorni di chiusura -->
+        <div class="section-title"><h2>Giorni di chiusura</h2></div>
+        <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Non prenotabili da nessuno (clienti, maestri, blocchi) finché non vengono rimossi da qui.</p>
+        <div class="row2" style="align-items:flex-end;">
+          <div class="field">
+            <label for="nuova-chiusura-data">Data</label>
+            <input type="date" id="nuova-chiusura-data">
+          </div>
+          <div class="field">
+            <label for="nuova-chiusura-motivo">Motivo (facoltativo)</label>
+            <input type="text" id="nuova-chiusura-motivo" placeholder="es. Natale">
           </div>
         </div>
-        <div id="quotacampo-maestri-warning" class="error-msg" style="color:var(--chalk-grey);"></div>
+        <button type="button" class="btn btn-ghost" id="aggiungi-chiusura-btn" style="width:auto;padding:10px 16px;">Aggiungi chiusura</button>
+        <div class="error-msg" id="chiusure-error"></div>
+        <div id="chiusure-list" style="margin-top:14px;">
+          <div class="empty-state"><div class="display">Caricamento…</div></div>
+        </div>
 
-        <button type="button" class="btn btn-ghost" id="stampa-resoconto-periodo-btn" style="margin-top:14px;">Stampa / Salva PDF</button>
+        <hr class="court-divider">
+
+        <!-- Resoconto per periodo -->
+        <div class="section-title"><h2>Resoconto per periodo</h2></div>
+        <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Vendita campi per durata e quota campo dovuta dai maestri per le prenotazioni esenti.</p>
+
+        <div class="row2" style="margin-bottom:16px;">
+          <button type="button" class="btn btn-ghost" id="preset-7giorni-resoconto">Ultimi 7 giorni</button>
+          <button type="button" class="btn btn-ghost" id="preset-mese-resoconto">Mese corrente</button>
+        </div>
+        <form id="resoconto-periodo-form">
+          <div class="row2">
+            <div class="field">
+              <label for="resoconto-dal">Dal</label>
+              <input type="date" id="resoconto-dal" required>
+            </div>
+            <div class="field">
+              <label for="resoconto-al">Al</label>
+              <input type="date" id="resoconto-al" required>
+            </div>
+          </div>
+          <div class="error-msg" id="resoconto-periodo-error"></div>
+          <button type="submit" class="btn btn-primary" id="calcola-resoconto-btn">Calcola</button>
+        </form>
+
+        <div id="resoconto-periodo-risultato" class="hidden">
+          <hr class="court-divider">
+          <div class="section-title"><h2>Vendita campi per durata</h2></div>
+          <div id="vendita-per-durata-table" style="overflow-x:auto;"></div>
+
+          <hr class="court-divider">
+          <div class="scoreboard">
+            <div>
+              <div class="label">Quota campo dovuta dai maestri</div>
+              <div class="value" id="totale-quotacampo-maestri" style="font-size:1.7rem;">CHF 0.00</div>
+            </div>
+          </div>
+          <div id="quotacampo-maestri-warning" class="error-msg" style="color:var(--chalk-grey);"></div>
+
+          <button type="button" class="btn btn-ghost" id="stampa-resoconto-periodo-btn" style="margin-top:14px;">Stampa / Salva PDF</button>
+        </div>
+
       </div>
 
     </div>

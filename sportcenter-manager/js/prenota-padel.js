@@ -105,6 +105,15 @@ function prezzoSlot(startMin, duration) {
 }
 
 let state = { data: null, duration: null, selected: null, bookings: [] };
+
+// Giorni di chiusura totale (collection "chiusurePadel", configurati dal
+// pannello operatore) — diverso da FESTIVI/chiusuraGiorno, che si limita
+// ad accorciare l'orario: qui il campo non è prenotabile da nessuno.
+let CHIUSURE_PADEL = new Set();
+async function caricaChiusurePadel() {
+  const snap = await db.collection("chiusurePadel").get();
+  CHIUSURE_PADEL = new Set(snap.docs.map(d => d.id));
+}
 let bookingsUnsub = null;
 
 function pad2(n) { return String(n).padStart(2, "0"); }
@@ -202,7 +211,7 @@ function buildDayStrip() {
   el.innerHTML = giorni.map(d => {
     const iso = toISO(d);
     return `
-      <button type="button" class="day-btn" role="tab" data-data="${iso}" aria-pressed="${iso === state.data}">
+      <button type="button" class="day-btn${CHIUSURE_PADEL.has(iso) ? " chiuso" : ""}" role="tab" data-data="${iso}" aria-pressed="${iso === state.data}">
         <span class="d">${GIORNI_BREVI[d.getDay()]}</span>
         <span class="n">${d.getDate()}</span>
       </button>
@@ -302,6 +311,14 @@ function hourGridHtml(close) {
 
 function render() {
   const timelineEl = document.getElementById("timeline");
+
+  if (CHIUSURE_PADEL.has(state.data)) {
+    timelineEl.style.height = "";
+    timelineEl.innerHTML = `<div class="empty-state"><div class="display">Campo chiuso</div><p>Il campo non è prenotabile in questa data.</p></div>`;
+    document.getElementById("summaryBar").classList.remove("show");
+    return;
+  }
+
   const close = chiusuraGiorno(state.data);
   const totalPx = px(close) + EDGE_PAD;
   timelineEl.style.height = totalPx + "px";
@@ -366,6 +383,7 @@ function render() {
   }
 
   await loadTariffePadel();
+  await caricaChiusurePadel();
 
   state.data = toISO(new Date());
   buildDayStrip();

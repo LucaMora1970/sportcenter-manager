@@ -151,6 +151,16 @@ const STATO_STILE = {
 
 let state = { data: null, duration: null, selected: null, bookingsMinuti: [] };
 
+// Giorni di chiusura totale (collection "chiusurePadel", gestiti più
+// sotto in questa stessa pagina) — diverso da FESTIVI/chiusuraGiorno,
+// che si limita ad accorciare l'orario: qui il campo non è prenotabile
+// da nessuno, nemmeno per blocchi/prenotazioni esenti.
+let CHIUSURE_PADEL = new Set();
+async function caricaChiusurePadel() {
+  const snap = await db.collection("chiusurePadel").get();
+  CHIUSURE_PADEL = new Set(snap.docs.map(d => d.id));
+}
+
 function pad2(n) { return String(n).padStart(2, "0"); }
 function toISO(date) { return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`; }
 function formatDataBreve(dataStr) {
@@ -180,7 +190,7 @@ function buildDayStrip() {
   el.innerHTML = giorni.map(d => {
     const iso = toISO(d);
     return `
-      <button type="button" class="day-btn" role="tab" data-data="${iso}" aria-pressed="${iso === state.data}">
+      <button type="button" class="day-btn${CHIUSURE_PADEL.has(iso) ? " chiuso" : ""}" role="tab" data-data="${iso}" aria-pressed="${iso === state.data}">
         <span class="d">${GIORNI_BREVI[d.getDay()]}</span>
         <span class="n">${d.getDate()}</span>
       </button>
@@ -222,14 +232,18 @@ async function caricaGiorno() {
       }))
       .sort((a, b) => a.startTime.localeCompare(b.startTime));
 
-    // I blocchi hanno un motivo in una collection separata (non
-    // pubblica, vedi firestore.rules) — lo si recupera solo per loro.
-    const idBlocchi = righe.filter(t => t.type === "BLOCK").map(t => t.bookingId);
-    if (idBlocchi.length > 0) {
-      const motivi = await Promise.all(idBlocchi.map(id => db.collection("blockDetails").doc(id).get()));
-      const motivoPerBookingId = {};
-      motivi.forEach(doc => { if (doc.exists) motivoPerBookingId[doc.id] = doc.data().motivo; });
-      righe = righe.map(t => t.type === "BLOCK" ? { ...t, motivo: motivoPerBookingId[t.bookingId] } : t);
+    // Motivo (solo blocchi) e chi ha creato la prenotazione sono in una
+    // collection separata, non pubblica (vedi firestore.rules) — serve
+    // per entrambi i tipi: mostra "prenotato da" e, per chi ha solo
+    // prenotazioni:proprie, decide se può eliminarla (solo le proprie).
+    const idOperatore = righe.filter(t => t.type === "BLOCK" || t.type === "STAFF_EXEMPT").map(t => t.bookingId);
+    if (idOperatore.length > 0) {
+      const dettagli = await Promise.all(idOperatore.map(id => db.collection("blockDetails").doc(id).get()));
+      const dettaglioPerBookingId = {};
+      dettagli.forEach(doc => { if (doc.exists) dettaglioPerBookingId[doc.id] = doc.data(); });
+      righe = righe.map(t => (t.type === "BLOCK" || t.type === "STAFF_EXEMPT")
+        ? { ...t, ...dettaglioPerBookingId[t.bookingId] }
+        : t);
     }
 
     renderGiorno(list, righe);
@@ -248,6 +262,16 @@ async function caricaGiorno() {
   }
 }
 
+// Chi ha solo prenotazioni:proprie (es. maestri) può eliminare solo
+// blocchi/prenotazioni esenti creati da sé stesso, mai le prenotazioni
+// online dei clienti — quelle restano riservate a prenotazioni:gestisci
+// tramite "Annulla e converti in credito".
+function puoEliminarePrenotazione(t) {
+  if (t.type !== "BLOCK" && t.type !== "STAFF_EXEMPT") return false;
+  if (hasPermission(currentProfile, "prenotazioni:gestisci")) return true;
+  return hasPermission(currentProfile, "prenotazioni:proprie") && t.createdByUid === currentProfile.uid;
+}
+
 function rigaHtml(t) {
   const stato = t.type === "BLOCK" ? "Bloccato" : (t.type === "STAFF_EXEMPT" ? "Esente (maestro)" : (STATO_LABEL[t.status] || t.status));
   const stile = t.type === "BLOCK" ? "border-color:var(--danger);color:var(--danger);"
@@ -261,9 +285,13 @@ function rigaHtml(t) {
         <div class="entry-meta">${DISCIPLINA} · Campo ${escapeHtml(t.courtId || COURT_ID)}</div>
         <div class="entry-meta">Codice: ${escapeHtml(t.bookingCode)} · CHF ${(t.price || 0).toFixed(2)}</div>
         ${t.type === "BLOCK" && t.motivo ? `<div class="entry-meta">Motivo: ${escapeHtml(t.motivo)}</div>` : ""}
+        ${(t.type === "BLOCK" || t.type === "STAFF_EXEMPT") && t.createdByNome ? `<div class="entry-meta">Prenotato da: ${escapeHtml(t.createdByNome)}</div>` : ""}
         <div class="entry-meta">Prenotato il ${formatTimestamp(t.createdAt)}</div>
       </div>
-      ${(t.type === "CUSTOMER" && (t.status === "CONFIRMED" || t.status === "COMPLETED")) ? `<button type="button" class="btn btn-danger annulla-credito-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-booking-id="${t.bookingId}">Annulla e converti in credito</button>` : ""}
+      ${(t.type === "CUSTOMER" && (t.status === "CONFIRMED" || t.status === "COMPLETED") && hasPermission(currentProfile, "prenotazioni:gestisci"))
+        ? `<button type="button" class="btn btn-danger annulla-credito-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-booking-id="${t.bookingId}">Annulla e converti in credito</button>`
+        : ""}
+      ${puoEliminarePrenotazione(t) ? `<button type="button" class="btn btn-danger elimina-prenotazione-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-booking-id="${t.bookingId}">Elimina</button>` : ""}
     </div>
   `;
 }
@@ -275,11 +303,18 @@ function renderGiorno(list, righe) {
   }
   list.innerHTML = righe.map(rigaHtml).join("");
   wireAnnullaCredito(list);
+  wireEliminaPrenotazione(list);
 }
 
 function wireAnnullaCredito(container) {
   container.querySelectorAll(".annulla-credito-btn").forEach(btn => {
     btn.addEventListener("click", () => annullaEConverti(btn.dataset.bookingId, btn));
+  });
+}
+
+function wireEliminaPrenotazione(container) {
+  container.querySelectorAll(".elimina-prenotazione-btn").forEach(btn => {
+    btn.addEventListener("click", () => eliminaPrenotazione(btn.dataset.bookingId, btn));
   });
 }
 
@@ -290,6 +325,19 @@ async function annullaEConverti(bookingId, btn) {
     const fn = firebase.functions().httpsCallable("annullaEConvertiInCredito");
     const result = await fn({ bookingId });
     alert(`Credito creato: ${result.data.creditCode} — CHF ${result.data.importo.toFixed(2)}\n\nComunicalo al cliente per una prenotazione futura.`);
+    await caricaGiorno();
+  } catch (err) {
+    alert("Errore: " + err.message);
+    btn.disabled = false;
+  }
+}
+
+async function eliminaPrenotazione(bookingId, btn) {
+  if (!confirm("Eliminare questa prenotazione? Lo slot torna libero. L'operazione non è reversibile.")) return;
+  btn.disabled = true;
+  try {
+    const fn = firebase.functions().httpsCallable("eliminaPrenotazioneOperatore");
+    await fn({ bookingId });
     await caricaGiorno();
   } catch (err) {
     alert("Errore: " + err.message);
@@ -325,6 +373,13 @@ function hourGridHtml(close) {
 function renderPicker() {
   const timelineEl = document.getElementById("timeline");
   if (!timelineEl || !state.data) return;
+
+  if (CHIUSURE_PADEL.has(state.data)) {
+    timelineEl.style.height = "";
+    timelineEl.innerHTML = `<div class="empty-state"><div class="display">Campo chiuso</div><p>Nessuno slot prenotabile in questa data.</p></div>`;
+    document.getElementById("summaryBar").classList.remove("show");
+    return;
+  }
 
   const close = chiusuraGiorno(state.data);
   timelineEl.style.height = (px(close) + EDGE_PAD) + "px";
@@ -432,9 +487,18 @@ async function cercaCodice() {
       showError(errorEl, "Biglietto non trovato.");
       return;
     }
-    const t = { token, ...ticketSnap.data(), status: bookingSnap.exists ? bookingSnap.data().status : "CONFIRMED" };
+    const t = {
+      token, ...ticketSnap.data(),
+      status: bookingSnap.exists ? bookingSnap.data().status : "CONFIRMED",
+      type: bookingSnap.exists ? bookingSnap.data().type : "CUSTOMER"
+    };
+    if (t.type === "BLOCK" || t.type === "STAFF_EXEMPT") {
+      const dettaglioSnap = await db.collection("blockDetails").doc(t.bookingId).get();
+      if (dettaglioSnap.exists) Object.assign(t, dettaglioSnap.data());
+    }
     risultato.innerHTML = rigaHtml(t);
     wireAnnullaCredito(risultato);
+    wireEliminaPrenotazione(risultato);
   } catch (err) {
     showError(errorEl, "Errore nella ricerca: " + err.message);
   }
@@ -472,6 +536,85 @@ async function stampaListaGiorno() {
     </table>
   `;
   window.print();
+}
+
+// ---------- Giorni di chiusura ----------
+
+function renderChiusure(chiusure) {
+  const el = document.getElementById("chiusure-list");
+
+  if (chiusure.length === 0) {
+    el.innerHTML = `<div class="empty-state"><div class="display">Nessuna chiusura configurata</div></div>`;
+    return;
+  }
+
+  el.innerHTML = chiusure.map(c => `
+    <div class="entry-card" data-data="${c.id}">
+      <div class="entry-main">
+        <div class="entry-tipo">${formatDataBreve(c.id)}</div>
+        ${c.motivo ? `<div class="entry-meta">${escapeHtml(c.motivo)}</div>` : ""}
+      </div>
+      <button type="button" class="btn btn-danger elimina-chiusura-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-data="${c.id}">Elimina</button>
+    </div>
+  `).join("");
+
+  el.querySelectorAll(".elimina-chiusura-btn").forEach(btn => {
+    btn.addEventListener("click", () => eliminaChiusura(btn.dataset.data, btn));
+  });
+}
+
+async function caricaChiusureList() {
+  const el = document.getElementById("chiusure-list");
+  el.innerHTML = `<div class="empty-state"><div class="display">Caricamento…</div></div>`;
+  const snap = await db.collection("chiusurePadel").orderBy(firebase.firestore.FieldPath.documentId()).get();
+  const chiusure = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  renderChiusure(chiusure);
+}
+
+async function onAggiungiChiusura() {
+  const dataIso = document.getElementById("nuova-chiusura-data").value;
+  const motivo = document.getElementById("nuova-chiusura-motivo").value.trim();
+  const errorEl = document.getElementById("chiusure-error");
+  errorEl.textContent = "";
+
+  if (!dataIso) {
+    showError(errorEl, "Scegli una data.");
+    return;
+  }
+
+  const btn = document.getElementById("aggiungi-chiusura-btn");
+  btn.disabled = true;
+  try {
+    await db.collection("chiusurePadel").doc(dataIso).set({
+      motivo: motivo || null,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    document.getElementById("nuova-chiusura-data").value = "";
+    document.getElementById("nuova-chiusura-motivo").value = "";
+    await caricaChiusurePadel();
+    await caricaChiusureList();
+    buildDayStrip();
+    if (state.data === dataIso) renderPicker();
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function eliminaChiusura(dataIso, btn) {
+  if (!confirm(`Riaprire il campo per il ${formatDataBreve(dataIso)}?`)) return;
+  btn.disabled = true;
+  try {
+    await db.collection("chiusurePadel").doc(dataIso).delete();
+    await caricaChiusurePadel();
+    await caricaChiusureList();
+    buildDayStrip();
+    if (state.data === dataIso) renderPicker();
+  } catch (err) {
+    showError(document.getElementById("chiusure-error"), "Errore: " + err.message);
+    btn.disabled = false;
+  }
 }
 
 // ---------- Resoconto per periodo (vendita campi + quota campo maestri) ----------
@@ -649,13 +792,24 @@ requireAuth(async (profile) => {
   currentProfile = profile;
   document.getElementById("user-chip").textContent = profile.nome + (profile.ruoloNome ? " · " + profile.ruoloNome : "");
 
-  if (!hasPermission(profile, "prenotazioni:gestisci")) {
+  const puoGestire = hasPermission(profile, "prenotazioni:gestisci");
+  const puoProprie = puoGestire || hasPermission(profile, "prenotazioni:proprie");
+
+  if (!puoProprie) {
     document.getElementById("access-denied").classList.remove("hidden");
     document.getElementById("operatore-content").classList.add("hidden");
     return;
   }
 
+  if (!puoGestire) {
+    // Maestri (solo prenotazioni:proprie): niente ricerca per codice,
+    // lista stampabile, giorni di chiusura o resoconto — solo il
+    // tabellone del giorno e il blocco/prenotazione esente per sé stessi.
+    document.querySelectorAll(".solo-gestisci").forEach(el => el.classList.add("hidden"));
+  }
+
   await loadDatiCentro();
+  await caricaChiusurePadel();
 
   state.data = toISO(new Date());
   buildDayStrip();
@@ -678,23 +832,28 @@ requireAuth(async (profile) => {
   document.getElementById("blocca-btn").addEventListener("click", () => creaPrenotazioneOperatore("BLOCK"));
   document.getElementById("esente-btn").addEventListener("click", () => creaPrenotazioneOperatore("STAFF_EXEMPT"));
 
-  const [meseDal, meseAl] = currentMonthRange();
-  document.getElementById("resoconto-dal").value = meseDal;
-  document.getElementById("resoconto-al").value = meseAl;
-  document.getElementById("resoconto-periodo-form").addEventListener("submit", calcolaResocontoPeriodo);
-  document.getElementById("preset-7giorni-resoconto").addEventListener("click", () => {
-    const [d, a] = last7DaysRange();
-    document.getElementById("resoconto-dal").value = d;
-    document.getElementById("resoconto-al").value = a;
-    calcolaResocontoPeriodo(new Event("submit"));
-  });
-  document.getElementById("preset-mese-resoconto").addEventListener("click", () => {
-    const [d, a] = currentMonthRange();
-    document.getElementById("resoconto-dal").value = d;
-    document.getElementById("resoconto-al").value = a;
-    calcolaResocontoPeriodo(new Event("submit"));
-  });
-  document.getElementById("stampa-resoconto-periodo-btn").addEventListener("click", stampaResocontoPeriodo);
+  if (puoGestire) {
+    document.getElementById("aggiungi-chiusura-btn").addEventListener("click", onAggiungiChiusura);
+    await caricaChiusureList();
+
+    const [meseDal, meseAl] = currentMonthRange();
+    document.getElementById("resoconto-dal").value = meseDal;
+    document.getElementById("resoconto-al").value = meseAl;
+    document.getElementById("resoconto-periodo-form").addEventListener("submit", calcolaResocontoPeriodo);
+    document.getElementById("preset-7giorni-resoconto").addEventListener("click", () => {
+      const [d, a] = last7DaysRange();
+      document.getElementById("resoconto-dal").value = d;
+      document.getElementById("resoconto-al").value = a;
+      calcolaResocontoPeriodo(new Event("submit"));
+    });
+    document.getElementById("preset-mese-resoconto").addEventListener("click", () => {
+      const [d, a] = currentMonthRange();
+      document.getElementById("resoconto-dal").value = d;
+      document.getElementById("resoconto-al").value = a;
+      calcolaResocontoPeriodo(new Event("submit"));
+    });
+    document.getElementById("stampa-resoconto-periodo-btn").addEventListener("click", stampaResocontoPeriodo);
+  }
 
   await caricaGiorno();
 });

@@ -111,6 +111,16 @@ function feriale(dataIso) {
   return giorno >= 1 && giorno <= 5 && !FESTIVI.includes(dataIso);
 }
 
+// Giorni di chiusura totale (collection "chiusurePadel", doc ID = data
+// ISO) — diverso da FESTIVI/chiusuraGiorno, che si limita ad accorciare
+// l'orario: qui il campo non è prenotabile da nessuno, nemmeno per
+// blocchi/prenotazioni esenti. Va sempre riverificato lato server, mai
+// fidarsi del solo filtro client.
+async function giornoChiuso(dataIso) {
+  const doc = await db.collection("chiusurePadel").doc(dataIso).get();
+  return doc.exists;
+}
+
 // Data/ora corrente in fuso orario svizzero — Cloud Functions gira in
 // UTC di default, e "date"/"startTime" sono sempre orario locale del
 // campo, quindi un confronto con un new Date() nudo sarebbe sfalsato di
@@ -391,6 +401,10 @@ exports.creaPrenotazionePubblica = onCall(
     if (!date || !startTime || !endTime || !durationMinutes) {
       throw new HttpsError("invalid-argument", "Dati prenotazione incompleti.");
     }
+    if (await giornoChiuso(date)) {
+      throw new HttpsError("failed-precondition", "Il campo è chiuso in questa data.");
+    }
+
     const court = courtId || COURT_ID;
     const startMin = orarioToMin(startTime);
     const close = chiusuraGiorno(date);
@@ -500,14 +514,18 @@ exports.creaPrenotazionePubblica = onCall(
 // Due casi, entrambi senza pagamento, entrambi riservati a chi è
 // loggato — a differenza del flusso pubblico, qui l'identità di chi
 // chiama conta:
-// - "BLOCK": il responsabile blocca uno slot (manutenzione, evento),
-//   richiede il permesso prenotazioni:gestisci.
-// - "STAFF_EXEMPT": un maestro prenota per sé senza pagare, richiede
-//   soggettoQuotaCampo sul proprio utente (stesso flag già usato per la
-//   quota campo del diario).
+// - "BLOCK": blocca uno slot (manutenzione, evento, torneo), richiede
+//   prenotazioni:gestisci oppure prenotazioni:proprie (es. maestri, che
+//   possono bloccare per tornei ma non toccare le prenotazioni altrui).
+// - "STAFF_EXEMPT": un maestro prenota per sé senza pagare, richiede sia
+//   uno dei due permessi sopra sia soggettoQuotaCampo sul proprio utente
+//   (stesso flag già usato per la quota campo del diario).
 // In entrambi i casi lo slot occupa comunque "bookings" come una
 // prenotazione vera, per restare coerente con il tabellone pubblico e
-// l'algoritmo anti-buco (che non deve conoscere la differenza).
+// l'algoritmo anti-buco (che non deve conoscere la differenza). Chi ha
+// creato la prenotazione viene sempre registrato in "blockDetails" (non
+// solo per i blocchi): serve a eliminaPrenotazioneOperatore per
+// verificare che chi ha solo prenotazioni:proprie tocchi solo le sue.
 exports.creaPrenotazioneOperatore = onCall(async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
 
@@ -527,16 +545,21 @@ exports.creaPrenotazioneOperatore = onCall(async (request) => {
     if (roleSnap.exists) permessi = roleSnap.data().permessi || [];
   }
   const isAdmin = permessi.includes("*");
+  const puoOperare = isAdmin || permessi.includes("prenotazioni:gestisci") || permessi.includes("prenotazioni:proprie");
 
+  if (!puoOperare) {
+    throw new HttpsError("permission-denied", "Permesso mancante per prenotazioni padel.");
+  }
   if (tipo === "BLOCK") {
-    if (!isAdmin && !permessi.includes("prenotazioni:gestisci")) {
-      throw new HttpsError("permission-denied", "Permesso mancante per bloccare uno slot.");
-    }
     if (!motivo || !motivo.trim()) {
       throw new HttpsError("invalid-argument", "Indica un motivo per il blocco.");
     }
   } else if (!userData.soggettoQuotaCampo) {
     throw new HttpsError("permission-denied", "Questa prenotazione esente è riservata ai maestri.");
+  }
+
+  if (await giornoChiuso(date)) {
+    throw new HttpsError("failed-precondition", "Il campo è chiuso in questa data.");
   }
 
   const court = courtId || COURT_ID;
@@ -581,16 +604,78 @@ exports.creaPrenotazioneOperatore = onCall(async (request) => {
     paymentId: null, creditCode: null, creditoScalato: 0
   });
 
-  if (tipo === "BLOCK") {
-    await db.collection("blockDetails").doc(bookingRef.id).set({
-      motivo: motivo.trim(),
-      createdByUid: request.auth.uid,
-      createdByNome: userData.nome || "—",
-      createdAt: FieldValue.serverTimestamp()
-    });
-  }
+  await db.collection("blockDetails").doc(bookingRef.id).set({
+    motivo: tipo === "BLOCK" ? motivo.trim() : null,
+    createdByUid: request.auth.uid,
+    createdByNome: userData.nome || "—",
+    createdAt: FieldValue.serverTimestamp()
+  });
 
   return { bookingId: bookingRef.id, token, bookingCode };
+});
+
+// ---------- 1d. Flusso operatore: elimina blocco / prenotazione esente ----------
+//
+// Mai per prenotazioni "CUSTOMER" (pagate da un cliente): quelle passano
+// solo da annullaEConvertiInCredito, così il cliente resta sempre
+// protetto da una cancellazione senza rimborso/credito. Chi ha
+// prenotazioni:gestisci (o è admin) può eliminare qualunque blocco o
+// prenotazione esente; chi ha solo prenotazioni:proprie (es. un maestro)
+// solo quelli creati da sé stesso — verificato via blockDetails, scritto
+// da creaPrenotazioneOperatore per ogni prenotazione di questo tipo.
+exports.eliminaPrenotazioneOperatore = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+
+  const { bookingId } = request.data || {};
+  if (!bookingId) throw new HttpsError("invalid-argument", "ID prenotazione mancante.");
+
+  const userSnap = await db.collection("users").doc(request.auth.uid).get();
+  const userData = userSnap.exists ? userSnap.data() : {};
+  let permessi = [];
+  if (userData.ruoloId) {
+    const roleSnap = await db.collection("roles").doc(userData.ruoloId).get();
+    if (roleSnap.exists) permessi = roleSnap.data().permessi || [];
+  }
+  const isAdmin = permessi.includes("*");
+  const puoTutto = isAdmin || permessi.includes("prenotazioni:gestisci");
+  const puoProprie = puoTutto || permessi.includes("prenotazioni:proprie");
+
+  if (!puoProprie) {
+    throw new HttpsError("permission-denied", "Permesso mancante per prenotazioni padel.");
+  }
+
+  const bookingRef = db.collection("bookings").doc(bookingId);
+  const bookingSnap = await bookingRef.get();
+  if (!bookingSnap.exists) throw new HttpsError("not-found", "Prenotazione non trovata.");
+  const booking = bookingSnap.data();
+
+  if (booking.type !== "BLOCK" && booking.type !== "STAFF_EXEMPT") {
+    throw new HttpsError(
+      "failed-precondition",
+      "Solo blocchi o prenotazioni esenti possono essere eliminati da qui — per una prenotazione cliente usa \"Annulla e converti in credito\"."
+    );
+  }
+
+  if (!puoTutto) {
+    const detailsSnap = await db.collection("blockDetails").doc(bookingId).get();
+    const createdByUid = detailsSnap.exists ? detailsSnap.data().createdByUid : null;
+    if (createdByUid !== request.auth.uid) {
+      throw new HttpsError("permission-denied", "Puoi eliminare solo le tue prenotazioni.");
+    }
+  }
+
+  const ticketsSnap = await db.collection("bookingTickets").where("bookingId", "==", bookingId).get();
+
+  const batch = db.batch();
+  batch.delete(bookingRef);
+  batch.delete(db.collection("blockDetails").doc(bookingId));
+  ticketsSnap.docs.forEach(d => {
+    batch.delete(d.ref);
+    batch.delete(db.collection("bookingCodes").doc(d.data().bookingCode));
+  });
+  await batch.commit();
+
+  return { ok: true };
 });
 
 // ---------- 2. Webhook: conferma reale del pagamento ----------

@@ -624,6 +624,9 @@ select:focus, input:focus, textarea:focus {
 .day-btn .n { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 1.05rem; }
 .day-btn[aria-pressed="true"] { background: var(--ball); border-color: var(--ball); color: var(--court-blue-950); }
 .day-btn[aria-pressed="true"] .d { color: var(--court-blue-950); opacity: 0.75; }
+.day-btn.chiuso { border-style: dashed; opacity: 0.5; }
+.day-btn.chiuso .n { text-decoration: line-through; }
+.day-btn.chiuso[aria-pressed="true"] { background: var(--court-blue-700); border-color: var(--court-blue-700); color: var(--chalk-grey); }
 
 .duration-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .picker-label { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 0.9rem; letter-spacing: 0.03em; text-transform: uppercase; color: var(--line-white); }
