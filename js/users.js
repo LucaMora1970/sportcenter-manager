@@ -124,7 +124,7 @@ async function loadUsers() {
         <div class="team-card-header">
           <div>
             <div class="team-card-name">${escapeHtml(u.nome || u.id)}</div>
-            <div class="team-card-meta">${escapeHtml(u.email || "")} · ${escapeHtml(roleLabel)}${u.soggettoQuotaCampo ? " · quota campo" : ""}${tariffe ? " · " + escapeHtml(tariffe) : ""}</div>
+            <div class="team-card-meta">${escapeHtml(u.email || "")} · ${escapeHtml(roleLabel)}${u.soggettoQuotaCampo ? " · quota campo" : ""}${u.puoRichiederePagamento ? " · pagamento online" : ""}${tariffe ? " · " + escapeHtml(tariffe) : ""}</div>
           </div>
           <span class="badge" style="${attivo ? "border-color:#7f9e4a;color:#c1e08f;" : "border-color:var(--danger);color:var(--danger);"}">${attivo ? "Attivo" : "Disattivato"}</span>
         </div>
@@ -153,6 +153,9 @@ async function loadUsers() {
           <button class="btn btn-ghost toggle-quotacampo-btn" data-uid="${u.id}" data-quotacampo="${!!u.soggettoQuotaCampo}">
             ${u.soggettoQuotaCampo ? "Rimuovi quota campo" : "Assegna quota campo"}
           </button>
+          <button class="btn btn-ghost toggle-pagamento-btn" data-uid="${u.id}" data-pagamento="${!!u.puoRichiederePagamento}">
+            ${u.puoRichiederePagamento ? "Rimuovi pagamento online" : "Assegna pagamento online"}
+          </button>
           <button class="btn btn-ghost toggle-active-btn" data-uid="${u.id}" data-attivo="${attivo}">
             ${attivo ? "Disattiva" : "Riattiva"}
           </button>
@@ -169,6 +172,9 @@ async function loadUsers() {
   });
   list.querySelectorAll(".toggle-quotacampo-btn").forEach(btn => {
     btn.addEventListener("click", onToggleQuotaCampo);
+  });
+  list.querySelectorAll(".toggle-pagamento-btn").forEach(btn => {
+    btn.addEventListener("click", onTogglePagamentoOnline);
   });
   list.querySelectorAll(".save-tariffa-btn").forEach(btn => {
     btn.addEventListener("click", onSaveTariffa);
@@ -288,6 +294,20 @@ async function onToggleQuotaCampo(e) {
   btn.disabled = true;
   try {
     await db.collection("users").doc(uid).update({ soggettoQuotaCampo: nuovoStato });
+    await loadUsers();
+  } catch (err) {
+    showError(document.getElementById("users-list-error"), "Errore: " + err.message);
+    btn.disabled = false;
+  }
+}
+
+async function onTogglePagamentoOnline(e) {
+  const btn = e.currentTarget;
+  const uid = btn.dataset.uid;
+  const nuovoStato = btn.dataset.pagamento !== "true";
+  btn.disabled = true;
+  try {
+    await db.collection("users").doc(uid).update({ puoRichiederePagamento: nuovoStato });
     await loadUsers();
   } catch (err) {
     showError(document.getElementById("users-list-error"), "Errore: " + err.message);

@@ -30,6 +30,7 @@ async function getCurrentUserProfile() {
     ruoloNome: userData.ruoloNome || "",
     attivo: userData.attivo !== false,
     soggettoQuotaCampo: !!userData.soggettoQuotaCampo,
+    puoRichiederePagamento: !!userData.puoRichiederePagamento,
     permessi
   };
 }

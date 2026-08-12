@@ -94,6 +94,20 @@ service cloud.firestore {
     //   chiunque tranne il vero amministratore (isAdmin(), non semplicemente
     //   diario:gestisci_tutti) — richiesto esplicitamente: "non modificabile
     //   se non dall'amministratore" dopo l'approvazione del responsabile.
+    // - i campi "pagamentoOnline*" (esito di un pagamento richiesto tramite
+    //   PostFinance, vedi richiediPagamentoDiario) li scrive SOLO la Cloud
+    //   Function via Admin SDK (bypassa queste regole) — un update client
+    //   "normale" non può toccarli, altrimenti chiunque potrebbe segnare
+    //   una propria lezione come pagata senza che lo sia davvero.
+    function nonToccaCampiPagamentoOnline() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+        'pagamentoOnlineStato', 'pagamentoOnlineToken', 'pagamentoOnlineImporto',
+        'pagamentoOnlineLink', 'pagamentoOnlineDescrizione',
+        'pagamentoOnlineRichiestoDaUid', 'pagamentoOnlineRichiestoDaNome',
+        'pagamentoOnlineRichiestoAt', 'pagamentoOnlinePagatoAt'
+      ]);
+    }
+
     match /diario/{entryId} {
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
 
@@ -105,6 +119,7 @@ service cloud.firestore {
 
       allow update: if isAdmin() || (
         resource.data.approvato != true
+        && nonToccaCampiPagamentoOnline()
         && (
           resource.data.userId == request.auth.uid
           || hasPermission("diario:gestisci_tutti")
@@ -367,6 +382,18 @@ service cloud.firestore {
     match /voucherTickets/{token} {
       allow get: if true;
       allow list: if hasPermission("prenotazioni:gestisci");
+      allow write: if false;
+    }
+
+    // Richiesta di pagamento online generica (oggi solo per lezioni
+    // diario, in futuro anche quota campo/cassa — campo "tipo" a
+    // distinguerle). L'ID del documento È il token lungo e casuale: la
+    // pagina di conferma pubblica lo legge per mostrare l'esito, ma non
+    // deve essere enumerabile (allow list riservato a chi gestisce).
+    // Scritta solo dalla Cloud Function (Admin SDK).
+    match /paymentRequests/{token} {
+      allow get: if true;
+      allow list: if hasPermission("diario:leggi_tutti") || hasPermission("diario:gestisci_tutti");
       allow write: if false;
     }
 

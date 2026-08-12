@@ -533,6 +533,52 @@ async function onSubmitEntry(e) {
 
 // ---------- Elenco voci di oggi ----------
 
+// ---------- Pagamento online (maestri abilitati, flag puoRichiederePagamento) ----------
+
+function pagamentoOnlineActionHtml(en) {
+  if (!currentProfile.puoRichiederePagamento && !isAdmin(currentProfile)) return "";
+
+  if (en.pagamentoOnlineStato === "PENDING") {
+    return `<button type="button" class="btn btn-ghost copia-link-pagamento-btn" style="width:auto;padding:6px 10px;font-size:0.65rem;" data-link="${escapeHtml(en.pagamentoOnlineLink || "")}">Copia link pagamento</button>`;
+  }
+  if (en.pagamentoOnlineStato === "PAID") return "";
+
+  const label = en.pagamentoOnlineStato === "FAILED" ? "Riprova pagamento online" : "Paga online";
+  return `<button type="button" class="btn btn-ghost richiedi-pagamento-btn" style="width:auto;padding:6px 10px;font-size:0.65rem;" data-id="${en.id}">${label}</button>`;
+}
+
+async function onRichiediPagamento(entryId, btn) {
+  const importoRaw = prompt("Importo da richiedere al cliente (CHF):", "");
+  if (importoRaw === null) return;
+  const importo = parseFloat(importoRaw);
+  if (isNaN(importo) || importo <= 0) {
+    alert("Importo non valido.");
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = "Attendere…";
+  try {
+    const fn = firebase.functions().httpsCallable("richiediPagamentoDiario");
+    const result = await fn({ entryId, importo });
+    await copyToClipboard(result.data.paymentPageUrl, btn);
+    alert("Link di pagamento copiato — invialo al cliente (WhatsApp, email, SMS).");
+  } catch (err) {
+    alert("Errore: " + err.message);
+    btn.disabled = false;
+    btn.textContent = "Paga online";
+  }
+}
+
+function wirePagamentoOnlineButtons(container) {
+  container.querySelectorAll(".richiedi-pagamento-btn").forEach(btn => {
+    btn.addEventListener("click", () => onRichiediPagamento(btn.dataset.id, btn));
+  });
+  container.querySelectorAll(".copia-link-pagamento-btn").forEach(btn => {
+    btn.addEventListener("click", () => copyToClipboard(btn.dataset.link, btn));
+  });
+}
+
 function renderEntries(entries) {
   const list = document.getElementById("entries-list");
   const totalEl = document.getElementById("today-total");
@@ -567,10 +613,13 @@ function renderEntries(entries) {
           <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">
             <span class="chip-audit">Inserito da ${escapeHtml(en.userNome || "—")} · ${formatTimestamp(en.createdAt)}</span>
             ${en.approvato ? `<span class="chip-audit approvato">Approvato da ${escapeHtml(en.approvatoDaNome || "—")} · ${formatTimestamp(en.approvatoAt)}</span>` : ""}
+            ${en.pagamentoOnlineStato === "PAID" ? `<span class="chip-audit approvato">Pagato online CHF ${(en.pagamentoOnlineImporto || 0).toFixed(2)} · ${formatTimestamp(en.pagamentoOnlinePagatoAt)}</span>` : ""}
+            ${en.pagamentoOnlineStato === "PENDING" ? `<span class="chip-audit">In attesa di pagamento · CHF ${(en.pagamentoOnlineImporto || 0).toFixed(2)}</span>` : ""}
           </div>
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
           <div class="entry-ore">${(en.ore || 0).toFixed(1)}h</div>
+          ${pagamentoOnlineActionHtml(en)}
           ${puoEliminareVoceDiario(en, currentProfile) ? `<button type="button" class="btn btn-danger delete-entry-btn" style="width:auto;padding:6px 10px;font-size:0.65rem;" data-id="${en.id}">Elimina</button>` : ""}
         </div>
       </div>
@@ -578,6 +627,8 @@ function renderEntries(entries) {
   }).join("");
 
   totalEl.textContent = total.toFixed(1);
+
+  wirePagamentoOnlineButtons(list);
 
   list.querySelectorAll(".delete-entry-btn").forEach(btn => {
     btn.addEventListener("click", async () => {
@@ -664,8 +715,10 @@ function renderVociDaApprovare(entries) {
           <span class="badge ${en.disciplina}">${disciplinaLabel(en.disciplina)}</span>
           <div class="entry-tipo">${escapeHtml(en.userNome || "—")} · ${escapeHtml(tipoAttivitaLabelFor(en))}</div>
           <div class="entry-meta">${escapeHtml(metaParts.join(" · "))}</div>
-          <div style="margin-top:6px;">
+          <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">
             <span class="chip-audit">Inserito da ${escapeHtml(en.userNome || "—")} · ${formatTimestamp(en.createdAt)}</span>
+            ${en.pagamentoOnlineStato === "PAID" ? `<span class="chip-audit approvato">Pagato online CHF ${(en.pagamentoOnlineImporto || 0).toFixed(2)} · ${formatTimestamp(en.pagamentoOnlinePagatoAt)}</span>` : ""}
+            ${en.pagamentoOnlineStato === "PENDING" ? `<span class="chip-audit">In attesa di pagamento · CHF ${(en.pagamentoOnlineImporto || 0).toFixed(2)}</span>` : ""}
           </div>
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">

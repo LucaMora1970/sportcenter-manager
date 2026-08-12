@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pagamento — Tennis Club Mendrisio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script>if(localStorage.getItem("sportos-tema")==="light")document.documentElement.setAttribute("data-theme","light");</script>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d1f30">
+<style>
+  .pagamento-card {
+    background: var(--court-blue-900);
+    border: 1px solid var(--court-blue-700);
+    border-radius: var(--radius);
+    padding: 28px var(--gap);
+    text-align: center;
+  }
+  .pagamento-logo { width: 64px; height: 64px; margin: 0 auto 16px; display: block; border-radius: 12px; }
+  .pagamento-status {
+    display: inline-block; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;
+    border: 1px solid #7f9e4a; color: #c1e08f; border-radius: 4px; padding: 3px 10px; margin-bottom: 14px;
+  }
+  .pagamento-importo { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 2.6rem; margin: 10px 0; }
+  .pagamento-descrizione { color: var(--chalk-grey); font-size: 0.9rem; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <div>
+      <div class="topbar-kicker" id="centro-kicker">Tennis Club Mendrisio</div>
+      <h1>Pagamento</h1>
+    </div>
+    <div></div>
+    <button type="button" class="topbar-link" id="theme-toggle-btn">Tema chiaro</button>
+  </div>
+
+  <main>
+
+    <div id="stato-caricamento" class="empty-state">
+      <div class="display">Verifica in corso…</div>
+      <p>Se hai appena pagato, la conferma può richiedere qualche secondo.</p>
+    </div>
+
+    <div id="stato-non-trovato" class="empty-state hidden">
+      <div class="display">Richiesta non trovata</div>
+      <p>Il link non è valido o è scaduto — contatta il circolo per un nuovo link.</p>
+    </div>
+
+    <div id="stato-fallito" class="empty-state hidden">
+      <div class="display">Pagamento non riuscito</div>
+      <p>Il pagamento è stato annullato o rifiutato. Contatta il circolo per riprovare.</p>
+    </div>
+
+    <div id="pagamento-content" class="hidden">
+      <div class="pagamento-card">
+        <img src="icons/icon-512.png" alt="" class="pagamento-logo">
+        <div class="pagamento-status">Pagamento ricevuto</div>
+        <div class="pagamento-importo" id="p-importo">—</div>
+        <div class="pagamento-descrizione" id="p-descrizione">—</div>
+      </div>
+      <p style="text-align:center;margin-top:18px;color:var(--chalk-grey);font-size:0.8rem;">Grazie! Puoi chiudere questa pagina.</p>
+    </div>
+
+  </main>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/pagamento-conferma.js"></script>
+</body>
+</html>

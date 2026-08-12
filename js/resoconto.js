@@ -151,6 +151,7 @@ async function loadTutti(dal, al) {
   let totaleCosto = 0;
   let totaleQuotaCampo = 0;
   let totaleCompenso = 0;
+  let totalePagatoOnline = 0;
   let vociSenzaTariffa = 0;
   let vociSenzaQuotaCampo = 0;
   let vociSenzaCompenso = 0;
@@ -159,9 +160,14 @@ async function loadTutti(dal, al) {
     const ore = e.ore || 0;
     totaleOre += ore;
 
-    if (!perUtente[e.userId]) perUtente[e.userId] = { uid: e.userId, nome: e.userNome || e.userId, totale: 0, quotaCampo: 0, compenso: 0, entries: [] };
+    if (!perUtente[e.userId]) perUtente[e.userId] = { uid: e.userId, nome: e.userNome || e.userId, totale: 0, quotaCampo: 0, compenso: 0, pagatoOnline: 0, entries: [] };
     perUtente[e.userId].totale += ore;
     perUtente[e.userId].entries.push(e);
+
+    if (e.pagamentoOnlineStato === "PAID") {
+      perUtente[e.userId].pagatoOnline += (e.pagamentoOnlineImporto || 0);
+      totalePagatoOnline += (e.pagamentoOnlineImporto || 0);
+    }
 
     const tipoKey = (e.tipoAttivitaId || ("legacy:" + (e.tipoAttivita || "altro"))) + "|" + (e.disciplina || "");
     if (!perTipo[tipoKey]) perTipo[tipoKey] = { nome: tipoAttivitaLabelFor(e), disciplina: e.disciplina, ore: 0, costo: 0 };
@@ -224,6 +230,7 @@ async function loadTutti(dal, al) {
     totaleCosto,
     totaleQuotaCampo,
     totaleCompenso,
+    totalePagatoOnline,
     vociSenzaTariffa,
     vociSenzaQuotaCampo,
     vociSenzaCompenso
@@ -264,6 +271,7 @@ function renderDipendenti(lista) {
           <div class="entry-tipo">${escapeHtml(d.nome)}</div>
           ${d.quotaCampo > 0 ? `<div class="entry-meta">Quota campo dovuta: CHF ${d.quotaCampo.toFixed(2)}</div>` : ""}
           ${d.compenso > 0 ? `<div class="entry-meta">Compenso dovuto: CHF ${d.compenso.toFixed(2)}</div>` : ""}
+          ${d.pagatoOnline > 0 ? `<div class="entry-meta">Pagato online dai clienti: CHF ${d.pagatoOnline.toFixed(2)}</div>` : ""}
         </div>
         <div class="entry-ore">${d.totale.toFixed(1)}h</div>
       </div>
@@ -380,6 +388,7 @@ function entryRowHtml(en) {
   if (nomiAllievi(en)) metaParts.push("Allievo: " + nomiAllievi(en));
   if (en.oraInizio || en.oraFine) metaParts.push(`${en.oraInizio || "—"}–${en.oraFine || "—"}`);
   if (en.note) metaParts.push(en.note);
+  if (en.pagamentoOnlineStato === "PAID") metaParts.push(`Pagato online CHF ${(en.pagamentoOnlineImporto || 0).toFixed(2)}`);
 
   return `
     <div class="entry-card">
@@ -425,7 +434,7 @@ function toggleDettaglioDipendente(uid) {
 
 // Tabella di stampa condivisa tra il report di un singolo dipendente
 // (vista admin) e il report personale (vista collaboratore).
-function stampaReport({ nome, entries, totale, quotaCampo, compenso }) {
+function stampaReport({ nome, entries, totale, quotaCampo, compenso, pagatoOnline }) {
   const perGiorno = {};
   entries.forEach(en => {
     if (!perGiorno[en.data]) perGiorno[en.data] = [];
@@ -443,6 +452,7 @@ function stampaReport({ nome, entries, totale, quotaCampo, compenso }) {
         <td>${escapeHtml(nomiAllievi(en) || "—")}</td>
         <td>${en.oraInizio || "—"}–${en.oraFine || "—"}</td>
         <td>${(en.ore || 0).toFixed(2)}</td>
+        <td>${en.pagamentoOnlineStato === "PAID" ? "CHF " + (en.pagamentoOnlineImporto || 0).toFixed(2) : "—"}</td>
         <td>${escapeHtml(en.note || "")}</td>
       </tr>
     `)
@@ -451,13 +461,14 @@ function stampaReport({ nome, entries, totale, quotaCampo, compenso }) {
   const totaliParts = [`<p><strong>Totale ore:</strong> ${totale.toFixed(2)}</p>`];
   if (quotaCampo > 0) totaliParts.push(`<p><strong>Quota campo dovuta:</strong> CHF ${quotaCampo.toFixed(2)}</p>`);
   if (compenso > 0) totaliParts.push(`<p><strong>Compenso dovuto:</strong> CHF ${compenso.toFixed(2)}</p>`);
+  if (pagatoOnline > 0) totaliParts.push(`<p><strong>Pagato online dai clienti:</strong> CHF ${pagatoOnline.toFixed(2)}</p>`);
 
   document.getElementById("print-area").innerHTML = `
     <h1>${escapeHtml(nome)}</h1>
     <p>Periodo: ${formatDataBreve(ultimoPeriodo.dal)} – ${formatDataBreve(ultimoPeriodo.al)}</p>
     <table>
       <thead>
-        <tr><th>Data</th><th>Disciplina</th><th>Tipo attività</th><th>Campo</th><th>Allievo</th><th>Orario</th><th>Ore</th><th>Note</th></tr>
+        <tr><th>Data</th><th>Disciplina</th><th>Tipo attività</th><th>Campo</th><th>Allievo</th><th>Orario</th><th>Ore</th><th>Pagato online</th><th>Note</th></tr>
       </thead>
       <tbody>${righe}</tbody>
     </table>
@@ -470,7 +481,7 @@ function stampaReport({ nome, entries, totale, quotaCampo, compenso }) {
 function stampaReportDipendente(uid) {
   const dipendente = (ultimoTutti.perDipendente || []).find(d => d.uid === uid);
   if (!dipendente) return;
-  stampaReport({ nome: dipendente.nome, entries: dipendente.entries, totale: dipendente.totale, quotaCampo: dipendente.quotaCampo, compenso: dipendente.compenso });
+  stampaReport({ nome: dipendente.nome, entries: dipendente.entries, totale: dipendente.totale, quotaCampo: dipendente.quotaCampo, compenso: dipendente.compenso, pagatoOnline: dipendente.pagatoOnline });
 }
 
 function stampaReportPersonale() {
@@ -518,11 +529,12 @@ function renderRiepilogoContabilita(lista) {
   const totOre = lista.reduce((s, d) => s + d.totale, 0);
   const totCompenso = lista.reduce((s, d) => s + d.compenso, 0);
   const totQuota = lista.reduce((s, d) => s + d.quotaCampo, 0);
+  const totOnline = lista.reduce((s, d) => s + d.pagatoOnline, 0);
 
   el.innerHTML = `
     <table class="app-table">
       <thead>
-        <tr><th>Dipendente</th><th>Ore</th><th>Da retribuire</th><th>Da ricevere</th></tr>
+        <tr><th>Dipendente</th><th>Ore</th><th>Da retribuire</th><th>Da ricevere</th><th>Pagato online</th></tr>
       </thead>
       <tbody>
         ${lista.map(d => `
@@ -531,6 +543,7 @@ function renderRiepilogoContabilita(lista) {
             <td>${d.totale.toFixed(1)}h</td>
             <td>${d.compenso > 0 ? "CHF " + d.compenso.toFixed(2) : "—"}</td>
             <td>${d.quotaCampo > 0 ? "CHF " + d.quotaCampo.toFixed(2) : "—"}</td>
+            <td>${d.pagatoOnline > 0 ? "CHF " + d.pagatoOnline.toFixed(2) : "—"}</td>
           </tr>
         `).join("")}
       </tbody>
@@ -540,6 +553,7 @@ function renderRiepilogoContabilita(lista) {
           <td><strong>${totOre.toFixed(1)}h</strong></td>
           <td><strong>CHF ${totCompenso.toFixed(2)}</strong></td>
           <td><strong>CHF ${totQuota.toFixed(2)}</strong></td>
+          <td><strong>CHF ${totOnline.toFixed(2)}</strong></td>
         </tr>
       </tfoot>
     </table>
@@ -556,19 +570,21 @@ function stampaRiepilogoCompleto() {
       <td>${d.totale.toFixed(2)}</td>
       <td>${d.compenso > 0 ? d.compenso.toFixed(2) : "—"}</td>
       <td>${d.quotaCampo > 0 ? d.quotaCampo.toFixed(2) : "—"}</td>
+      <td>${d.pagatoOnline > 0 ? d.pagatoOnline.toFixed(2) : "—"}</td>
     </tr>
   `).join("");
 
   const totOre = lista.reduce((s, d) => s + d.totale, 0);
   const totCompenso = lista.reduce((s, d) => s + d.compenso, 0);
   const totQuota = lista.reduce((s, d) => s + d.quotaCampo, 0);
+  const totOnline = lista.reduce((s, d) => s + d.pagatoOnline, 0);
 
   document.getElementById("print-area").innerHTML = `
     <h1>Riepilogo complessivo dipendenti</h1>
     <p>Periodo: ${formatDataBreve(ultimoPeriodo.dal)} – ${formatDataBreve(ultimoPeriodo.al)}</p>
     <table>
       <thead>
-        <tr><th>Dipendente</th><th>Ore</th><th>Da retribuire (CHF)</th><th>Da ricevere (CHF)</th></tr>
+        <tr><th>Dipendente</th><th>Ore</th><th>Da retribuire (CHF)</th><th>Da ricevere (CHF)</th><th>Pagato online (CHF)</th></tr>
       </thead>
       <tbody>${righe}</tbody>
       <tfoot>
@@ -577,6 +593,7 @@ function stampaRiepilogoCompleto() {
           <th>${totOre.toFixed(2)}</th>
           <th>${totCompenso.toFixed(2)}</th>
           <th>${totQuota.toFixed(2)}</th>
+          <th>${totOnline.toFixed(2)}</th>
         </tr>
       </tfoot>
     </table>
@@ -638,6 +655,7 @@ async function calcola() {
       document.getElementById("totale-complessivo-costo").textContent = `CHF ${tutti.totaleCosto.toFixed(2)}`;
       document.getElementById("totale-quotacampo").textContent = `CHF ${tutti.totaleQuotaCampo.toFixed(2)}`;
       document.getElementById("totale-compenso").textContent = `CHF ${tutti.totaleCompenso.toFixed(2)}`;
+      document.getElementById("totale-pagato-online").textContent = `CHF ${tutti.totalePagatoOnline.toFixed(2)}`;
 
       const warningEl = document.getElementById("tariffe-warning");
       warningEl.textContent = tutti.vociSenzaTariffa > 0

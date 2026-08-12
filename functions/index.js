@@ -708,7 +708,25 @@ exports.webhookPostFinance = onRequest(
 
       const meta = transaction.metaData || {};
 
-      if (meta.tipoTransazione === "voucher" && meta.token) {
+      if (meta.tipoTransazione === "pagamento_diario" && meta.token) {
+        // Pagamento online di una lezione (richiesto da un maestro
+        // abilitato, vedi richiediPagamentoDiario) — a differenza dei
+        // buoni regalo qui il documento "paymentRequests" esiste già in
+        // stato PENDING dalla creazione, va solo aggiornato con l'esito.
+        const stato = successo ? "PAID" : "FAILED";
+        await db.collection("paymentRequests").doc(meta.token).update({
+          stato,
+          paymentId: String(transaction.id),
+          esitoAt: FieldValue.serverTimestamp()
+        });
+
+        if (meta.entryId) {
+          const campiDiario = successo
+            ? { pagamentoOnlineStato: "PAID", pagamentoOnlinePagatoAt: FieldValue.serverTimestamp() }
+            : { pagamentoOnlineStato: "FAILED" };
+          await db.collection("diario").doc(meta.entryId).update(campiDiario);
+        }
+      } else if (meta.tipoTransazione === "voucher" && meta.token) {
         // Buono regalo acquistato dalla pagina pubblica — nessun documento
         // esiste prima del successo (a differenza delle prenotazioni non
         // c'è nemmeno un "bookings" da liberare in caso di fallimento).
@@ -932,6 +950,109 @@ exports.emettiBuonoOmaggio = onCall(async (request) => {
 
   return { code, token };
 });
+
+// ---------- Pagamento online di una lezione (Diario) ----------
+//
+// Un maestro abilitato (flag puoRichiederePagamento sul proprio utente,
+// impostato da Team) genera un link di pagamento PostFinance per una SUA
+// voce diario, da inoltrare al cliente. A differenza dei buoni regalo,
+// qui il documento "paymentRequests" e i campi sulla voce diario si
+// scrivono SUBITO in stato PENDING (non solo al successo): serve per
+// mostrare "richiesta in corso" nell'interfaccia prima ancora che il
+// cliente paghi, e per evitare di generare due link paralleli per la
+// stessa lezione.
+exports.richiediPagamentoDiario = onCall(
+  { secrets: [POSTFINANCE_SPACE_ID, POSTFINANCE_USER_ID, POSTFINANCE_APP_KEY] },
+  async (request) => {
+    if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+
+    const userSnap = await db.collection("users").doc(request.auth.uid).get();
+    const userData = userSnap.exists ? userSnap.data() : {};
+    let permessi = [];
+    if (userData.ruoloId) {
+      const roleSnap = await db.collection("roles").doc(userData.ruoloId).get();
+      if (roleSnap.exists) permessi = roleSnap.data().permessi || [];
+    }
+    const isAdminUser = permessi.includes("*");
+    if (!isAdminUser && !userData.puoRichiederePagamento) {
+      throw new HttpsError("permission-denied", "Non sei abilitato a richiedere pagamenti online.");
+    }
+
+    const { entryId, importo } = request.data || {};
+    if (!entryId) throw new HttpsError("invalid-argument", "ID voce diario mancante.");
+    if (typeof importo !== "number" || !isFinite(importo) || importo <= 0) {
+      throw new HttpsError("invalid-argument", "Importo non valido.");
+    }
+
+    const entryRef = db.collection("diario").doc(entryId);
+    const entrySnap = await entryRef.get();
+    if (!entrySnap.exists) throw new HttpsError("not-found", "Voce diario non trovata.");
+    const entry = entrySnap.data();
+    if (!isAdminUser && entry.userId !== request.auth.uid) {
+      throw new HttpsError("permission-denied", "Puoi richiedere il pagamento solo delle tue lezioni.");
+    }
+
+    const descrizione = `${entry.tipoAttivitaNome || "Lezione"} — ${entry.data || ""}`;
+    const token = generaToken();
+    const spaceId = parseInt(POSTFINANCE_SPACE_ID.value(), 10);
+    const service = transactionsService();
+
+    try {
+      const transaction = await service.postPaymentTransactions({
+        space: spaceId,
+        transactionCreate: {
+          currency: "CHF",
+          merchantReference: token,
+          successUrl: `${APP_URL}pagamento-conferma.html?t=${token}`,
+          failedUrl: `${APP_URL}pagamento-conferma.html?t=${token}`,
+          lineItems: [{
+            uniqueId: token,
+            name: descrizione,
+            quantity: 1,
+            amountIncludingTax: importo,
+            type: LineItemType.Product
+          }],
+          metaData: { tipoTransazione: "pagamento_diario", token, entryId, importo: String(importo) },
+          environmentSelectionStrategy: FORZA_AMBIENTE_TEST
+            ? TransactionEnvironmentSelectionStrategy.ForceTestEnvironment
+            : TransactionEnvironmentSelectionStrategy.UseConfiguration
+        }
+      });
+
+      const paymentPageUrl = await service.getPaymentTransactionsIdPaymentPageUrl({
+        id: transaction.id,
+        space: spaceId
+      });
+
+      await db.collection("paymentRequests").doc(token).set({
+        tipo: "diario_lezione",
+        riferimentoId: entryId,
+        importo,
+        descrizione,
+        stato: "PENDING",
+        createdByUid: request.auth.uid,
+        createdByNome: userData.nome || "—",
+        createdAt: FieldValue.serverTimestamp()
+      });
+
+      await entryRef.update({
+        pagamentoOnlineStato: "PENDING",
+        pagamentoOnlineToken: token,
+        pagamentoOnlineImporto: importo,
+        pagamentoOnlineLink: paymentPageUrl,
+        pagamentoOnlineDescrizione: descrizione,
+        pagamentoOnlineRichiestoDaUid: request.auth.uid,
+        pagamentoOnlineRichiestoDaNome: userData.nome || "—",
+        pagamentoOnlineRichiestoAt: FieldValue.serverTimestamp()
+      });
+
+      return { token, paymentPageUrl };
+    } catch (err) {
+      console.error("richiediPagamentoDiario: errore PostFinance:", err);
+      throw new HttpsError("internal", "Errore nella creazione del pagamento. Riprova.");
+    }
+  }
+);
 
 // ---------- Link di reset password (senza invio email di Firebase) ----------
 //
