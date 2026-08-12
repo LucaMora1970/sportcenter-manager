@@ -79,26 +79,52 @@
 
       <hr class="court-divider">
 
-      <!-- Link prenotazione padel pubblica -->
-      <div class="section-title"><h2>Link prenotazione campo padel</h2></div>
-      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 10px;">Pagina pubblica, nessun login richiesto — condividila con i soci.</p>
-      <div class="row2" style="align-items:flex-end;">
-        <div class="field" style="margin-bottom:0;">
-          <input type="text" id="link-prenota-padel" readonly>
+      <!-- Link pubblici -->
+      <div class="section-title"><h2>Link pubblici</h2></div>
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Tutti i link attivi dell'app, sempre aggiornati al dominio corrente — utile per non doverli ricordare o rigenerare a mano.</p>
+
+      <div class="field">
+        <label>Accesso staff (login)</label>
+        <p style="color:var(--chalk-grey);font-size:0.78rem;margin:0 0 6px;">Richiede login — per tutto il team.</p>
+        <div class="row2" style="align-items:flex-end;">
+          <div class="field" style="margin-bottom:0;">
+            <input type="text" id="link-app" readonly>
+          </div>
+          <button type="button" class="btn btn-ghost" id="copia-link-app-btn" style="width:auto;padding:10px 16px;">Copia</button>
         </div>
-        <button type="button" class="btn btn-ghost" id="copia-link-prenota-padel-btn" style="width:auto;padding:10px 16px;margin-bottom:16px;">Copia</button>
       </div>
 
-      <hr class="court-divider">
-
-      <!-- Link pannello operatore prenotazioni -->
-      <div class="section-title"><h2>Link pannello operatore prenotazioni</h2></div>
-      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 10px;">Richiede login e il permesso "Prenotazioni: eliminare prenotazioni altrui" — condividilo solo con lo staff.</p>
-      <div class="row2" style="align-items:flex-end;">
-        <div class="field" style="margin-bottom:0;">
-          <input type="text" id="link-tabellone" readonly>
+      <div class="field">
+        <label>Prenotazione campo padel</label>
+        <p style="color:var(--chalk-grey);font-size:0.78rem;margin:0 0 6px;">Pagina pubblica, nessun login richiesto — condividila con i soci.</p>
+        <div class="row2" style="align-items:flex-end;">
+          <div class="field" style="margin-bottom:0;">
+            <input type="text" id="link-prenota-padel" readonly>
+          </div>
+          <button type="button" class="btn btn-ghost" id="copia-link-prenota-padel-btn" style="width:auto;padding:10px 16px;">Copia</button>
         </div>
-        <button type="button" class="btn btn-ghost" id="copia-link-tabellone-btn" style="width:auto;padding:10px 16px;margin-bottom:16px;">Copia</button>
+      </div>
+
+      <div class="field">
+        <label>Pannello operatore prenotazioni</label>
+        <p style="color:var(--chalk-grey);font-size:0.78rem;margin:0 0 6px;">Richiede login e il permesso "Prenotazioni: eliminare prenotazioni altrui" — condividilo solo con lo staff.</p>
+        <div class="row2" style="align-items:flex-end;">
+          <div class="field" style="margin-bottom:0;">
+            <input type="text" id="link-tabellone" readonly>
+          </div>
+          <button type="button" class="btn btn-ghost" id="copia-link-tabellone-btn" style="width:auto;padding:10px 16px;">Copia</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Iscrizione corsi</label>
+        <p style="color:var(--chalk-grey);font-size:0.78rem;margin:0 0 6px;">Pagina pubblica, nessun login richiesto — condividila con gli interessati.</p>
+        <div class="row2" style="align-items:flex-end;">
+          <div class="field" style="margin-bottom:0;">
+            <input type="text" id="link-iscrizione-corsi" readonly>
+          </div>
+          <button type="button" class="btn btn-ghost" id="copia-link-iscrizione-corsi-btn" style="width:auto;padding:10px 16px;">Copia</button>
+        </div>
       </div>
 
       <hr class="court-divider">

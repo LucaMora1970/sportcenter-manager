@@ -934,8 +934,10 @@ requireAuth(async (profile) => {
     return;
   }
 
+  initLinkCopyBox("link-app", "copia-link-app-btn", "index.html");
   initLinkCopyBox("link-prenota-padel", "copia-link-prenota-padel-btn", "prenota-padel.html");
   initLinkCopyBox("link-tabellone", "copia-link-tabellone-btn", "prenotazioni.html");
+  initLinkCopyBox("link-iscrizione-corsi", "copia-link-iscrizione-corsi-btn", "iscrizione-corso.html");
 
   await seedDisciplineIfEmpty();
   await loadDiscipline();
