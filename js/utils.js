@@ -147,10 +147,11 @@ function puoEliminareVoceDiario(entry, profile) {
 // Orari di inizio "prenotabili" per disciplina — stessa fonte usata sia dal
 // Diario (per lo slot/orario di una singola voce) sia da Corsi (per
 // proporre agli iscritti solo combinazioni realmente compatibili con i
-// campi). Tennis ha un salto pranzo 12:15→13:30 quindi resta gestito con
-// coppie inizio-fine esplicite; padel/squash con una griglia inizio+durata.
+// campi). Tennis ha un breve salto pranzo 13:15→13:30 quindi resta
+// gestito con coppie inizio-fine esplicite; padel/squash con una griglia
+// inizio+durata.
 const SLOT_TENNIS = [
-  ["08:15", "09:15"], ["09:15", "10:15"], ["10:15", "11:15"], ["11:15", "12:15"],
+  ["08:15", "09:15"], ["09:15", "10:15"], ["10:15", "11:15"], ["11:15", "12:15"], ["12:15", "13:15"],
   ["13:30", "14:30"], ["14:30", "15:30"], ["15:30", "16:30"], ["16:30", "17:30"],
   ["17:30", "18:30"], ["18:30", "19:30"], ["19:30", "20:30"], ["20:30", "21:30"], ["21:30", "22:30"]
 ];
