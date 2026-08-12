@@ -26,6 +26,9 @@
     display: inline-block; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;
     border: 1px solid #7f9e4a; color: #c1e08f; border-radius: 4px; padding: 3px 10px; margin-bottom: 14px;
   }
+  /* Il verde pastello sopra è tarato per lo sfondo scuro — su sfondo
+     chiaro è quasi illeggibile, stesso problema già corretto altrove. */
+  :root[data-theme="light"] .ticket-status { border-color: var(--ball-dim); color: var(--ball-dim); }
   .ticket-rows { text-align: left; margin: 18px 0; }
   .ticket-row { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px dashed var(--court-blue-700); font-size: 0.88rem; }
   .ticket-row:last-child { border-bottom: none; }

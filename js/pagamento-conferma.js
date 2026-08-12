@@ -16,8 +16,22 @@
 const TENTATIVI_MAX = 6;
 const ATTESA_TRA_TENTATIVI_MS = 2500;
 
+// Sito pubblico del circolo — usato dal pulsante "Chiudi" come
+// destinazione se il browser non permette di chiudere davvero la
+// scheda (window.close() funziona solo su schede aperte da script,
+// mai su una pagina raggiunta per navigazione/redirect diretto — qui
+// serve comunque un posto sensato dove mandare il cliente).
+const HOMEPAGE_FALLBACK = "https://www.tennisclubmendrisio.ch";
+
 function attendi(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function formatTimestamp(ts) {
+  if (!ts || typeof ts.toDate !== "function") return "—";
+  const d = ts.toDate();
+  const pad = n => String(n).padStart(2, "0");
+  return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} alle ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 async function caricaEsitoPagamento(token) {
@@ -68,7 +82,27 @@ function mostraStato(id) {
     return;
   }
 
+  document.getElementById("p-centro").textContent = DATI_CENTRO.nome;
   document.getElementById("p-importo").textContent = `CHF ${(data.importo || 0).toFixed(2)}`;
   document.getElementById("p-descrizione").textContent = data.descrizione || "";
+  document.getElementById("p-orario").textContent = (data.oraInizio || data.oraFine)
+    ? `${data.oraInizio || "—"} – ${data.oraFine || "—"}`
+    : "—";
+  document.getElementById("p-richiedente").textContent = data.createdByNome || "—";
+  document.getElementById("p-timestamp").textContent = formatTimestamp(data.esitoAt);
   mostraStato("pagamento-content");
+
+  document.getElementById("chiudi-btn").addEventListener("click", () => {
+    window.close();
+    // Se la scheda non è stata chiusa (non aperta da script — il caso
+    // più comune, essendo questa una pagina di redirect), mandiamo
+    // comunque il cliente da qualche parte invece di lasciarlo bloccato
+    // qui. Il campo Homepage in Configurazione è pensato per essere
+    // scritto senza "https://" (es. "www.circolo.ch"), quindi va
+    // completato prima di usarlo come URL assoluto.
+    const homepage = DATI_CENTRO.homepage
+      ? (DATI_CENTRO.homepage.startsWith("http") ? DATI_CENTRO.homepage : `https://${DATI_CENTRO.homepage}`)
+      : HOMEPAGE_FALLBACK;
+    location.href = homepage;
+  });
 })();

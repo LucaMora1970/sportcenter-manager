@@ -21,13 +21,25 @@
     padding: 28px var(--gap);
     text-align: center;
   }
-  .pagamento-logo { width: 64px; height: 64px; margin: 0 auto 16px; display: block; border-radius: 12px; }
+  .pagamento-logo { width: 64px; height: 64px; margin: 0 auto 12px; display: block; border-radius: 12px; }
+  .pagamento-kicker {
+    font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--chalk-grey); margin-bottom: 10px;
+  }
   .pagamento-status {
     display: inline-block; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;
     border: 1px solid #7f9e4a; color: #c1e08f; border-radius: 4px; padding: 3px 10px; margin-bottom: 14px;
   }
+  /* Il verde pastello sopra è tarato per lo sfondo scuro — su sfondo
+     chiaro è quasi illeggibile, stesso problema già corretto per i chip. */
+  :root[data-theme="light"] .pagamento-status { border-color: var(--ball-dim); color: var(--ball-dim); }
   .pagamento-importo { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 2.6rem; margin: 10px 0; }
-  .pagamento-descrizione { color: var(--chalk-grey); font-size: 0.9rem; }
+  .pagamento-descrizione { color: var(--chalk-grey); font-size: 0.9rem; margin-bottom: 18px; }
+  .pagamento-rows { text-align: left; }
+  .pagamento-row { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px dashed var(--court-blue-700); font-size: 0.85rem; }
+  .pagamento-row:last-child { border-bottom: none; }
+  .pagamento-row .k { color: var(--chalk-grey); }
+  .pagamento-row .v { font-weight: 600; text-align: right; }
 </style>
 </head>
 <body>
@@ -62,11 +74,17 @@
     <div id="pagamento-content" class="hidden">
       <div class="pagamento-card">
         <img src="icons/icon-512.png" alt="" class="pagamento-logo">
+        <div class="pagamento-kicker" id="p-centro">Tennis Club Mendrisio</div>
         <div class="pagamento-status">Pagamento ricevuto</div>
         <div class="pagamento-importo" id="p-importo">—</div>
         <div class="pagamento-descrizione" id="p-descrizione">—</div>
+        <div class="pagamento-rows">
+          <div class="pagamento-row"><span class="k">Orario</span><span class="v" id="p-orario">—</span></div>
+          <div class="pagamento-row"><span class="k">Richiesto da</span><span class="v" id="p-richiedente">—</span></div>
+          <div class="pagamento-row"><span class="k">Pagato il</span><span class="v" id="p-timestamp">—</span></div>
+        </div>
       </div>
-      <p style="text-align:center;margin-top:18px;color:var(--chalk-grey);font-size:0.8rem;">Grazie! Puoi chiudere questa pagina.</p>
+      <button type="button" class="btn btn-ghost" id="chiudi-btn" style="margin-top:18px;">Chiudi</button>
     </div>
 
   </main>
