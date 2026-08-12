@@ -262,7 +262,11 @@ main {
   padding: 14px;
   margin-bottom: 10px;
   display: flex;
-  align-items: center;
+  /* flex-start invece di center: con i chip di verifica (inserito/
+     approvato/pagato) la colonna di sinistra può andare su più righe —
+     centrando verticalmente, ore/pulsanti a destra finivano a metà dei
+     chip invece che allineati in alto, con effetto di sovrapposizione. */
+  align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
 }
