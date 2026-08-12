@@ -68,11 +68,9 @@ function rowHtml(rowId) {
         </div>
       </div>
       <div class="field row-allievo-field hidden">
-        <label>Allievo</label>
-        <select class="row-allievo">
-          <option value="">—</option>
-        </select>
-        <input type="text" class="row-allievo-nuovo hidden" placeholder="Nome allievo" style="margin-top:8px;">
+        <label>Allievi</label>
+        <div class="row-allievo-list"></div>
+        <button type="button" class="btn btn-ghost row-add-allievo-btn" style="width:auto;padding:6px 10px;font-size:0.7rem;margin-top:2px;">+ Aggiungi allievo</button>
       </div>
       <div class="row2">
         <div class="field row-nrore-field" style="flex:0 0 110px;">
@@ -81,7 +79,7 @@ function rowHtml(rowId) {
         </div>
         <div class="field">
           <label>Note (opzionale)</label>
-          <input type="text" class="row-note" placeholder="es. nome allievo">
+          <input type="text" class="row-note">
         </div>
       </div>
       <div class="row-label row-orari-hint">oppure specifica gli orari</div>
@@ -270,30 +268,80 @@ function vociSiSovrappongono(a, b) {
     && a.oraInizio < b.oraFine && b.oraInizio < a.oraFine;
 }
 
-// Alcuni tipi attività (es. Sparring) richiedono il nome dell'allievo
-// per la fatturazione. Il campo compare solo quando il tipo attività
-// selezionato ha il flag richiedeAllievo, e permette di scegliere un
-// allievo esistente o aggiungerne uno nuovo al volo.
+// Alcuni tipi attività (es. Sparring, Private Soci, Non Soci) richiedono
+// il nome di almeno un allievo per la fatturazione — e per le lezioni di
+// gruppo può servirne più di uno, quindi il campo è una lista dinamica
+// (stesso pattern "aggiungi/rimuovi" già usato per le righe attività),
+// non un singolo select. Il campo compare solo quando il tipo attività
+// selezionato ha il flag richiedeAllievo, e ogni riga permette di
+// scegliere un allievo esistente o aggiungerne uno nuovo al volo.
+let allievoItemCounter = 0;
+
+function allievoItemHtml(itemId) {
+  const options = allieviCache.map(a => `<option value="${a.id}">${escapeHtml(a.nome)}</option>`).join("");
+  return `
+    <div class="row-allievo-item" data-item-id="${itemId}">
+      <div class="row2" style="align-items:flex-start;">
+        <select class="row-allievo-select" style="flex:1;" required>
+          <option value="">—</option>
+          ${options}
+          <option value="__new__">+ Nuovo allievo…</option>
+        </select>
+        <button type="button" class="btn btn-ghost row-allievo-remove hidden" style="width:auto;padding:12px 14px;flex:0 0 auto;">×</button>
+      </div>
+      <input type="text" class="row-allievo-nuovo hidden" placeholder="Nome allievo" style="margin-top:8px;">
+    </div>
+  `;
+}
+
+function updateAllievoRemoveButtons(rowEl) {
+  const items = rowEl.querySelectorAll(".row-allievo-item");
+  items.forEach(item => {
+    item.querySelector(".row-allievo-remove").classList.toggle("hidden", items.length <= 1);
+  });
+}
+
+function addAllievoItem(rowEl) {
+  allievoItemCounter++;
+  const list = rowEl.querySelector(".row-allievo-list");
+  list.insertAdjacentHTML("beforeend", allievoItemHtml(allievoItemCounter));
+
+  const itemEl = list.querySelector(`[data-item-id="${allievoItemCounter}"]`);
+  itemEl.querySelector(".row-allievo-select").addEventListener("change", (e) => {
+    const nuovoInput = itemEl.querySelector(".row-allievo-nuovo");
+    if (e.target.value === "__new__") {
+      nuovoInput.classList.remove("hidden");
+      nuovoInput.required = true;
+      nuovoInput.focus();
+    } else {
+      nuovoInput.classList.add("hidden");
+      nuovoInput.required = false;
+      nuovoInput.value = "";
+    }
+  });
+  itemEl.querySelector(".row-allievo-remove").addEventListener("click", () => {
+    itemEl.remove();
+    updateAllievoRemoveButtons(rowEl);
+  });
+
+  updateAllievoRemoveButtons(rowEl);
+}
+
 function syncAllievoField(rowEl) {
   const tipoAttivitaSel = rowEl.querySelector(".row-tipoattivita");
   const tipo = tipiAttivitaCache.find(t => t.id === tipoAttivitaSel.value);
   const field = rowEl.querySelector(".row-allievo-field");
-  const select = rowEl.querySelector(".row-allievo");
-  const nuovoInput = rowEl.querySelector(".row-allievo-nuovo");
+  const list = rowEl.querySelector(".row-allievo-list");
 
   if (tipo && tipo.richiedeAllievo) {
     field.classList.remove("hidden");
-    select.required = true;
-    select.innerHTML = `<option value="">—</option>` +
-      allieviCache.map(a => `<option value="${a.id}">${escapeHtml(a.nome)}</option>`).join("") +
-      `<option value="__new__">+ Nuovo allievo…</option>`;
+    // Solo alla prima attivazione del campo per questa riga (lista
+    // vuota): non azzerare gli allievi già scelti se l'utente sta solo
+    // ritoccando altri campi della stessa riga.
+    if (list.children.length === 0) addAllievoItem(rowEl);
   } else {
     field.classList.add("hidden");
-    select.required = false;
-    select.value = "";
-    nuovoInput.classList.add("hidden");
-    nuovoInput.required = false;
-    nuovoInput.value = "";
+    list.innerHTML = "";
   }
 }
 
@@ -316,18 +364,7 @@ function addRow() {
     syncOrarioAuto(rowEl);
   });
   rowEl.querySelector(".row-orainizio-auto").addEventListener("change", () => aggiornaOraFineAuto(rowEl));
-  rowEl.querySelector(".row-allievo").addEventListener("change", (e) => {
-    const nuovoInput = rowEl.querySelector(".row-allievo-nuovo");
-    if (e.target.value === "__new__") {
-      nuovoInput.classList.remove("hidden");
-      nuovoInput.required = true;
-      nuovoInput.focus();
-    } else {
-      nuovoInput.classList.add("hidden");
-      nuovoInput.required = false;
-      nuovoInput.value = "";
-    }
-  });
+  rowEl.querySelector(".row-add-allievo-btn").addEventListener("click", () => addAllievoItem(rowEl));
 
   updateRemoveButtons();
 }
@@ -425,20 +462,30 @@ async function onSubmitEntry(e) {
 
       const tipo = tipiAttivitaCache.find(t => t.id === tipoAttivitaSel.value);
       if (tipo && tipo.richiedeAllievo) {
-        const allievoSel = rowEl.querySelector(".row-allievo");
-        if (allievoSel.value === "__new__") {
-          const nomeNuovo = rowEl.querySelector(".row-allievo-nuovo").value.trim();
-          if (!nomeNuovo) throw new Error("Inserisci il nome del nuovo allievo.");
-          const ref = await db.collection("allievi").add({ nome: nomeNuovo, attivo: true });
-          allieviCache.push({ id: ref.id, nome: nomeNuovo, attivo: true });
-          entry.allievoId = ref.id;
-          entry.allievoNome = nomeNuovo;
-        } else if (allievoSel.value) {
-          entry.allievoId = allievoSel.value;
-          entry.allievoNome = selectedLabel(allievoSel);
-        } else {
-          throw new Error("Seleziona o inserisci il nome dell'allievo.");
+        const allievoIds = [];
+        const allievoNomi = [];
+        const items = rowEl.querySelectorAll(".row-allievo-item");
+        for (const item of items) {
+          const sel = item.querySelector(".row-allievo-select");
+          if (sel.value === "__new__") {
+            const nomeNuovo = item.querySelector(".row-allievo-nuovo").value.trim();
+            if (!nomeNuovo) throw new Error("Inserisci il nome del nuovo allievo.");
+            const ref = await db.collection("allievi").add({ nome: nomeNuovo, attivo: true });
+            allieviCache.push({ id: ref.id, nome: nomeNuovo, attivo: true });
+            allievoIds.push(ref.id);
+            allievoNomi.push(nomeNuovo);
+          } else if (sel.value) {
+            allievoIds.push(sel.value);
+            allievoNomi.push(selectedLabel(sel));
+          }
         }
+        if (allievoIds.length === 0) throw new Error("Seleziona o inserisci almeno un allievo.");
+        entry.allievoIds = allievoIds;
+        entry.allievoNomi = allievoNomi;
+        // Campi singolari mantenuti per compatibilità con voci/report che
+        // leggono ancora "il primo" allievo di una voce.
+        entry.allievoId = allievoIds[0];
+        entry.allievoNome = allievoNomi[0];
       }
 
       entries.push(entry);
@@ -507,7 +554,7 @@ function renderEntries(entries) {
     if (en.campoNumero) metaParts.push("Campo " + en.campoNumero);
     if (en.tipoUtenzaNome) metaParts.push(en.tipoUtenzaNome);
     if (en.tipoGruppoNome) metaParts.push(en.tipoGruppoNome);
-    if (en.allievoNome) metaParts.push("Allievo: " + en.allievoNome);
+    if (nomiAllievi(en)) metaParts.push("Allievo: " + nomiAllievi(en));
     if (en.oraInizio || en.oraFine) metaParts.push(`${en.oraInizio || "—"}–${en.oraFine || "—"}`);
     if (en.note) metaParts.push(en.note);
 
@@ -608,7 +655,7 @@ function renderVociDaApprovare(entries) {
     const metaParts = [formatDataBreve(en.data)];
     if (en.campoNumero) metaParts.push("Campo " + en.campoNumero);
     if (en.oraInizio || en.oraFine) metaParts.push(`${en.oraInizio || "—"}–${en.oraFine || "—"}`);
-    if (en.allievoNome) metaParts.push("Allievo: " + en.allievoNome);
+    if (nomiAllievi(en)) metaParts.push("Allievo: " + nomiAllievi(en));
     if (en.note) metaParts.push(en.note);
 
     return `

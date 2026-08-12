@@ -124,6 +124,17 @@ function intestazioneStampaHtml() {
 // serve il permesso diario:gestisci_tutti (admin/supervisore). Stessa
 // regola applicata anche lato firestore.rules (che resta l'unica fonte
 // di verità: questo helper serve solo a mostrare/nascondere il pulsante).
+// Nomi degli allievi di una voce diario: le voci nuove ne possono avere
+// più di uno (lezioni di gruppo, campo "allievoNomi"), quelle storiche
+// ne hanno un solo, singolare ("allievoNome") — mai entrambi assenti se
+// il tipo attività richiedeAllievo.
+function nomiAllievi(entry) {
+  if (Array.isArray(entry.allievoNomi) && entry.allievoNomi.length > 0) {
+    return entry.allievoNomi.join(", ");
+  }
+  return entry.allievoNome || "";
+}
+
 function puoEliminareVoceDiario(entry, profile) {
   if (entry.approvato === true) return isAdmin(profile);
   if (hasPermission(profile, "diario:gestisci_tutti")) return true;

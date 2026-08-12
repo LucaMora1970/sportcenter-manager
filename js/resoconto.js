@@ -167,11 +167,21 @@ async function loadTutti(dal, al) {
     if (!perTipo[tipoKey]) perTipo[tipoKey] = { nome: tipoAttivitaLabelFor(e), disciplina: e.disciplina, ore: 0, costo: 0 };
     perTipo[tipoKey].ore += ore;
 
-    if (e.allievoId) {
-      if (!perAllievo[e.allievoId]) perAllievo[e.allievoId] = { aid: e.allievoId, nome: e.allievoNome || e.allievoId, totale: 0, entries: [] };
-      perAllievo[e.allievoId].totale += ore;
-      perAllievo[e.allievoId].entries.push(e);
-    }
+    // Lezioni di gruppo: più allievi sulla stessa voce (allievoIds), tutti
+    // presenti per l'intera durata — ognuno riceve le stesse ore. Le voci
+    // storiche hanno solo il singolare allievoId/allievoNome.
+    const idsAllievo = Array.isArray(e.allievoIds) && e.allievoIds.length > 0
+      ? e.allievoIds
+      : (e.allievoId ? [e.allievoId] : []);
+    const nomiAllievoArr = Array.isArray(e.allievoNomi) && e.allievoNomi.length > 0
+      ? e.allievoNomi
+      : (e.allievoNome ? [e.allievoNome] : []);
+    idsAllievo.forEach((aid, i) => {
+      const nome = nomiAllievoArr[i] || aid;
+      if (!perAllievo[aid]) perAllievo[aid] = { aid, nome, totale: 0, entries: [] };
+      perAllievo[aid].totale += ore;
+      perAllievo[aid].entries.push(e);
+    });
 
     const tipoAttivitaDoc = e.tipoAttivitaId ? tipiById[e.tipoAttivitaId] : null;
     const prezzoOra = prezzoPerData(tipoAttivitaDoc, e.data);
@@ -367,7 +377,7 @@ function entryRowHtml(en) {
   const metaParts = [];
   if (en.campoNumero) metaParts.push("Campo " + en.campoNumero);
   if (en.tipoGruppoNome) metaParts.push(en.tipoGruppoNome);
-  if (en.allievoNome) metaParts.push("Allievo: " + en.allievoNome);
+  if (nomiAllievi(en)) metaParts.push("Allievo: " + nomiAllievi(en));
   if (en.oraInizio || en.oraFine) metaParts.push(`${en.oraInizio || "—"}–${en.oraFine || "—"}`);
   if (en.note) metaParts.push(en.note);
 
@@ -430,7 +440,7 @@ function stampaReport({ nome, entries, totale, quotaCampo, compenso }) {
         <td>${escapeHtml(disciplinaLabel(en.disciplina))}</td>
         <td>${escapeHtml(tipoAttivitaLabelFor(en))}</td>
         <td>${en.campoNumero ? escapeHtml(String(en.campoNumero)) : "—"}</td>
-        <td>${escapeHtml(en.allievoNome || "—")}</td>
+        <td>${escapeHtml(nomiAllievi(en) || "—")}</td>
         <td>${en.oraInizio || "—"}–${en.oraFine || "—"}</td>
         <td>${(en.ore || 0).toFixed(2)}</td>
         <td>${escapeHtml(en.note || "")}</td>
