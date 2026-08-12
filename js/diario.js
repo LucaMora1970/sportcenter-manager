@@ -539,7 +539,10 @@ function pagamentoOnlineActionHtml(en) {
   if (!currentProfile.puoRichiederePagamento && !isAdmin(currentProfile)) return "";
 
   if (en.pagamentoOnlineStato === "PENDING") {
-    return `<button type="button" class="btn btn-ghost copia-link-pagamento-btn" style="width:auto;padding:6px 10px;font-size:0.65rem;" data-link="${escapeHtml(en.pagamentoOnlineLink || "")}">Copia link pagamento</button>`;
+    return `
+      <button type="button" class="btn btn-ghost copia-link-pagamento-btn" style="width:auto;padding:6px 10px;font-size:0.65rem;" data-link="${escapeHtml(en.pagamentoOnlineLink || "")}">Copia link</button>
+      <button type="button" class="btn btn-ghost mostra-qr-btn" style="width:auto;padding:6px 10px;font-size:0.65rem;" data-id="${en.id}" data-link="${escapeHtml(en.pagamentoOnlineLink || "")}">Mostra QR</button>
+    `;
   }
   if (en.pagamentoOnlineStato === "PAID") return "";
 
@@ -560,14 +563,44 @@ async function onRichiediPagamento(entryId, btn) {
   btn.textContent = "Attendere…";
   try {
     const fn = firebase.functions().httpsCallable("richiediPagamentoDiario");
-    const result = await fn({ entryId, importo });
-    await copyToClipboard(result.data.paymentPageUrl, btn);
-    alert("Link di pagamento copiato — invialo al cliente (WhatsApp, email, SMS).");
+    // Niente copia automatica qui: dopo un'attesa di rete (questa
+    // chiamata) Safari invalida il permesso di scrittura degli appunti
+    // legato al click originale, quindi la copia fallirebbe in
+    // silenzio. Il pulsante "Copia link pagamento"/il QR che compaiono
+    // dopo (voce ricaricata in automatico) partono invece da un click
+    // fresco e funzionano in modo affidabile.
+    await fn({ entryId, importo });
   } catch (err) {
     alert("Errore: " + err.message);
     btn.disabled = false;
     btn.textContent = "Paga online";
   }
+}
+
+// Mostra/nasconde il QR del link di pagamento — utile quando il maestro
+// è di persona col cliente (lo inquadra e paga subito, niente copia/
+// incolla). Generato al primo click, non a ogni render: qrcodejs non
+// va richiamato due volte sullo stesso contenitore.
+function toggleQrPagamento(entryId, link) {
+  const container = document.getElementById(`qr-pagamento-${entryId}`);
+  if (!container) return;
+
+  if (!container.classList.contains("hidden")) {
+    container.classList.add("hidden");
+    return;
+  }
+  if (!container.dataset.generato) {
+    new QRCode(container, {
+      text: link,
+      width: 160,
+      height: 160,
+      colorDark: "#0d1f30",
+      colorLight: "#ffffff",
+      correctLevel: QRCode.CorrectLevel.M
+    });
+    container.dataset.generato = "1";
+  }
+  container.classList.remove("hidden");
 }
 
 function wirePagamentoOnlineButtons(container) {
@@ -576,6 +609,9 @@ function wirePagamentoOnlineButtons(container) {
   });
   container.querySelectorAll(".copia-link-pagamento-btn").forEach(btn => {
     btn.addEventListener("click", () => copyToClipboard(btn.dataset.link, btn));
+  });
+  container.querySelectorAll(".mostra-qr-btn").forEach(btn => {
+    btn.addEventListener("click", () => toggleQrPagamento(btn.dataset.id, btn.dataset.link));
   });
 }
 
@@ -605,23 +641,26 @@ function renderEntries(entries) {
     if (en.note) metaParts.push(en.note);
 
     return `
-      <div class="entry-card">
-        <div class="entry-main">
-          <span class="badge ${en.disciplina}">${disciplinaLabel(en.disciplina)}</span>
-          <div class="entry-tipo">${escapeHtml(tipoAttivitaLabelFor(en))}</div>
-          <div class="entry-meta">${escapeHtml(metaParts.join(" · "))}</div>
-          <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">
-            <span class="chip-audit">Inserito da ${escapeHtml(en.userNome || "—")} · ${formatTimestamp(en.createdAt)}</span>
-            ${en.approvato ? `<span class="chip-audit approvato">Approvato da ${escapeHtml(en.approvatoDaNome || "—")} · ${formatTimestamp(en.approvatoAt)}</span>` : ""}
-            ${en.pagamentoOnlineStato === "PAID" ? `<span class="chip-audit approvato">Pagato online CHF ${(en.pagamentoOnlineImporto || 0).toFixed(2)} · ${formatTimestamp(en.pagamentoOnlinePagatoAt)}</span>` : ""}
-            ${en.pagamentoOnlineStato === "PENDING" ? `<span class="chip-audit">In attesa di pagamento · CHF ${(en.pagamentoOnlineImporto || 0).toFixed(2)}</span>` : ""}
+      <div>
+        <div class="entry-card">
+          <div class="entry-main">
+            <span class="badge ${en.disciplina}">${disciplinaLabel(en.disciplina)}</span>
+            <div class="entry-tipo">${escapeHtml(tipoAttivitaLabelFor(en))}</div>
+            <div class="entry-meta">${escapeHtml(metaParts.join(" · "))}</div>
+            <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">
+              <span class="chip-audit">Inserito da ${escapeHtml(en.userNome || "—")} · ${formatTimestamp(en.createdAt)}</span>
+              ${en.approvato ? `<span class="chip-audit approvato">Approvato da ${escapeHtml(en.approvatoDaNome || "—")} · ${formatTimestamp(en.approvatoAt)}</span>` : ""}
+              ${en.pagamentoOnlineStato === "PAID" ? `<span class="chip-audit approvato">Pagato online CHF ${(en.pagamentoOnlineImporto || 0).toFixed(2)} · ${formatTimestamp(en.pagamentoOnlinePagatoAt)}</span>` : ""}
+              ${en.pagamentoOnlineStato === "PENDING" ? `<span class="chip-audit">In attesa di pagamento · CHF ${(en.pagamentoOnlineImporto || 0).toFixed(2)}</span>` : ""}
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
+            <div class="entry-ore">${(en.ore || 0).toFixed(1)}h</div>
+            ${pagamentoOnlineActionHtml(en)}
+            ${puoEliminareVoceDiario(en, currentProfile) ? `<button type="button" class="btn btn-danger delete-entry-btn" style="width:auto;padding:6px 10px;font-size:0.65rem;" data-id="${en.id}">Elimina</button>` : ""}
           </div>
         </div>
-        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
-          <div class="entry-ore">${(en.ore || 0).toFixed(1)}h</div>
-          ${pagamentoOnlineActionHtml(en)}
-          ${puoEliminareVoceDiario(en, currentProfile) ? `<button type="button" class="btn btn-danger delete-entry-btn" style="width:auto;padding:6px 10px;font-size:0.65rem;" data-id="${en.id}">Elimina</button>` : ""}
-        </div>
+        ${en.pagamentoOnlineStato === "PENDING" ? `<div class="qr-pagamento hidden" id="qr-pagamento-${en.id}" style="display:flex;justify-content:center;margin:-4px 0 10px;"></div>` : ""}
       </div>
     `;
   }).join("");
