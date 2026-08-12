@@ -32,6 +32,7 @@ const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https")
 const { defineSecret } = require("firebase-functions/params");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
+const { getAuth } = require("firebase-admin/auth");
 const {
   Configuration, HttpBearerAuth, TransactionsService, LineItemType, TransactionState,
   TransactionEnvironmentSelectionStrategy
@@ -796,4 +797,41 @@ exports.annullaEConvertiInCredito = onCall(async (request) => {
   });
 
   return { creditCode, importo: importoPagato };
+});
+
+// ---------- Link di reset password (senza invio email di Firebase) ----------
+//
+// auth.sendPasswordResetEmail() del client SDK genera E spedisce l'email
+// tramite l'infrastruttura di Firebase — spesso finita in spam o filtrata
+// da alcuni provider (es. iCloud), senza modo di intervenire sul testo o
+// sul mittente. generatePasswordResetLink() dell'Admin SDK genera invece
+// SOLO il link, senza spedire nulla: il testo lo compone e lo invia chi
+// gestisce gli utenti dal proprio client di posta reale (stesso pattern
+// già usato per le credenziali di un nuovo collaboratore), migliorando la
+// recapitabilità perché il mittente è una persona vera, non un dominio
+// condiviso.
+exports.generaLinkResetPassword = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+
+  const userSnap = await db.collection("users").doc(request.auth.uid).get();
+  const userData = userSnap.exists ? userSnap.data() : {};
+  let permessi = [];
+  if (userData.ruoloId) {
+    const roleSnap = await db.collection("roles").doc(userData.ruoloId).get();
+    if (roleSnap.exists) permessi = roleSnap.data().permessi || [];
+  }
+  const isAdmin = permessi.includes("*");
+  if (!isAdmin && !permessi.includes("users:gestisci")) {
+    throw new HttpsError("permission-denied", "Permesso mancante per gestire gli utenti.");
+  }
+
+  const { email } = request.data || {};
+  if (!email) throw new HttpsError("invalid-argument", "Email mancante.");
+
+  try {
+    const link = await getAuth().generatePasswordResetLink(email, { url: `${APP_URL}index.html` });
+    return { link };
+  } catch (err) {
+    throw new HttpsError("failed-precondition", "Impossibile generare il link: " + err.message);
+  }
 });

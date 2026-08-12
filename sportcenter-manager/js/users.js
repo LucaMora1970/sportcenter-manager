@@ -155,8 +155,8 @@ async function loadUsers() {
           <button class="btn btn-ghost toggle-active-btn" data-uid="${u.id}" data-attivo="${attivo}">
             ${attivo ? "Disattiva" : "Riattiva"}
           </button>
-          <button class="btn btn-ghost send-reset-btn" data-email="${escapeHtml(u.email || "")}">
-            Reset password
+          <button class="btn btn-ghost send-reset-btn" data-email="${escapeHtml(u.email || "")}" data-nome="${escapeHtml(u.nome || "")}">
+            Prepara email reset password
           </button>
         </div>
       </div>
@@ -225,16 +225,36 @@ function onInviaEmailTeam() {
   window.location.href = `mailto:?${parti.join("&")}`;
 }
 
+// Genera SOLO il link (Cloud Function con Admin SDK, non spedisce nulla)
+// e apre il client di posta di chi gestisce gli utenti con un testo di
+// benvenuto già pronto — invio manuale, come le credenziali di un nuovo
+// collaboratore. Bypassa l'invio automatico di Firebase
+// (auth.sendPasswordResetEmail), spesso finito in spam o filtrato da
+// alcuni provider, perché il mittente diventa una persona vera invece
+// di un dominio Firebase condiviso.
 async function onSendPasswordReset(e) {
   const btn = e.currentTarget;
   const email = btn.dataset.email;
-  if (!email) return;
+  const nome = btn.dataset.nome || "";
+  if (!email) {
+    showError(document.getElementById("users-list-error"), "Questo utente non ha un'email registrata: impossibile preparare il reset.");
+    return;
+  }
   const originalText = btn.textContent;
   btn.disabled = true;
-  btn.textContent = "Invio…";
+  btn.textContent = "Preparazione…";
   try {
-    await auth.sendPasswordResetEmail(email);
-    btn.textContent = "Email inviata";
+    const fn = firebase.functions().httpsCallable("generaLinkResetPassword");
+    const result = await fn({ email });
+    const link = result.data.link;
+
+    const oggetto = `Benvenuto in Sport-OS — ${DATI_CENTRO.nome}`;
+    const corpo = `Ciao ${nome || ""},\n\nBenvenuto/a nel gestionale Sport-OS del ${DATI_CENTRO.nome}!\n\nPer impostare la tua password, apri questo link:\n${link}\n\nUna volta impostata, accedi da qui:\n${basePageUrl()}index.html\n\nEmail: ${email}`;
+    const calce = `${DATI_CENTRO.nome}\nSportcenter Manager OS\n${basePageUrl()}index.html`;
+
+    window.location.href = `mailto:?to=${encodeURIComponent(email)}&subject=${encodeURIComponent(oggetto)}&body=${encodeURIComponent(corpo + "\n\n--\n" + calce)}`;
+
+    btn.textContent = "Email pronta";
     setTimeout(() => {
       btn.textContent = originalText;
       btn.disabled = false;
