@@ -303,6 +303,24 @@ main {
 .badge.padel  { border-color: #7f9e4a; color: #c1e08f; }
 .badge.squash { border-color: #9e4a7f; color: #e08fc1; }
 
+/* Chip di verifica temporale (chi ha inserito/approvato una voce e
+   quando) — pillola arrotondata invece del badge rettangolare, per
+   distinguerla a colpo d'occhio da stato/disciplina; monospace perché
+   contiene un orario. */
+.chip-audit {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.66rem;
+  font-family: 'Space Mono', monospace;
+  padding: 3px 9px;
+  border-radius: 20px;
+  border: 1px solid var(--court-blue-700);
+  color: var(--chalk-grey);
+  white-space: nowrap;
+}
+.chip-audit.approvato { border-color: #7f9e4a; color: #c1e08f; }
+
 /* Form */
 .field { margin-bottom: 16px; }
 .field label {

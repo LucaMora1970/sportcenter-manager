@@ -517,10 +517,13 @@ function renderEntries(entries) {
           <span class="badge ${en.disciplina}">${disciplinaLabel(en.disciplina)}</span>
           <div class="entry-tipo">${escapeHtml(tipoAttivitaLabelFor(en))}</div>
           <div class="entry-meta">${escapeHtml(metaParts.join(" · "))}</div>
+          <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">
+            <span class="chip-audit">Inserito da ${escapeHtml(en.userNome || "—")} · ${formatTimestamp(en.createdAt)}</span>
+            ${en.approvato ? `<span class="chip-audit approvato">Approvato da ${escapeHtml(en.approvatoDaNome || "—")} · ${formatTimestamp(en.approvatoAt)}</span>` : ""}
+          </div>
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
           <div class="entry-ore">${(en.ore || 0).toFixed(1)}h</div>
-          ${en.approvato ? `<span class="badge" style="border-color:#7f9e4a;color:#c1e08f;">Approvato</span>` : ""}
           ${puoEliminareVoceDiario(en, currentProfile) ? `<button type="button" class="btn btn-danger delete-entry-btn" style="width:auto;padding:6px 10px;font-size:0.65rem;" data-id="${en.id}">Elimina</button>` : ""}
         </div>
       </div>
@@ -569,6 +572,11 @@ let ultimeVociDaApprovare = [];
 
 function pad2(n) { return String(n).padStart(2, "0"); }
 function toISODate(date) { return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`; }
+function formatTimestamp(ts) {
+  if (!ts || typeof ts.toDate !== "function") return "—";
+  const d = ts.toDate();
+  return `${pad2(d.getDate())}.${pad2(d.getMonth() + 1)}.${d.getFullYear()} alle ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
 function formatDataBreve(dataStr) {
   const [y, m, d] = dataStr.split("-");
   return `${d}.${m}.${y}`;
@@ -609,6 +617,9 @@ function renderVociDaApprovare(entries) {
           <span class="badge ${en.disciplina}">${disciplinaLabel(en.disciplina)}</span>
           <div class="entry-tipo">${escapeHtml(en.userNome || "—")} · ${escapeHtml(tipoAttivitaLabelFor(en))}</div>
           <div class="entry-meta">${escapeHtml(metaParts.join(" · "))}</div>
+          <div style="margin-top:6px;">
+            <span class="chip-audit">Inserito da ${escapeHtml(en.userNome || "—")} · ${formatTimestamp(en.createdAt)}</span>
+          </div>
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
           <div class="entry-ore">${(en.ore || 0).toFixed(1)}h</div>
