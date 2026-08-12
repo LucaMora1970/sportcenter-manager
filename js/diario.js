@@ -411,6 +411,7 @@ async function onSubmitEntry(e) {
         tipoAttivitaNome: selectedLabel(tipoAttivitaSel),
         ore,
         note,
+        approvato: false,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       };
 
@@ -519,6 +520,7 @@ function renderEntries(entries) {
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
           <div class="entry-ore">${(en.ore || 0).toFixed(1)}h</div>
+          ${en.approvato ? `<span class="badge" style="border-color:#7f9e4a;color:#c1e08f;">Approvato</span>` : ""}
           ${puoEliminareVoceDiario(en, currentProfile) ? `<button type="button" class="btn btn-danger delete-entry-btn" style="width:auto;padding:6px 10px;font-size:0.65rem;" data-id="${en.id}">Elimina</button>` : ""}
         </div>
       </div>
@@ -561,6 +563,121 @@ function listenToday() {
     );
 }
 
+// ---------- Da approvare (permesso diario:approva) ----------
+
+let ultimeVociDaApprovare = [];
+
+function pad2(n) { return String(n).padStart(2, "0"); }
+function toISODate(date) { return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`; }
+function formatDataBreve(dataStr) {
+  const [y, m, d] = dataStr.split("-");
+  return `${d}.${m}.${y}`;
+}
+function currentMonthRange() {
+  const now = new Date();
+  const first = new Date(now.getFullYear(), now.getMonth(), 1);
+  const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  return [toISODate(first), toISODate(last)];
+}
+function last7DaysRange() {
+  const oggi = new Date();
+  const settimanaFa = new Date();
+  settimanaFa.setDate(oggi.getDate() - 6);
+  return [toISODate(settimanaFa), toISODate(oggi)];
+}
+
+function renderVociDaApprovare(entries) {
+  const list = document.getElementById("approvazione-list");
+  const bulkBtn = document.getElementById("approva-tutte-btn");
+
+  if (entries.length === 0) {
+    list.innerHTML = `<div class="empty-state"><div class="display">Nessuna voce da approvare in questo periodo</div></div>`;
+    bulkBtn.classList.add("hidden");
+    return;
+  }
+
+  list.innerHTML = entries.map(en => {
+    const metaParts = [formatDataBreve(en.data)];
+    if (en.campoNumero) metaParts.push("Campo " + en.campoNumero);
+    if (en.oraInizio || en.oraFine) metaParts.push(`${en.oraInizio || "—"}–${en.oraFine || "—"}`);
+    if (en.allievoNome) metaParts.push("Allievo: " + en.allievoNome);
+    if (en.note) metaParts.push(en.note);
+
+    return `
+      <div class="entry-card">
+        <div class="entry-main">
+          <span class="badge ${en.disciplina}">${disciplinaLabel(en.disciplina)}</span>
+          <div class="entry-tipo">${escapeHtml(en.userNome || "—")} · ${escapeHtml(tipoAttivitaLabelFor(en))}</div>
+          <div class="entry-meta">${escapeHtml(metaParts.join(" · "))}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
+          <div class="entry-ore">${(en.ore || 0).toFixed(1)}h</div>
+          <button type="button" class="btn btn-primary approva-voce-btn" style="width:auto;padding:6px 10px;font-size:0.65rem;" data-id="${en.id}">Approva</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  bulkBtn.classList.remove("hidden");
+
+  list.querySelectorAll(".approva-voce-btn").forEach(btn => {
+    btn.addEventListener("click", () => approvaVoci([btn.dataset.id], btn));
+  });
+}
+
+async function approvaVoci(ids, btn) {
+  if (btn) btn.disabled = true;
+  const errorEl = document.getElementById("approvazione-error");
+  errorEl.textContent = "";
+  try {
+    const batch = db.batch();
+    ids.forEach(id => {
+      batch.update(db.collection("diario").doc(id), {
+        approvato: true,
+        approvatoDaUid: currentProfile.uid,
+        approvatoDaNome: currentProfile.nome,
+        approvatoAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    });
+    await batch.commit();
+    ultimeVociDaApprovare = ultimeVociDaApprovare.filter(en => !ids.includes(en.id));
+    renderVociDaApprovare(ultimeVociDaApprovare);
+  } catch (err) {
+    showError(errorEl, "Errore nell'approvazione: " + err.message);
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function caricaVociDaApprovare(e) {
+  e.preventDefault();
+  const dal = document.getElementById("approvazione-dal").value;
+  const al = document.getElementById("approvazione-al").value;
+  const btn = document.getElementById("carica-approvazione-btn");
+  const errorEl = document.getElementById("approvazione-error");
+  errorEl.textContent = "";
+  btn.disabled = true;
+  btn.textContent = "Caricamento…";
+
+  try {
+    const snap = await db.collection("diario")
+      .where("data", ">=", dal)
+      .where("data", "<=", al)
+      .get();
+
+    ultimeVociDaApprovare = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(en => !en.approvato)
+      .sort((a, b) => a.data.localeCompare(b.data) || (a.userNome || "").localeCompare(b.userNome || ""));
+
+    renderVociDaApprovare(ultimeVociDaApprovare);
+  } catch (err) {
+    showError(errorEl, "Errore nel caricamento: " + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Carica";
+  }
+}
+
 requireAuth(async (profile) => {
   currentProfile = profile;
   viewingUserId = profile.uid;
@@ -570,6 +687,30 @@ requireAuth(async (profile) => {
   // Chi ha il permesso di leggere tutti i diari vede un selettore extra (da popolare in futuro)
   if (hasPermission(profile, "diario:leggi_tutti")) {
     document.getElementById("admin-hint").classList.remove("hidden");
+  }
+
+  if (hasPermission(profile, "diario:approva")) {
+    document.getElementById("approvazione-section").classList.remove("hidden");
+
+    const [meseDal, meseAl] = currentMonthRange();
+    document.getElementById("approvazione-dal").value = meseDal;
+    document.getElementById("approvazione-al").value = meseAl;
+    document.getElementById("approvazione-form").addEventListener("submit", caricaVociDaApprovare);
+    document.getElementById("preset-7giorni-approvazione").addEventListener("click", () => {
+      const [d, a] = last7DaysRange();
+      document.getElementById("approvazione-dal").value = d;
+      document.getElementById("approvazione-al").value = a;
+      caricaVociDaApprovare(new Event("submit"));
+    });
+    document.getElementById("preset-mese-approvazione").addEventListener("click", () => {
+      const [d, a] = currentMonthRange();
+      document.getElementById("approvazione-dal").value = d;
+      document.getElementById("approvazione-al").value = a;
+      caricaVociDaApprovare(new Event("submit"));
+    });
+    document.getElementById("approva-tutte-btn").addEventListener("click", (e) => {
+      approvaVoci(ultimeVociDaApprovare.map(en => en.id), e.currentTarget);
+    });
   }
 
   await loadDiscipline();

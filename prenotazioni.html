@@ -106,6 +106,25 @@
 
         <hr class="court-divider">
 
+        <!-- Buoni regalo -->
+        <div class="section-title"><h2>Buoni regalo</h2></div>
+        <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Emetti un buono omaggio (nessun pagamento) — stesso effetto di uno acquistato dai clienti sulla pagina pubblica.</p>
+        <div class="row2" style="align-items:flex-end;">
+          <div class="field" style="flex:0 0 130px;">
+            <label for="nuovo-buono-importo">Importo (CHF)</label>
+            <input type="number" id="nuovo-buono-importo" min="1" step="5" placeholder="es. 50">
+          </div>
+          <div class="field">
+            <label for="nuovo-buono-nota">Nota (facoltativa)</label>
+            <input type="text" id="nuovo-buono-nota" placeholder="es. omaggio torneo estate">
+          </div>
+        </div>
+        <button type="button" class="btn btn-ghost" id="emetti-buono-btn" style="width:auto;padding:10px 16px;">Emetti buono</button>
+        <div class="error-msg" id="buono-omaggio-error"></div>
+        <div id="buono-omaggio-risultato"></div>
+
+        <hr class="court-divider">
+
         <!-- Resoconto per periodo -->
         <div class="section-title"><h2>Resoconto per periodo</h2></div>
         <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Vendita campi per durata e quota campo dovuta dai maestri per le prenotazioni esenti.</p>
@@ -142,6 +161,10 @@
             </div>
           </div>
           <div id="quotacampo-maestri-warning" class="error-msg" style="color:var(--chalk-grey);"></div>
+
+          <hr class="court-divider">
+          <div class="section-title"><h2>Buoni regalo emessi</h2></div>
+          <div id="buoni-emessi-table" style="overflow-x:auto;"></div>
 
           <button type="button" class="btn btn-ghost" id="stampa-resoconto-periodo-btn" style="margin-top:14px;">Stampa / Salva PDF</button>
         </div>

@@ -11,6 +11,7 @@ const KNOWN_PERMISSIONS = [
   { id: "*", label: "Amministratore (tutti i permessi)" },
   { id: "diario:leggi_tutti", label: "Diario: leggere le voci di tutti" },
   { id: "diario:gestisci_tutti", label: "Diario: modificare/cancellare le voci di tutti" },
+  { id: "diario:approva", label: "Diario: approvare le voci del team" },
   { id: "users:gestisci", label: "Gestire utenti" },
   { id: "ruoli:gestisci", label: "Gestire ruoli e permessi" },
   { id: "config:gestisci", label: "Gestire configurazione (tipi attività, tariffe, campi)" },

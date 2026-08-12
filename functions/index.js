@@ -708,7 +708,32 @@ exports.webhookPostFinance = onRequest(
 
       const meta = transaction.metaData || {};
 
-      if (meta.bookingId && meta.token) {
+      if (meta.tipoTransazione === "voucher" && meta.token) {
+        // Buono regalo acquistato dalla pagina pubblica — nessun documento
+        // esiste prima del successo (a differenza delle prenotazioni non
+        // c'è nemmeno un "bookings" da liberare in caso di fallimento).
+        if (successo) {
+          const code = generaCodiceCredito();
+          const importo = parseFloat(meta.importo || "0");
+          await db.collection("credits").doc(code).set({
+            originalBookingId: null,
+            initialAmount: importo,
+            remainingAmount: importo,
+            status: "ACTIVE",
+            origine: "voucher_acquistato",
+            paymentId: String(transaction.id),
+            createdAt: FieldValue.serverTimestamp()
+          });
+          await db.collection("voucherTickets").doc(meta.token).set({
+            creditCode: code, importo, origine: "voucher_acquistato",
+            createdAt: FieldValue.serverTimestamp()
+          });
+          await db.collection("creditTransactions").add({
+            creditId: code, bookingId: null, type: "ISSUE", amount: importo,
+            createdAt: FieldValue.serverTimestamp()
+          });
+        }
+      } else if (meta.bookingId && meta.token) {
         // Flusso pubblico.
         if (successo) {
           const bookingSnap = await db.collection("bookings").doc(meta.bookingId).get();
@@ -798,6 +823,114 @@ exports.annullaEConvertiInCredito = onCall(async (request) => {
   });
 
   return { creditCode, importo: importoPagato };
+});
+
+// ---------- 4. Buoni regalo ----------
+//
+// Un buono regalo è, sotto il cofano, esattamente un "credito" (stessa
+// collection "credits" già usata per le prenotazioni annullate) — cambia
+// solo come nasce: qui non da una prenotazione annullata ma da un
+// acquisto vero (questa funzione) o da un'emissione omaggio dello staff
+// (emettiBuonoOmaggio più sotto). Il campo "origine" li distingue per il
+// resoconto. Come le prenotazioni pubbliche, il documento "ricevuta"
+// pubblico (voucherTickets, ID = token lungo e casuale) viene creato solo
+// dal webhook a pagamento riuscito — prima non esiste nulla da indovinare
+// o enumerare.
+const IMPORTO_BUONO_MIN = 10;
+const IMPORTO_BUONO_MAX = 500;
+
+exports.acquistaBuonoRegalo = onCall(
+  { secrets: [POSTFINANCE_SPACE_ID, POSTFINANCE_USER_ID, POSTFINANCE_APP_KEY] },
+  async (request) => {
+    const { importo } = request.data || {};
+    if (typeof importo !== "number" || !isFinite(importo) || importo < IMPORTO_BUONO_MIN || importo > IMPORTO_BUONO_MAX) {
+      throw new HttpsError("invalid-argument", `Inserisci un importo tra CHF ${IMPORTO_BUONO_MIN} e CHF ${IMPORTO_BUONO_MAX}.`);
+    }
+
+    const token = generaToken();
+    const spaceId = parseInt(POSTFINANCE_SPACE_ID.value(), 10);
+    const service = transactionsService();
+    try {
+      const transaction = await service.postPaymentTransactions({
+        space: spaceId,
+        transactionCreate: {
+          currency: "CHF",
+          merchantReference: token,
+          successUrl: `${APP_URL}buono-regalo-conferma.html?t=${token}`,
+          failedUrl: `${APP_URL}buono-regalo.html?pagamento=fallito`,
+          lineItems: [{
+            uniqueId: token,
+            name: `Buono regalo padel CHF ${importo.toFixed(2)}`,
+            quantity: 1,
+            amountIncludingTax: importo,
+            type: LineItemType.Product
+          }],
+          metaData: { tipoTransazione: "voucher", token, importo: String(importo) },
+          environmentSelectionStrategy: FORZA_AMBIENTE_TEST
+            ? TransactionEnvironmentSelectionStrategy.ForceTestEnvironment
+            : TransactionEnvironmentSelectionStrategy.UseConfiguration
+        }
+      });
+
+      const paymentPageUrl = await service.getPaymentTransactionsIdPaymentPageUrl({
+        id: transaction.id,
+        space: spaceId
+      });
+
+      return { token, paymentPageUrl };
+    } catch (err) {
+      console.error("acquistaBuonoRegalo: errore PostFinance:", err);
+      throw new HttpsError("internal", "Errore nella creazione del pagamento. Riprova.");
+    }
+  }
+);
+
+// Emissione da parte dello staff (es. omaggio/promozione), nessun
+// pagamento — stesso identico effetto finale di un buono acquistato
+// (un "credits" ACTIVE), così si spende esattamente allo stesso modo in
+// fase di prenotazione. Riservata a chi gestisce le prenotazioni.
+exports.emettiBuonoOmaggio = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+
+  const userSnap = await db.collection("users").doc(request.auth.uid).get();
+  const userData = userSnap.exists ? userSnap.data() : {};
+  let permessi = [];
+  if (userData.ruoloId) {
+    const roleSnap = await db.collection("roles").doc(userData.ruoloId).get();
+    if (roleSnap.exists) permessi = roleSnap.data().permessi || [];
+  }
+  const autorizzato = permessi.includes("prenotazioni:gestisci") || permessi.includes("*");
+  if (!autorizzato) throw new HttpsError("permission-denied", "Permesso mancante.");
+
+  const { importo, nota } = request.data || {};
+  if (typeof importo !== "number" || !isFinite(importo) || importo <= 0) {
+    throw new HttpsError("invalid-argument", "Importo non valido.");
+  }
+
+  const code = generaCodiceCredito();
+  const token = generaToken();
+
+  await db.collection("credits").doc(code).set({
+    originalBookingId: null,
+    initialAmount: importo,
+    remainingAmount: importo,
+    status: "ACTIVE",
+    origine: "voucher_omaggio",
+    createdByUid: request.auth.uid,
+    createdByNome: userData.nome || "—",
+    nota: nota || null,
+    createdAt: FieldValue.serverTimestamp()
+  });
+  await db.collection("voucherTickets").doc(token).set({
+    creditCode: code, importo, origine: "voucher_omaggio",
+    createdAt: FieldValue.serverTimestamp()
+  });
+  await db.collection("creditTransactions").add({
+    creditId: code, bookingId: null, type: "ISSUE", amount: importo,
+    createdAt: FieldValue.serverTimestamp()
+  });
+
+  return { code, token };
 });
 
 // ---------- Link di reset password (senza invio email di Firebase) ----------

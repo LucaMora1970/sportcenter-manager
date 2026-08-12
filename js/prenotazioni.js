@@ -617,6 +617,50 @@ async function eliminaChiusura(dataIso, btn) {
   }
 }
 
+// ---------- Buoni regalo (emissione omaggio) ----------
+//
+// Stesso identico effetto di un buono acquistato dai clienti sulla
+// pagina pubblica (crea un "credits" ACTIVE) — qui senza pagamento,
+// per omaggi/promozioni. La Cloud Function crea anche il voucherTickets
+// così il codice si può mostrare/stampare con la stessa pagina pubblica
+// usata per i buoni acquistati.
+async function onEmettiBuonoOmaggio() {
+  const importoRaw = document.getElementById("nuovo-buono-importo").value;
+  const nota = document.getElementById("nuovo-buono-nota").value.trim();
+  const errorEl = document.getElementById("buono-omaggio-error");
+  const risultatoEl = document.getElementById("buono-omaggio-risultato");
+  errorEl.textContent = "";
+  risultatoEl.innerHTML = "";
+
+  const importo = parseFloat(importoRaw);
+  if (!importoRaw || isNaN(importo) || importo <= 0) {
+    showError(errorEl, "Inserisci un importo valido.");
+    return;
+  }
+
+  const btn = document.getElementById("emetti-buono-btn");
+  btn.disabled = true;
+  try {
+    const fn = firebase.functions().httpsCallable("emettiBuonoOmaggio");
+    const result = await fn({ importo, nota: nota || null });
+    const link = `${basePageUrl()}buono-regalo-conferma.html?t=${result.data.token}`;
+    risultatoEl.innerHTML = `
+      <div class="entry-card">
+        <div class="entry-main">
+          <div class="entry-tipo">Buono emesso: ${escapeHtml(result.data.code)}</div>
+          <div class="entry-meta">CHF ${importo.toFixed(2)} — <a href="${link}" target="_blank">apri pagina del buono</a></div>
+        </div>
+      </div>
+    `;
+    document.getElementById("nuovo-buono-importo").value = "";
+    document.getElementById("nuovo-buono-nota").value = "";
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // ---------- Resoconto per periodo (vendita campi + quota campo maestri) ----------
 //
 // Due numeri utili per la segreteria: quanto si è incassato dai clienti
@@ -690,6 +734,43 @@ function renderVenditaPerDurata(perDurata, totaleVendite) {
   `;
 }
 
+const ORIGINE_BUONO_LABEL = { voucher_acquistato: "Acquistati", voucher_omaggio: "Omaggio" };
+
+function renderBuoniEmessi(perOrigineBuoni) {
+  const el = document.getElementById("buoni-emessi-table");
+  const origini = Object.keys(perOrigineBuoni);
+
+  if (origini.length === 0) {
+    el.innerHTML = `<div class="empty-state"><div class="display">Nessun buono emesso nel periodo</div></div>`;
+    return;
+  }
+
+  const totCount = origini.reduce((s, o) => s + perOrigineBuoni[o].count, 0);
+  const totImporto = origini.reduce((s, o) => s + perOrigineBuoni[o].totale, 0);
+
+  el.innerHTML = `
+    <table class="app-table">
+      <thead><tr><th>Origine</th><th>Numero</th><th>Totale</th></tr></thead>
+      <tbody>
+        ${origini.map(o => `
+          <tr>
+            <td>${ORIGINE_BUONO_LABEL[o] || o}</td>
+            <td>${perOrigineBuoni[o].count}</td>
+            <td>CHF ${perOrigineBuoni[o].totale.toFixed(2)}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td><strong>Totale</strong></td>
+          <td><strong>${totCount}</strong></td>
+          <td><strong>CHF ${totImporto.toFixed(2)}</strong></td>
+        </tr>
+      </tfoot>
+    </table>
+  `;
+}
+
 async function calcolaResocontoPeriodo(e) {
   e.preventDefault();
   const dal = document.getElementById("resoconto-dal").value;
@@ -701,10 +782,14 @@ async function calcolaResocontoPeriodo(e) {
   btn.textContent = "Calcolo…";
 
   try {
-    const [ticketsSnap, bookingsSnap, quoteCampoSnap] = await Promise.all([
+    const [ticketsSnap, bookingsSnap, quoteCampoSnap, creditsSnap] = await Promise.all([
       db.collection("bookingTickets").where("courtId", "==", COURT_ID).where("date", ">=", dal).where("date", "<=", al).get(),
       db.collection("bookings").where("courtId", "==", COURT_ID).where("date", ">=", dal).where("date", "<=", al).get(),
-      db.collection("quoteCampo").get()
+      db.collection("quoteCampo").get(),
+      db.collection("credits")
+        .where("createdAt", ">=", new Date(dal + "T00:00:00"))
+        .where("createdAt", "<=", new Date(al + "T23:59:59"))
+        .get()
     ]);
 
     const infoPerBookingId = {};
@@ -747,13 +832,27 @@ async function calcolaResocontoPeriodo(e) {
       }
     });
 
-    ultimoResocontoPeriodo = { dal, al, perDurata, totaleVendite, totaleQuotaCampo };
+    // Buoni regalo emessi nel periodo (acquistati o omaggio) — i più
+    // vecchi crediti da annullamento non hanno "origine" e restano
+    // esclusi, non sono buoni regalo.
+    const perOrigineBuoni = {};
+    creditsSnap.docs
+      .map(d => d.data())
+      .filter(c => c.origine === "voucher_acquistato" || c.origine === "voucher_omaggio")
+      .forEach(c => {
+        if (!perOrigineBuoni[c.origine]) perOrigineBuoni[c.origine] = { count: 0, totale: 0 };
+        perOrigineBuoni[c.origine].count++;
+        perOrigineBuoni[c.origine].totale += (c.initialAmount || 0);
+      });
+
+    ultimoResocontoPeriodo = { dal, al, perDurata, totaleVendite, totaleQuotaCampo, perOrigineBuoni };
 
     renderVenditaPerDurata(perDurata, totaleVendite);
     document.getElementById("totale-quotacampo-maestri").textContent = `CHF ${totaleQuotaCampo.toFixed(2)}`;
     document.getElementById("quotacampo-maestri-warning").textContent = numEsentiSenzaQuota > 0
       ? `${numEsentiSenzaQuota} prenotazioni esenti senza una Quota campo configurata per quella durata/fascia (escluse dal totale).`
       : "";
+    renderBuoniEmessi(perOrigineBuoni);
     document.getElementById("resoconto-periodo-risultato").classList.remove("hidden");
   } catch (err) {
     showError(errorEl, "Errore nel calcolo: " + err.message);
@@ -765,11 +864,16 @@ async function calcolaResocontoPeriodo(e) {
 
 function stampaResocontoPeriodo() {
   if (!ultimoResocontoPeriodo) return;
-  const { dal, al, perDurata, totaleVendite, totaleQuotaCampo } = ultimoResocontoPeriodo;
+  const { dal, al, perDurata, totaleVendite, totaleQuotaCampo, perOrigineBuoni } = ultimoResocontoPeriodo;
   const durate = Object.keys(perDurata).map(Number).sort((a, b) => a - b);
 
   const righe = durate.map(d => `
     <tr><td>${d}'</td><td>${perDurata[d].count}</td><td>${perDurata[d].totale.toFixed(2)}</td></tr>
+  `).join("");
+
+  const origini = Object.keys(perOrigineBuoni || {});
+  const righeBuoni = origini.map(o => `
+    <tr><td>${ORIGINE_BUONO_LABEL[o] || o}</td><td>${perOrigineBuoni[o].count}</td><td>${perOrigineBuoni[o].totale.toFixed(2)}</td></tr>
   `).join("");
 
   document.getElementById("print-area").innerHTML = `
@@ -782,6 +886,11 @@ function stampaResocontoPeriodo() {
       <tfoot><tr><th>Totale</th><th>${durate.reduce((s, d) => s + perDurata[d].count, 0)}</th><th>${totaleVendite.toFixed(2)}</th></tr></tfoot>
     </table>
     <p><strong>Quota campo dovuta dai maestri:</strong> CHF ${totaleQuotaCampo.toFixed(2)}</p>
+    <h1>Buoni regalo emessi</h1>
+    <table>
+      <thead><tr><th>Origine</th><th>Numero</th><th>Totale (CHF)</th></tr></thead>
+      <tbody>${righeBuoni || "<tr><td colspan=3>Nessun buono emesso</td></tr>"}</tbody>
+    </table>
   `;
   window.print();
 }
@@ -835,6 +944,8 @@ requireAuth(async (profile) => {
   if (puoGestire) {
     document.getElementById("aggiungi-chiusura-btn").addEventListener("click", onAggiungiChiusura);
     await caricaChiusureList();
+
+    document.getElementById("emetti-buono-btn").addEventListener("click", onEmettiBuonoOmaggio);
 
     const [meseDal, meseAl] = currentMonthRange();
     document.getElementById("resoconto-dal").value = meseDal;

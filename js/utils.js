@@ -125,6 +125,7 @@ function intestazioneStampaHtml() {
 // regola applicata anche lato firestore.rules (che resta l'unica fonte
 // di verità: questo helper serve solo a mostrare/nascondere il pulsante).
 function puoEliminareVoceDiario(entry, profile) {
+  if (entry.approvato === true) return isAdmin(profile);
   if (hasPermission(profile, "diario:gestisci_tutti")) return true;
   if (entry.userId !== profile.uid) return false;
   if (!entry.createdAt || typeof entry.createdAt.toMillis !== "function") return false;

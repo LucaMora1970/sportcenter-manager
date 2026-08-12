@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Il tuo buono regalo — Tennis Club Mendrisio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script>if(localStorage.getItem("sportos-tema")==="light")document.documentElement.setAttribute("data-theme","light");</script>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d1f30">
+<style>
+  .voucher-card {
+    background: var(--court-blue-900);
+    border: 1px solid var(--court-blue-700);
+    border-radius: var(--radius);
+    padding: 28px var(--gap);
+    text-align: center;
+  }
+  .voucher-logo { width: 64px; height: 64px; margin: 0 auto 12px; display: block; border-radius: 12px; }
+  .voucher-kicker {
+    font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--chalk-grey); margin-bottom: 6px;
+  }
+  .voucher-title {
+    font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 1.4rem;
+    text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 18px;
+  }
+  .voucher-importo {
+    font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 3rem;
+    color: var(--ball); line-height: 1; margin-bottom: 18px;
+  }
+  .voucher-code { font-family: 'Space Mono', monospace; font-size: 1.6rem; letter-spacing: 0.06em; margin: 10px 0; }
+  .voucher-hint { color: var(--chalk-grey); font-size: 0.8rem; margin-top: 16px; }
+  .voucher-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <div>
+      <div class="topbar-kicker" id="centro-kicker">Tennis Club Mendrisio</div>
+      <h1>Il tuo buono regalo</h1>
+    </div>
+    <div></div>
+    <button type="button" class="topbar-link" id="theme-toggle-btn">Tema chiaro</button>
+  </div>
+
+  <main>
+
+    <div id="stato-caricamento" class="empty-state">
+      <div class="display">Verifica in corso…</div>
+      <p>Se hai appena pagato, la conferma può richiedere qualche secondo.</p>
+    </div>
+
+    <div id="stato-non-trovato" class="empty-state hidden">
+      <div class="display">Buono non trovato</div>
+      <p>Il link non è valido oppure il pagamento non è ancora stato confermato. Se hai appena pagato, aggiorna la pagina tra qualche istante; altrimenti contatta il circolo.</p>
+    </div>
+
+    <div id="voucher-content" class="hidden">
+      <div class="voucher-card" id="voucher-card">
+        <img src="icons/icon-512.png" alt="" class="voucher-logo" id="voucher-logo">
+        <div class="voucher-kicker" id="v-centro">—</div>
+        <div class="voucher-title">Buono regalo padel</div>
+        <div class="voucher-importo" id="v-importo">—</div>
+        <div class="voucher-code" id="v-codice">—</div>
+        <p class="voucher-hint">Da usare come credito in fase di prenotazione, campo "Hai un codice credito?" — senza scadenza.</p>
+      </div>
+
+      <div class="voucher-actions">
+        <button type="button" class="btn btn-primary" id="salva-btn">Salva buono</button>
+        <a href="prenota-padel.html" class="btn btn-ghost" style="text-align:center;text-decoration:none;">Vai alla prenotazione</a>
+      </div>
+    </div>
+
+  </main>
+
+</div>
+
+<canvas id="voucher-canvas" width="720" height="900" class="hidden"></canvas>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/buono-regalo-conferma.js"></script>
+</body>
+</html>

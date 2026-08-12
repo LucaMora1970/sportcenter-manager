@@ -41,6 +41,15 @@ function hasPermission(profile, permesso) {
   return profile.permessi.includes(permesso);
 }
 
+// Vero amministratore, a differenza di hasPermission() che ritorna sempre
+// true per l'admin qualunque permesso si chieda — serve per distinguere,
+// es., "può gestire il diario di tutti" da "è l'amministratore" (le voci
+// diario approvate sono modificabili solo dal vero admin, non da chi ha
+// solo diario:gestisci_tutti). Stessa logica di isAdmin() in firestore.rules.
+function isAdmin(profile) {
+  return !!profile && profile.permessi.includes("*");
+}
+
 /**
  * Protegge una pagina: se non loggato, rimanda a index.html.
  * Se loggato, richiama callback(profile) con il profilo caricato.

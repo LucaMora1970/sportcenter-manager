@@ -35,6 +35,15 @@ service cloud.firestore {
         );
     }
 
+    // Vero amministratore (ruolo con permesso "*"), a differenza di
+    // hasPermission() che per costruzione ritorna sempre true per l'admin
+    // qualunque permesso specifico si chieda — qui serve invece distinguere
+    // "ha un permesso ampio come diario:gestisci_tutti" da "è davvero
+    // l'amministratore", per le voci diario già approvate (vedi sotto).
+    function isAdmin() {
+      return isSignedIn() && userDoc().data.attivo != false && roleDoc().data.permessi.hasAny(["*"]);
+    }
+
     // prenotazioni:gestisci (tutto, incluse le prenotazioni altrui) o
     // prenotazioni:proprie (es. maestri: solo le proprie + blocchi) —
     // entrambi devono poter vedere il tabellone operatore completo.
@@ -78,24 +87,39 @@ service cloud.firestore {
     // - chi ha "diario:leggi_tutti" può leggere le voci di chiunque
     // - chi ha "diario:gestisci_tutti" può modificare/cancellare voci altrui
     //   e cancellare oltre il limite di tempo (es. admin, supervisore)
+    // - chi ha "diario:approva" può approvare voci altrui (stesso pattern di
+    //   corsi:approva — permesso di update pieno, non limitato ai soli campi
+    //   di approvazione, come già per i corsi)
+    // - una volta approvata (approvato == true), la voce si blocca per
+    //   chiunque tranne il vero amministratore (isAdmin(), non semplicemente
+    //   diario:gestisci_tutti) — richiesto esplicitamente: "non modificabile
+    //   se non dall'amministratore" dopo l'approvazione del responsabile.
     match /diario/{entryId} {
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
 
       allow read: if isSignedIn() && (
         resource.data.userId == request.auth.uid
         || hasPermission("diario:leggi_tutti")
+        || hasPermission("diario:approva")
       );
 
-      allow update: if isSignedIn() && (
-        resource.data.userId == request.auth.uid
-        || hasPermission("diario:gestisci_tutti")
-      );
-
-      allow delete: if isSignedIn() && (
-        hasPermission("diario:gestisci_tutti")
-        || (
+      allow update: if isAdmin() || (
+        resource.data.approvato != true
+        && (
           resource.data.userId == request.auth.uid
-          && resource.data.createdAt > request.time - duration.value(minutiEliminazioneDiario(), 'm')
+          || hasPermission("diario:gestisci_tutti")
+          || hasPermission("diario:approva")
+        )
+      );
+
+      allow delete: if isAdmin() || (
+        resource.data.approvato != true
+        && (
+          hasPermission("diario:gestisci_tutti")
+          || (
+            resource.data.userId == request.auth.uid
+            && resource.data.createdAt > request.time - duration.value(minutiEliminazioneDiario(), 'm')
+          )
         )
       );
     }
@@ -317,9 +341,11 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Il credito generato da un annullamento; l'uso da parte del cliente
-    // passa sempre da una Cloud Function (mai lettura/scrittura diretta),
-    // quindi qui basta il permesso per il pannello operatore.
+    // Il credito generato da un annullamento o da un buono regalo (campo
+    // "origine": assente = da annullamento, "voucher_acquistato" o
+    // "voucher_omaggio" = buono regalo); l'uso da parte del cliente passa
+    // sempre da una Cloud Function (mai lettura/scrittura diretta), quindi
+    // qui basta il permesso per il pannello operatore.
     match /credits/{code} {
       allow get, list: if hasPermission("prenotazioni:gestisci");
       allow write: if false;
@@ -329,6 +355,18 @@ service cloud.firestore {
     // iscrizioniLog: niente update né delete, nemmeno per l'operatore.
     match /creditTransactions/{id} {
       allow get, list: if hasPermission("prenotazioni:gestisci");
+      allow write: if false;
+    }
+
+    // "Ricevuta" pubblica di un buono regalo appena acquistato/emesso —
+    // stesso pattern di bookingTickets: l'ID del documento È il token
+    // lungo e casuale, conoscerlo è di per sé l'autorizzazione a leggere
+    // QUEL buono (allow get), ma non a enumerarli tutti (allow list
+    // riservato al pannello operatore). Il codice credito vero e proprio
+    // resta in "credits", mai esposto pubblicamente per codice breve.
+    match /voucherTickets/{token} {
+      allow get: if true;
+      allow list: if hasPermission("prenotazioni:gestisci");
       allow write: if false;
     }
 

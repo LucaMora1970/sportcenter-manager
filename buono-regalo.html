@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Buono regalo padel — Tennis Club Mendrisio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script>if(localStorage.getItem("sportos-tema")==="light")document.documentElement.setAttribute("data-theme","light");</script>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d1f30">
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <div>
+      <div class="topbar-kicker" id="centro-kicker">Tennis Club Mendrisio</div>
+      <h1>Regala un buono padel</h1>
+    </div>
+    <div></div>
+    <button type="button" class="topbar-link" id="theme-toggle-btn">Tema chiaro</button>
+  </div>
+
+  <main>
+
+    <p style="color:var(--chalk-grey);font-size:0.8rem;margin:-4px 0 16px;">Nessuna registrazione richiesta — scegli l'importo, paga online, ricevi subito il buono da stampare o inoltrare. Vale come credito per qualunque prenotazione futura del campo padel, senza scadenza.</p>
+
+    <div class="picker-label" style="margin-bottom:10px;">Scegli l'importo</div>
+    <div class="seg" id="importoSeg" role="group" aria-label="Importo">
+      <button type="button" data-importo="30" aria-pressed="false">CHF 30</button>
+      <button type="button" data-importo="50" aria-pressed="false">CHF 50</button>
+      <button type="button" data-importo="100" aria-pressed="false">CHF 100</button>
+    </div>
+
+    <div class="field" style="margin-top:16px;">
+      <label for="importo-libero">Oppure un altro importo (CHF)</label>
+      <input type="number" id="importo-libero" min="10" max="500" step="5" placeholder="es. 75">
+    </div>
+
+    <div class="error-msg" id="buono-error"></div>
+
+  </main>
+
+</div>
+
+<div class="summary-bar" id="summaryBar">
+  <div class="summary-card">
+    <div class="summary-info">
+      <div class="t" id="summaryTitle">—</div>
+      <div class="p">Buono regalo padel</div>
+    </div>
+    <button type="button" class="summary-cta" id="summaryCta" style="width:auto;">Paga e ricevi il buono</button>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/buono-regalo.js"></script>
+</body>
+</html>

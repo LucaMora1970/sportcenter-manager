@@ -79,15 +79,17 @@ function renderBiglietto(data, token) {
 
 // Ridisegna l'intero biglietto su <canvas> (logo + testi + QR) per
 // poterlo scaricare come immagine — nessun backend di generazione
-// immagini necessario, tutto lato client.
+// immagini necessario, tutto lato client. Sempre in versione chiara
+// (indipendente dal tema scelto per la pagina): un'immagine chiara si
+// stampa meglio ed è più adatta a essere inoltrata/condivisa.
 async function salvaBigliettoPng() {
   const canvas = document.getElementById("ticket-canvas");
   const ctx = canvas.getContext("2d");
   const W = canvas.width, H = canvas.height;
 
-  ctx.fillStyle = "#0d1f30";
+  ctx.fillStyle = "#eef2f4";
   ctx.fillRect(0, 0, W, H);
-  ctx.strokeStyle = "#274a68";
+  ctx.strokeStyle = "#c7d3d9";
   ctx.lineWidth = 3;
   ctx.strokeRect(20, 20, W - 40, H - 40);
 
@@ -98,11 +100,11 @@ async function salvaBigliettoPng() {
   } catch { /* logo non ancora caricato: si procede comunque senza */ }
 
   ctx.textAlign = "center";
-  ctx.fillStyle = "#9fb1bf";
+  ctx.fillStyle = "#52697a";
   ctx.font = "600 22px Arial";
   ctx.fillText((DATI_CENTRO.nome || "").toUpperCase(), W / 2, 210);
 
-  ctx.fillStyle = "#c1e08f";
+  ctx.fillStyle = "#576f00";
   ctx.font = "700 34px Arial";
   ctx.fillText("PRENOTAZIONE CONFERMATA", W / 2, 260);
 
@@ -116,10 +118,10 @@ async function salvaBigliettoPng() {
   ctx.textAlign = "left";
   let y = 330;
   righe.forEach(([k, v]) => {
-    ctx.fillStyle = "#9fb1bf";
+    ctx.fillStyle = "#52697a";
     ctx.font = "22px Arial";
     ctx.fillText(k, 80, y);
-    ctx.fillStyle = "#edf1f2";
+    ctx.fillStyle = "#16283a";
     ctx.font = "700 22px Arial";
     ctx.textAlign = "right";
     ctx.fillText(v, W - 80, y);
@@ -128,7 +130,7 @@ async function salvaBigliettoPng() {
   });
 
   ctx.textAlign = "center";
-  ctx.fillStyle = "#c6df2e";
+  ctx.fillStyle = "#6f8f00";
   ctx.font = "700 40px 'Courier New', monospace";
   ctx.fillText(document.getElementById("t-codice").textContent, W / 2, y + 40);
 
@@ -142,7 +144,7 @@ async function salvaBigliettoPng() {
     ctx.drawImage(qrImg, (W - qrSize) / 2, qrTop, qrSize, qrSize);
   }
 
-  ctx.fillStyle = "#9fb1bf";
+  ctx.fillStyle = "#52697a";
   ctx.font = "18px Arial";
   ctx.fillText(document.getElementById("t-timestamp").textContent, W / 2, qrTop + qrSize + 40);
 

@@ -67,6 +67,36 @@
       </div>
     </div>
 
+    <div id="approvazione-section" class="hidden">
+      <hr class="court-divider">
+      <div class="section-title"><h2>Da approvare</h2></div>
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Voci del team non ancora approvate, per periodo.</p>
+
+      <div class="row2" style="margin-bottom:16px;">
+        <button type="button" class="btn btn-ghost" id="preset-7giorni-approvazione">Ultimi 7 giorni</button>
+        <button type="button" class="btn btn-ghost" id="preset-mese-approvazione">Mese corrente</button>
+      </div>
+      <form id="approvazione-form">
+        <div class="row2">
+          <div class="field">
+            <label for="approvazione-dal">Dal</label>
+            <input type="date" id="approvazione-dal" required>
+          </div>
+          <div class="field">
+            <label for="approvazione-al">Al</label>
+            <input type="date" id="approvazione-al" required>
+          </div>
+        </div>
+        <div class="error-msg" id="approvazione-error"></div>
+        <button type="submit" class="btn btn-primary" id="carica-approvazione-btn">Carica</button>
+      </form>
+
+      <div id="approvazione-list" style="margin-top:14px;">
+        <div class="empty-state"><div class="display">Nessuna ricerca ancora effettuata</div></div>
+      </div>
+      <button type="button" class="btn btn-ghost hidden" id="approva-tutte-btn" style="margin-top:14px;">Approva tutte</button>
+    </div>
+
   </main>
 
   <nav class="bottom-nav">
