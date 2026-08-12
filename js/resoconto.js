@@ -271,7 +271,7 @@ function renderDipendenti(lista) {
           <div class="entry-tipo">${escapeHtml(d.nome)}</div>
           ${d.quotaCampo > 0 ? `<div class="entry-meta">Quota campo dovuta: CHF ${d.quotaCampo.toFixed(2)}</div>` : ""}
           ${d.compenso > 0 ? `<div class="entry-meta">Compenso dovuto: CHF ${d.compenso.toFixed(2)}</div>` : ""}
-          ${d.pagatoOnline > 0 ? `<div class="entry-meta">Pagato online dai clienti: CHF ${d.pagatoOnline.toFixed(2)}</div>` : ""}
+          ${d.pagatoOnline > 0 ? `<div style="margin-top:6px;"><span class="chip-audit approvato">Incassato online CHF ${d.pagatoOnline.toFixed(2)}</span></div>` : ""}
         </div>
         <div class="entry-ore">${d.totale.toFixed(1)}h</div>
       </div>
@@ -388,7 +388,6 @@ function entryRowHtml(en) {
   if (nomiAllievi(en)) metaParts.push("Allievo: " + nomiAllievi(en));
   if (en.oraInizio || en.oraFine) metaParts.push(`${en.oraInizio || "—"}–${en.oraFine || "—"}`);
   if (en.note) metaParts.push(en.note);
-  if (en.pagamentoOnlineStato === "PAID") metaParts.push(`Pagato online CHF ${(en.pagamentoOnlineImporto || 0).toFixed(2)}`);
 
   return `
     <div class="entry-card">
@@ -396,6 +395,7 @@ function entryRowHtml(en) {
         <span class="badge ${en.disciplina}">${disciplinaLabel(en.disciplina)}</span>
         <div class="entry-tipo">${escapeHtml(tipoAttivitaLabelFor(en))}</div>
         <div class="entry-meta">${escapeHtml(metaParts.join(" · "))}</div>
+        ${en.pagamentoOnlineStato === "PAID" ? `<div style="margin-top:6px;"><span class="chip-audit approvato">Pagato online CHF ${(en.pagamentoOnlineImporto || 0).toFixed(2)}</span></div>` : ""}
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
         <div class="entry-ore">${(en.ore || 0).toFixed(1)}h</div>
@@ -543,7 +543,7 @@ function renderRiepilogoContabilita(lista) {
             <td>${d.totale.toFixed(1)}h</td>
             <td>${d.compenso > 0 ? "CHF " + d.compenso.toFixed(2) : "—"}</td>
             <td>${d.quotaCampo > 0 ? "CHF " + d.quotaCampo.toFixed(2) : "—"}</td>
-            <td>${d.pagatoOnline > 0 ? "CHF " + d.pagatoOnline.toFixed(2) : "—"}</td>
+            <td>${d.pagatoOnline > 0 ? `<span class="chip-audit approvato">Incassato online CHF ${d.pagatoOnline.toFixed(2)}</span>` : "—"}</td>
           </tr>
         `).join("")}
       </tbody>
