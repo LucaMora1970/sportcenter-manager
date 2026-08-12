@@ -277,6 +277,7 @@ main {
   font-size: 0.95rem;
   font-weight: 600;
   color: var(--line-white);
+  margin-top: 5px;
 }
 
 .entry-card .entry-meta {
@@ -310,7 +311,11 @@ main {
 /* Chip di verifica temporale (chi ha inserito/approvato una voce e
    quando) — pillola arrotondata invece del badge rettangolare, per
    distinguerla a colpo d'occhio da stato/disciplina; monospace perché
-   contiene un orario. */
+   contiene un orario. Senza bordo (solo un fondo tenue) apposta: deve
+   restare sullo sfondo, altrimenti compete visivamente con i pulsanti
+   azione veri (Copia link/Mostra QR) accanto. Nessun nowrap: il testo
+   (nome + data/ora) può essere lungo, e su schermi stretti invaderebbe
+   la colonna dei pulsanti a destra se costretto su una riga sola. */
 .chip-audit {
   display: inline-flex;
   align-items: center;
@@ -319,11 +324,11 @@ main {
   font-family: 'Space Mono', monospace;
   padding: 3px 9px;
   border-radius: 20px;
-  border: 1px solid var(--court-blue-700);
+  background: var(--court-blue-800);
   color: var(--chalk-grey);
-  white-space: nowrap;
+  max-width: 100%;
 }
-.chip-audit.approvato { border-color: #7f9e4a; color: #c1e08f; }
+.chip-audit.approvato { background: rgba(127,158,74,0.16); color: #c1e08f; }
 
 /* Form */
 .field { margin-bottom: 16px; }
