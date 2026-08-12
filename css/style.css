@@ -329,6 +329,13 @@ main {
   max-width: 100%;
 }
 .chip-audit.approvato { background: rgba(127,158,74,0.16); color: #c1e08f; }
+/* Il verde pastello sopra è tarato per lo sfondo scuro — su sfondo
+   chiaro è quasi illeggibile. Stesso ruolo (verde di conferma) ma
+   riletto con --ball-dim, già pensato per restare leggibile su bianco. */
+:root[data-theme="light"] .chip-audit.approvato {
+  background: rgba(87,111,0,0.14);
+  color: var(--ball-dim);
+}
 
 /* Form */
 .field { margin-bottom: 16px; }
