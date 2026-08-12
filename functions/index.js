@@ -52,8 +52,9 @@ const POSTFINANCE_SPACE_ID = defineSecret("POSTFINANCE_SPACE_ID");
 const POSTFINANCE_USER_ID = defineSecret("POSTFINANCE_USER_ID");
 const POSTFINANCE_APP_KEY = defineSecret("POSTFINANCE_APP_KEY");
 
-// URL base dell'app su GitHub Pages, per i redirect di successo/fallimento.
-const APP_URL = "https://lucamora1970.github.io/sportcenter-manager/sportcenter-manager/";
+// URL base dell'app (dominio personalizzato via GitHub Pages), per i
+// redirect di successo/fallimento del pagamento e i link di reset password.
+const APP_URL = "https://sport-os.ch/";
 
 const BOUNDARY = 17 * 60; // 17:00 — stessa soglia diurno/serale di prenotazioni.js
 
