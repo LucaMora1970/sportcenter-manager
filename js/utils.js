@@ -253,6 +253,30 @@ function basePageUrl() {
   return location.href.replace(/[^/]*$/, "");
 }
 
+// Overlay di caricamento a schermo intero — usato durante le chiamate a
+// Cloud Function che richiedono un pagamento (prenotazione, buono
+// regalo, richiesta pagamento diario, blocco/esente operatore...):
+// l'attesa di rete è reale ma facile da non notare se il solo segnale è
+// il testo di un pulsante, specie su mobile. Creato una volta sola al
+// primo utilizzo e riusato.
+function mostraCaricamento(testo) {
+  let overlay = document.getElementById("loading-overlay");
+  if (!overlay) {
+    overlay = document.createElement("div");
+    overlay.id = "loading-overlay";
+    overlay.className = "loading-overlay";
+    overlay.innerHTML = `<div class="spinner"></div><p id="loading-overlay-text"></p>`;
+    document.body.appendChild(overlay);
+  }
+  document.getElementById("loading-overlay-text").textContent = testo || "Elaborazione in corso…";
+  overlay.classList.add("show");
+}
+
+function nascondiCaricamento() {
+  const overlay = document.getElementById("loading-overlay");
+  if (overlay) overlay.classList.remove("show");
+}
+
 // Copia un testo negli appunti e mostra un feedback "Copiato!" temporaneo
 // sul pulsante che ha scatenato l'azione.
 async function copyToClipboard(text, btn) {

@@ -440,6 +440,18 @@ async function creaPrenotazioneOperatore(tipo) {
     return;
   }
 
+  // Disabilita entrambi i pulsanti (non solo quello cliccato): un doppio
+  // click, o un click sull'altro pulsante mentre la prima richiesta è
+  // ancora in corso, non deve poter partire una seconda richiesta sullo
+  // stesso slot — stessa cautela già presa in prenota-padel.js, anche
+  // se qui il backend (transazione Firestore) blocca comunque il
+  // doppione: è solo per evitare un errore inutile in interfaccia.
+  const blockaBtn = document.getElementById("blocca-btn");
+  const esenteBtn = document.getElementById("esente-btn");
+  blockaBtn.disabled = true;
+  esenteBtn.disabled = true;
+  mostraCaricamento(tipo === "BLOCK" ? "Blocco dello slot in corso…" : "Creazione della prenotazione in corso…");
+
   try {
     const fn = firebase.functions().httpsCallable("creaPrenotazioneOperatore");
     await fn({
@@ -457,6 +469,10 @@ async function creaPrenotazioneOperatore(tipo) {
     await caricaGiorno();
   } catch (err) {
     showError(errorEl, "Errore: " + err.message);
+  } finally {
+    nascondiCaricamento();
+    blockaBtn.disabled = false;
+    esenteBtn.disabled = false;
   }
 }
 

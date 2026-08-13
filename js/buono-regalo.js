@@ -53,12 +53,14 @@ async function acquistaBuono() {
 
   btn.disabled = true;
   btn.textContent = "Attendere…";
+  mostraCaricamento("Creazione del pagamento in corso — non chiudere questa pagina…");
 
   try {
     const fn = firebase.functions().httpsCallable("acquistaBuonoRegalo");
     const result = await fn({ importo: importoSelezionato });
     window.location.href = result.data.paymentPageUrl;
   } catch (err) {
+    nascondiCaricamento();
     showError(errorEl, "Errore nell'acquisto: " + (err.message || err));
     btn.disabled = false;
     btn.textContent = "Paga e ricevi il buono";

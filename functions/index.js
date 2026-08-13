@@ -16,15 +16,14 @@
 //   firebase functions:secrets:set POSTFINANCE_USER_ID
 //   firebase functions:secrets:set POSTFINANCE_APP_KEY
 //
-// Due generazioni di flusso convivono qui:
-// - creaPagamentoPrenotazione / collection "prenotazioniPadel": booking
-//   interno da parte di utenti loggati (team), precedente all'apertura
-//   pubblica. Lasciato per compatibilità, non più usato dalle pagine
-//   nuove ma ancora valido se qualche transazione fosse in corso al
-//   momento del passaggio.
-// - creaPrenotazionePubblica / collection "bookings"+"bookingTickets"+
-//   "bookingCodes"+"payments"+"credits"+"creditTransactions": booking
-//   pubblico senza login, con biglietto/QR/codice e sistema di credito.
+// creaPrenotazionePubblica / collection "bookings"+"bookingTickets"+
+// "bookingCodes"+"payments"+"credits"+"creditTransactions": booking
+// pubblico senza login, con biglietto/QR/codice e sistema di credito.
+//
+// (Il vecchio flusso interno pre-apertura pubblica, creaPagamentoPrenotazione
+// su "prenotazioniPadel", è stato rimosso: non più collegato a nessuna
+// pagina, senza il controllo anti-sovrapposizione delle funzioni attuali —
+// vedi git log se serve recuperarlo.)
 // ============================================================
 
 const crypto = require("crypto");
@@ -244,94 +243,6 @@ function generaCodiceCredito() {
   return `CR-${generaCodiceCasuale()}`;
 }
 
-// ---------- 1a. Flusso interno (team, dietro login) — invariato ----------
-
-exports.creaPagamentoPrenotazione = onCall(
-  { secrets: [POSTFINANCE_SPACE_ID, POSTFINANCE_USER_ID, POSTFINANCE_APP_KEY] },
-  async (request) => {
-    if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
-
-    const { data, oraInizio, oraFine, durataMinuti } = request.data || {};
-    if (!data || !oraInizio || !oraFine || !durataMinuti) {
-      throw new HttpsError("invalid-argument", "Dati prenotazione incompleti.");
-    }
-
-    const userSnap = await db.collection("users").doc(request.auth.uid).get();
-    const userData = userSnap.exists ? userSnap.data() : {};
-    const userNome = userData.nome || request.auth.token.email || "Socio";
-    const esente = !!userData.soggettoQuotaCampo;
-
-    const tariffeSnap = await db.collection("impostazioni").doc("tariffePadel").get();
-    const tariffe = tariffeSnap.exists ? tariffeSnap.data() : {};
-    const fascia = fasciaTariffa(oraInizio, durataMinuti);
-    const prezzoTeorico = tariffe[fascia];
-    if (prezzoTeorico == null) {
-      throw new HttpsError("failed-precondition", "Tariffa non configurata per questo slot — vai in Configurazione.");
-    }
-
-    const prenotazioneRef = await db.collection("prenotazioniPadel").add({
-      data, oraInizio, oraFine, durataMinuti,
-      userId: request.auth.uid,
-      userNome,
-      bloccato: false,
-      motivoBlocco: null,
-      fasciaTariffa: fascia,
-      prezzoTeorico,
-      esente,
-      prezzo: esente ? 0 : prezzoTeorico,
-      pagamento: esente ? "esente" : "in_attesa",
-      createdAt: FieldValue.serverTimestamp()
-    });
-
-    if (esente) {
-      return { esente: true, prenotazioneId: prenotazioneRef.id };
-    }
-
-    const spaceId = parseInt(POSTFINANCE_SPACE_ID.value(), 10);
-    const service = transactionsService();
-
-    let transaction;
-    try {
-      transaction = await service.postPaymentTransactions({
-        space: spaceId,
-        transactionCreate: {
-          currency: "CHF",
-          merchantReference: prenotazioneRef.id,
-          customerEmailAddress: request.auth.token.email || undefined,
-          successUrl: `${APP_URL}prenotazioni.html?pagamento=ok`,
-          failedUrl: `${APP_URL}prenotazioni.html?pagamento=fallito`,
-          lineItems: [{
-            uniqueId: prenotazioneRef.id,
-            name: `Campo padel ${data} ${oraInizio}–${oraFine}`,
-            quantity: 1,
-            amountIncludingTax: prezzoTeorico,
-            type: LineItemType.Product
-          }],
-          metaData: { prenotazioneId: prenotazioneRef.id },
-          environmentSelectionStrategy: FORZA_AMBIENTE_TEST
-            ? TransactionEnvironmentSelectionStrategy.ForceTestEnvironment
-            : TransactionEnvironmentSelectionStrategy.UseConfiguration
-        }
-      });
-
-      const paymentPageUrl = await service.getPaymentTransactionsIdPaymentPageUrl({
-        id: transaction.id,
-        space: spaceId
-      });
-
-      await prenotazioneRef.update({ transazioneId: transaction.id });
-
-      return { esente: false, prenotazioneId: prenotazioneRef.id, paymentPageUrl };
-    } catch (err) {
-      // La transazione PostFinance non si è creata: libera subito lo
-      // slot invece di lasciarlo occupato da una prenotazione orfana.
-      await prenotazioneRef.delete();
-      console.error("creaPagamentoPrenotazione: errore PostFinance:", err);
-      throw new HttpsError("internal", "Errore nella creazione del pagamento. Riprova.");
-    }
-  }
-);
-
 // ---------- 1b. Flusso pubblico (senza login) ----------
 
 // Un solo campo padel per ora — "unico campo" già mostrato nel
@@ -411,24 +322,18 @@ exports.creaPrenotazionePubblica = onCall(
     const startMin = orarioToMin(startTime);
     const close = chiusuraGiorno(date);
 
-    const existingSnap = await db.collection("bookings")
+    // Pulizia best-effort delle "PENDING_PAYMENT" scadute (pagamento mai
+    // concluso, es. abbandonato o webhook mai arrivato) — fuori dalla
+    // transazione qui sotto: è solo pulizia, non deve rallentarla né
+    // farla fallire per un errore di cancellazione.
+    const preSnap = await db.collection("bookings")
       .where("date", "==", date)
       .where("courtId", "==", court)
       .get();
-
-    // Pulizia delle "PENDING_PAYMENT" scadute (pagamento mai concluso, es.
-    // abbandonato o webhook mai arrivato) — altrimenti resterebbero a
-    // bloccare lo slot per sempre.
-    const scadute = existingSnap.docs.filter(d => pendingScaduto(d.data()));
+    const scadute = preSnap.docs.filter(d => pendingScaduto(d.data()));
     if (scadute.length > 0) await Promise.all(scadute.map(d => d.ref.delete()));
 
-    const existingBookings = existingSnap.docs
-      .filter(d => !scadute.includes(d))
-      .map(d => d.data())
-      .filter(b => b.status === "PENDING_PAYMENT" || b.status === "CONFIRMED" || b.status === "COMPLETED")
-      .map(b => ({ start: orarioToMin(b.startTime), end: orarioToMin(b.endTime) }));
-
-    if (eOrmaiPassato(date, startMin) || !validStarts(existingBookings, durationMinutes, close, feriale(date), eOggi(date)).includes(startMin)) {
+    if (eOrmaiPassato(date, startMin)) {
       throw new HttpsError("failed-precondition", "Questo slot non è più disponibile — scegline un altro.");
     }
 
@@ -452,11 +357,34 @@ exports.creaPrenotazionePubblica = onCall(
     const daPagare = Math.max(0, prezzo - creditoDaScalare);
     const token = generaToken();
 
-    const bookingRef = await db.collection("bookings").add({
-      courtId: court, date, startTime, endTime,
-      status: "PENDING_PAYMENT",
-      type: "CUSTOMER",
-      createdAt: FieldValue.serverTimestamp()
+    // Verifica e prenotazione dentro un'unica transazione Firestore: se
+    // due richieste concorrenti leggono lo stesso slot libero, solo la
+    // prima scrittura va a buon fine — Firestore invalida e riprova
+    // automaticamente l'altra, che rilegge lo slot ormai occupato e si
+    // ferma qui sotto. Mai due prenotazioni sovrapposte pagate entrambe
+    // davvero (la lettura+scrittura separate di prima erano una finestra
+    // di corsa reale, per quanto piccola).
+    const bookingRef = db.collection("bookings").doc();
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(
+        db.collection("bookings").where("date", "==", date).where("courtId", "==", court)
+      );
+      const existingBookings = snap.docs
+        .filter(d => !pendingScaduto(d.data()))
+        .map(d => d.data())
+        .filter(b => b.status === "PENDING_PAYMENT" || b.status === "CONFIRMED" || b.status === "COMPLETED")
+        .map(b => ({ start: orarioToMin(b.startTime), end: orarioToMin(b.endTime) }));
+
+      if (!validStarts(existingBookings, durationMinutes, close, feriale(date), eOggi(date)).includes(startMin)) {
+        throw new HttpsError("failed-precondition", "Questo slot non è più disponibile — scegline un altro.");
+      }
+
+      tx.set(bookingRef, {
+        courtId: court, date, startTime, endTime,
+        status: "PENDING_PAYMENT",
+        type: "CUSTOMER",
+        createdAt: FieldValue.serverTimestamp()
+      });
     });
 
     if (daPagare === 0) {
@@ -568,21 +496,16 @@ exports.creaPrenotazioneOperatore = onCall(async (request) => {
   const startMin = orarioToMin(startTime);
   const close = chiusuraGiorno(date);
 
-  const existingSnap = await db.collection("bookings")
+  // Pulizia best-effort delle scadute — fuori dalla transazione qui
+  // sotto, è solo pulizia.
+  const preSnap = await db.collection("bookings")
     .where("date", "==", date)
     .where("courtId", "==", court)
     .get();
-
-  const scadute = existingSnap.docs.filter(d => pendingScaduto(d.data()));
+  const scadute = preSnap.docs.filter(d => pendingScaduto(d.data()));
   if (scadute.length > 0) await Promise.all(scadute.map(d => d.ref.delete()));
 
-  const existingBookings = existingSnap.docs
-    .filter(d => !scadute.includes(d))
-    .map(d => d.data())
-    .filter(b => b.status === "PENDING_PAYMENT" || b.status === "CONFIRMED" || b.status === "COMPLETED")
-    .map(b => ({ start: orarioToMin(b.startTime), end: orarioToMin(b.endTime) }));
-
-  if (eOrmaiPassato(date, startMin) || !validStarts(existingBookings, durationMinutes, close, feriale(date), eOggi(date)).includes(startMin)) {
+  if (eOrmaiPassato(date, startMin)) {
     throw new HttpsError("failed-precondition", "Questo slot non è più disponibile.");
   }
 
@@ -594,11 +517,32 @@ exports.creaPrenotazioneOperatore = onCall(async (request) => {
   }
 
   const token = generaToken();
-  const bookingRef = await db.collection("bookings").add({
-    courtId: court, date, startTime, endTime,
-    status: "PENDING_PAYMENT",
-    type: tipo,
-    createdAt: FieldValue.serverTimestamp()
+
+  // Stessa protezione anti-doppia-prenotazione di creaPrenotazionePubblica
+  // (vedi commento lì): verifica e scrittura nella stessa transazione,
+  // così due richieste concorrenti sullo stesso slot non possono passare
+  // entrambe.
+  const bookingRef = db.collection("bookings").doc();
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(
+      db.collection("bookings").where("date", "==", date).where("courtId", "==", court)
+    );
+    const existingBookings = snap.docs
+      .filter(d => !pendingScaduto(d.data()))
+      .map(d => d.data())
+      .filter(b => b.status === "PENDING_PAYMENT" || b.status === "CONFIRMED" || b.status === "COMPLETED")
+      .map(b => ({ start: orarioToMin(b.startTime), end: orarioToMin(b.endTime) }));
+
+    if (!validStarts(existingBookings, durationMinutes, close, feriale(date), eOggi(date)).includes(startMin)) {
+      throw new HttpsError("failed-precondition", "Questo slot non è più disponibile.");
+    }
+
+    tx.set(bookingRef, {
+      courtId: court, date, startTime, endTime,
+      status: "PENDING_PAYMENT",
+      type: tipo,
+      createdAt: FieldValue.serverTimestamp()
+    });
   });
 
   const bookingCode = await confermaPrenotazionePubblica({
@@ -771,14 +715,6 @@ exports.webhookPostFinance = onRequest(
           }
         } else {
           await db.collection("bookings").doc(meta.bookingId).delete();
-        }
-      } else if (meta.prenotazioneId) {
-        // Flusso interno (team, dietro login) — invariato.
-        const ref = db.collection("prenotazioniPadel").doc(meta.prenotazioneId);
-        if (successo) {
-          await ref.update({ pagamento: "pagato" });
-        } else {
-          await ref.delete();
         }
       }
 

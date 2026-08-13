@@ -561,6 +561,7 @@ async function onRichiediPagamento(entryId, btn) {
 
   btn.disabled = true;
   btn.textContent = "Attendere…";
+  mostraCaricamento("Creazione della richiesta di pagamento in corso…");
   try {
     const fn = firebase.functions().httpsCallable("richiediPagamentoDiario");
     // Niente copia automatica qui: dopo un'attesa di rete (questa
@@ -570,7 +571,9 @@ async function onRichiediPagamento(entryId, btn) {
     // dopo (voce ricaricata in automatico) partono invece da un click
     // fresco e funzionano in modo affidabile.
     await fn({ entryId, importo });
+    nascondiCaricamento();
   } catch (err) {
+    nascondiCaricamento();
     alert("Errore: " + err.message);
     btn.disabled = false;
     btn.textContent = "Paga online";

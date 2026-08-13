@@ -262,6 +262,7 @@ async function prenotaSlot() {
   errorEl.innerHTML = "";
   btn.disabled = true;
   btn.textContent = "Attendere…";
+  mostraCaricamento("Creazione del pagamento in corso — non chiudere questa pagina…");
 
   const creditCode = document.getElementById("credito-input").value.trim() || null;
 
@@ -282,6 +283,7 @@ async function prenotaSlot() {
       window.location.href = `biglietto.html?t=${result.data.token}`;
     }
   } catch (err) {
+    nascondiCaricamento();
     showError(errorEl, "Errore nella prenotazione: " + (err.message || err));
     btn.disabled = false;
     btn.textContent = "Paga e prenota";
