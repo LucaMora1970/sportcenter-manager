@@ -690,15 +690,30 @@ function fasciaOrariaFor(oraInizio) {
   return oraInizio < "17:00" ? "prima_17" : "dopo_17";
 }
 
+// Diverso da feriale() più sopra (che esclude sabato E domenica, per gli
+// orari di chiusura campo): qui la quota campo distingue solo la
+// domenica, come richiesto — il sabato resta prezzo feriale.
+function domenicaOFestivo(dataIso) {
+  const giorno = new Date(dataIso + "T00:00:00").getDay();
+  return giorno === 0 || FESTIVI.includes(dataIso);
+}
+
 function quotaCampoPerPrenotazione(booking, quoteCampoList) {
   const durata = orarioToMin(booking.endTime) - orarioToMin(booking.startTime);
   const fascia = fasciaOrariaFor(booking.startTime);
+  const tipoGiorno = domenicaOFestivo(booking.date) ? "domenica_festivo" : "feriale";
   const candidates = quoteCampoList
     .filter(q => q.disciplina === "padel")
     .filter(q => !q.periodoInizio || booking.date >= q.periodoInizio)
     .filter(q => !q.periodoFine || booking.date <= q.periodoFine)
+    .filter(q => !q.tipoGiorno || q.tipoGiorno === tipoGiorno)
     .filter(q => q.fasciaOraria === fascia && q.durataMinuti === durata)
-    .sort((a, b) => (b.periodoInizio || "").localeCompare(a.periodoInizio || ""));
+    .sort((a, b) => {
+      const aGiorno = a.tipoGiorno ? 1 : 0;
+      const bGiorno = b.tipoGiorno ? 1 : 0;
+      if (aGiorno !== bGiorno) return bGiorno - aGiorno;
+      return (b.periodoInizio || "").localeCompare(a.periodoInizio || "");
+    });
   return candidates.length > 0 ? candidates[0].importo : null;
 }
 

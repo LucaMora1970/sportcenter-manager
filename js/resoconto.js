@@ -82,15 +82,25 @@ function fasciaOrariaFor(oraInizio) {
 // Trova la quota campo dovuta per una voce diario, incrociando
 // disciplina, posizione del campo usato, data (periodo) e — solo per
 // il padel — durata effettiva della lezione e fascia oraria.
+// Nessun elenco festivi mantenuto ancora (stesso stub vuoto usato in
+// prenotazioni.js) — oggi distingue solo la domenica, come richiesto.
+const FESTIVI = [];
+function domenicaOFestivo(dataIso) {
+  const giorno = new Date(dataIso + "T00:00:00").getDay();
+  return giorno === 0 || FESTIVI.includes(dataIso);
+}
+
 function quotaCampoPerEntry(entry, campiById, quoteCampoList) {
   if (!entry.campoNumero) return null;
 
   const campo = campiById[entry.disciplina + "|" + entry.campoNumero];
   const posizione = campo ? campo.posizione : null;
+  const tipoGiorno = domenicaOFestivo(entry.data) ? "domenica_festivo" : "feriale";
 
   let candidates = quoteCampoList
     .filter(q => q.disciplina === entry.disciplina)
     .filter(q => !q.posizione || q.posizione === posizione)
+    .filter(q => !q.tipoGiorno || q.tipoGiorno === tipoGiorno)
     .filter(q => !q.periodoInizio || entry.data >= q.periodoInizio)
     .filter(q => !q.periodoFine || entry.data <= q.periodoFine);
 
@@ -106,9 +116,13 @@ function quotaCampoPerEntry(entry, campiById, quoteCampoList) {
 
   if (candidates.length === 0) return null;
 
-  // preferisci la quota più specifica: posizione indicata invece di
-  // "tutti", poi il periodo con inizio più recente
+  // preferisci la quota più specifica: giorno indicato invece di "tutti",
+  // poi posizione indicata invece di "tutti", poi il periodo con inizio
+  // più recente
   candidates.sort((a, b) => {
+    const aGiorno = a.tipoGiorno ? 1 : 0;
+    const bGiorno = b.tipoGiorno ? 1 : 0;
+    if (aGiorno !== bGiorno) return bGiorno - aGiorno;
     const aSpecific = a.posizione ? 1 : 0;
     const bSpecific = b.posizione ? 1 : 0;
     if (aSpecific !== bSpecific) return bSpecific - aSpecific;

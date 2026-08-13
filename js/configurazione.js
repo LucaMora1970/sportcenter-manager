@@ -790,11 +790,14 @@ function quotaCampoLabel(it) {
   return `${disciplinaLabel(it.disciplina)} · ${it.posizione ? posizioneLabel(it.posizione) : "Tutti i campi"}`;
 }
 
+const TIPO_GIORNO_LABEL = { feriale: "feriale (lun-sab)", domenica_festivo: "domenica e festivi" };
+
 function quotaCampoMeta(it) {
   const parts = [];
   if (it.periodoInizio || it.periodoFine) {
     parts.push(`${it.periodoInizio || "…"} → ${it.periodoFine || "…"}`);
   }
+  if (it.tipoGiorno) parts.push(TIPO_GIORNO_LABEL[it.tipoGiorno] || it.tipoGiorno);
   if (it.disciplina === "padel") {
     parts.push((it.durataMinuti || "—") + " min");
     parts.push(it.fasciaOraria === "dopo_17" ? "dopo le 17:00" : "prima delle 17:00");
@@ -836,6 +839,7 @@ async function onCreateQuotaCampo(e) {
     posizione: document.getElementById("new-quotacampo-posizione").value || null,
     periodoInizio: document.getElementById("new-quotacampo-dal").value || null,
     periodoFine: document.getElementById("new-quotacampo-al").value || null,
+    tipoGiorno: document.getElementById("new-quotacampo-giorno").value || null,
     importo: parseFloat(importoRaw),
     attivo: true
   };
