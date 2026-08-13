@@ -245,7 +245,7 @@ function ascoltaPrenotazioniGiorno() {
         state.bookings = snap.docs
           .map(d => d.data())
           .filter(b => (b.status === "PENDING_PAYMENT" && !pendingScaduto(b)) || b.status === "CONFIRMED" || b.status === "COMPLETED")
-          .map(b => ({ start: orarioToMin(b.startTime), end: orarioToMin(b.endTime), createdAt: b.createdAt }));
+          .map(b => ({ start: orarioToMin(b.startTime), end: orarioToMin(b.endTime), createdAt: b.createdAt, status: b.status }));
         render();
       },
       (err) => {
@@ -327,13 +327,17 @@ function render() {
 
   let html = hourGridHtml(close);
 
-  html += state.bookings.map(b => `
-    <div class="busy" style="top:${px(b.start)}px;height:${px(b.end) - px(b.start)}px">
-      <span class="name">Occupato</span>
-      <span class="time">${label(b.start)}–${label(b.end)}</span>
-      ${b.createdAt ? `<span class="timestamp">Prenotato il ${formatTimestamp(b.createdAt)}</span>` : ""}
-    </div>
-  `).join("");
+  html += state.bookings.map(b => {
+    const inPagamento = b.status === "PENDING_PAYMENT";
+    return `
+      <div class="busy" data-pending="${inPagamento}" style="top:${px(b.start)}px;height:${px(b.end) - px(b.start)}px">
+        <span class="name">${inPagamento ? "Pagamento in corso" : "Occupato"}</span>
+        <span class="time">${label(b.start)}–${label(b.end)}</span>
+        ${b.createdAt ? `<span class="timestamp">${inPagamento ? "Iniziato" : "Prenotato"} il ${formatTimestamp(b.createdAt)}</span>` : ""}
+        ${inPagamento ? `<span class="timestamp">Si libera da solo se non confermato entro pochi minuti</span>` : ""}
+      </div>
+    `;
+  }).join("");
 
   if (state.duration) {
     const starts = escludiOrariPassati(validStarts(state.bookings, state.duration, close, feriale(state.data), eOggi(state.data)), state.data);

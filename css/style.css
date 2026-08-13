@@ -762,6 +762,16 @@ select:focus, input:focus, textarea:focus {
   background: color-mix(in srgb, var(--danger) 16%, var(--court-blue-900));
   border-color: var(--danger); border-left-color: var(--danger);
 }
+/* Slot "in pagamento": transitorio, non ancora confermato — si libera
+   da solo se il cliente abbandona (vedi PENDING_SCADUTO_MINUTI). Colore
+   ambra apposta diverso sia dal grigio-blu neutro di "Occupato" sia dal
+   rosso di "Bloccato", per non farlo sembrare più definitivo di quanto
+   sia davvero. */
+.busy[data-pending="true"] {
+  background: color-mix(in srgb, #d9a441 16%, var(--court-blue-900));
+  border-color: #d9a441; border-left-color: #d9a441;
+}
+.busy[data-pending="true"] .name { color: #d9a441; }
 
 .slot {
   position: absolute; left: 52px; right: 8px; border-radius: 8px;
