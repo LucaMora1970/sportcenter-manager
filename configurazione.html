@@ -565,27 +565,23 @@
             <select id="new-tariffacampo-posizione"></select>
           </div>
         </div>
-        <div class="row2">
-          <div class="field">
-            <label for="new-tariffacampo-categoria">Categoria</label>
-            <select id="new-tariffacampo-categoria"></select>
-          </div>
-          <div class="field">
-            <label for="new-tariffacampo-giorno">Giorno</label>
-            <select id="new-tariffacampo-giorno">
-              <option value="">Tutti i giorni</option>
-              <option value="feriale">Feriale (lun-sab)</option>
-              <option value="domenica_festivo">Domenica e festivi</option>
-            </select>
-          </div>
+        <div class="field">
+          <label for="new-tariffacampo-categoria">Categoria</label>
+          <select id="new-tariffacampo-categoria"></select>
         </div>
         <div class="field">
-          <label for="new-tariffacampo-fascia">Fascia oraria</label>
-          <select id="new-tariffacampo-fascia">
-            <option value="">Tutte le fasce</option>
-            <option value="diurno">Diurno (prima delle 17:00)</option>
-            <option value="serale">Serale (dalle 17:00 in poi)</option>
-          </select>
+          <label>Giorni della settimana (nessuno selezionato = tutti i giorni)</label>
+          <div id="tariffacampo-giorni-checks"></div>
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label for="new-tariffacampo-orainizio">Dalle</label>
+            <input type="time" id="new-tariffacampo-orainizio" required>
+          </div>
+          <div class="field">
+            <label for="new-tariffacampo-orafine">Alle</label>
+            <input type="time" id="new-tariffacampo-orafine" required>
+          </div>
         </div>
         <div class="field">
           <label for="new-tariffacampo-prezzo">Prezzo a slot (CHF)</label>
@@ -594,6 +590,7 @@
         <div class="error-msg" id="new-tariffacampo-error"></div>
         <button type="submit" class="btn btn-ghost">+ Aggiungi tariffa</button>
       </form>
+      <p style="color:var(--chalk-grey);font-size:0.78rem;margin:8px 0 0;">Puoi definire quante fasce vuoi (es. mattina/pomeriggio/sera) ripetendo l'aggiunta con orari diversi — in caso di sovrapposizione vince la fascia più stretta.</p>
       </div>
       </details>
 

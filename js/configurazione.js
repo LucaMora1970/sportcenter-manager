@@ -1110,12 +1110,13 @@ function tariffaCampoLabel(it) {
   return `${disciplinaLabel(it.disciplina)} · ${it.posizione ? posizioneLabel(it.posizione) : "Tutti i campi"} · ${CATEGORIA_LABEL[it.categoria] || it.categoria}`;
 }
 
-const FASCIA_ORARIA_CAMPO_LABEL = { diurno: "diurno (prima delle 17:00)", serale: "serale (dalle 17:00)" };
-
 function tariffaCampoMeta(it) {
   const parts = [];
-  if (it.tipoGiorno) parts.push(TIPO_GIORNO_LABEL[it.tipoGiorno] || it.tipoGiorno);
-  if (it.fasciaOraria) parts.push(FASCIA_ORARIA_CAMPO_LABEL[it.fasciaOraria] || it.fasciaOraria);
+  const giorniLabel = (it.giorniSettimana || []).length
+    ? it.giorniSettimana.map(g => (GIORNI_SETTIMANA.find(x => x.id === g) || {}).label || g).join(",")
+    : "Tutti i giorni";
+  parts.push(giorniLabel);
+  if (it.oraInizio && it.oraFine) parts.push(`${it.oraInizio}–${it.oraFine}`);
   parts.push("CHF " + (it.prezzo || 0).toFixed(2) + " a slot");
   return parts.join(" · ");
 }
@@ -1134,14 +1135,20 @@ async function onCreateTariffaCampo(e) {
   btn.disabled = true;
 
   const prezzoRaw = document.getElementById("new-tariffacampo-prezzo").value;
+  const oraInizio = document.getElementById("new-tariffacampo-orainizio").value;
+  const oraFine = document.getElementById("new-tariffacampo-orafine").value;
+  const giorniSettimana = Array.from(document.querySelectorAll("#tariffacampo-giorni-checks input:checked")).map(c => c.value);
   try {
     if (!prezzoRaw) throw new Error("Inserisci un prezzo.");
+    if (!oraInizio || !oraFine) throw new Error("Inserisci l'orario di inizio e fine fascia.");
+    if (oraInizio >= oraFine) throw new Error("L'orario di fine deve essere successivo a quello di inizio.");
     await db.collection("tariffeCampi").add({
       disciplina: document.getElementById("new-tariffacampo-disciplina").value,
       posizione: document.getElementById("new-tariffacampo-posizione").value || null,
       categoria: document.getElementById("new-tariffacampo-categoria").value,
-      tipoGiorno: document.getElementById("new-tariffacampo-giorno").value || null,
-      fasciaOraria: document.getElementById("new-tariffacampo-fascia").value || null,
+      giorniSettimana,
+      oraInizio,
+      oraFine,
       prezzo: parseFloat(prezzoRaw),
       attivo: true
     });
@@ -1367,6 +1374,9 @@ requireAuth(async (profile) => {
 
   document.getElementById("chiusuracentro-discipline-checks").innerHTML = DISCIPLINE_CHIUDIBILI
     .map(d => `<div class="checkbox-row"><input type="checkbox" id="cc-disc-${d.id}" value="${d.id}"><label for="cc-disc-${d.id}">${d.nome}</label></div>`)
+    .join("");
+  document.getElementById("tariffacampo-giorni-checks").innerHTML = GIORNI_SETTIMANA
+    .map(g => `<div class="checkbox-row"><input type="checkbox" id="tc-giorno-${g.id}" value="${g.id}"><label for="tc-giorno-${g.id}">${g.label}</label></div>`)
     .join("");
 
   document.getElementById("centro-form").addEventListener("submit", onSaveDatiCentro);

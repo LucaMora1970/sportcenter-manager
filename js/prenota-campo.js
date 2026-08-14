@@ -178,8 +178,11 @@ function categoriaCorrente() {
   return p ? p.categoria : "esterno";
 }
 
-function fasciaOrariaCampo(startTime) {
-  return orarioToMin(startTime) < PADEL_BOUNDARY ? "diurno" : "serale";
+// GIORNI_SETTIMANA/GIORNO_JS_DAY vengono da js/utils.js (già caricato) —
+// qui serve la direzione inversa (da Date a codice "lun".."dom").
+function giornoSettimanaCodice(dataIso) {
+  const jsDay = new Date(dataIso + "T00:00:00").getDay();
+  return Object.keys(GIORNO_JS_DAY).find(id => GIORNO_JS_DAY[id] === jsDay);
 }
 
 function quotaCategoriaClient(disciplina, posizione, categoria, dataIso, startTime) {
@@ -190,17 +193,20 @@ function quotaCategoriaClient(disciplina, posizione, categoria, dataIso, startTi
   );
   if (forfaitAttivo) return 0;
 
-  const giorno = new Date(dataIso + "T00:00:00").getDay();
-  const tipoGiorno = giorno === 0 ? "domenica_festivo" : "feriale";
-  const fasciaOraria = fasciaOrariaCampo(startTime);
+  const giorno = giornoSettimanaCodice(dataIso);
+  const startMin = orarioToMin(startTime);
   const candidati = TARIFFE_CAMPI
     .filter(t => t.disciplina === disciplina && t.posizione === posizione && t.categoria === categoria)
-    .filter(t => !t.tipoGiorno || t.tipoGiorno === tipoGiorno)
-    .filter(t => !t.fasciaOraria || t.fasciaOraria === fasciaOraria)
+    .filter(t => t.oraInizio != null && t.oraFine != null)
+    .filter(t => !(t.giorniSettimana || []).length || t.giorniSettimana.includes(giorno))
+    .filter(t => startMin >= orarioToMin(t.oraInizio) && startMin < orarioToMin(t.oraFine))
     .sort((a, b) => {
-      const specificitaA = (a.tipoGiorno ? 1 : 0) + (a.fasciaOraria ? 1 : 0);
-      const specificitaB = (b.tipoGiorno ? 1 : 0) + (b.fasciaOraria ? 1 : 0);
-      return specificitaB - specificitaA;
+      const durataA = orarioToMin(a.oraFine) - orarioToMin(a.oraInizio);
+      const durataB = orarioToMin(b.oraFine) - orarioToMin(b.oraInizio);
+      if (durataA !== durataB) return durataA - durataB;
+      const giorniA = (a.giorniSettimana || []).length || 7;
+      const giorniB = (b.giorniSettimana || []).length || 7;
+      return giorniA - giorniB;
     });
   return candidati.length > 0 ? candidati[0].prezzo : null;
 }

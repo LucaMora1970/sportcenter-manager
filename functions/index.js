@@ -300,14 +300,6 @@ function sovrapposto(aInizio, aFine, bInizio, bFine) {
   return orarioToMin(aInizio) < orarioToMin(bFine) && orarioToMin(aFine) > orarioToMin(bInizio);
 }
 
-// Diversa da feriale() più sopra (che esclude sabato E domenica, per gli
-// orari di chiusura campo): qui la tariffa distingue solo la domenica,
-// stesso criterio già in uso per la quota campo in js/prenotazioni.js.
-function domenicaOFestivo(dataIso) {
-  const giorno = new Date(dataIso + "T00:00:00").getDay();
-  return giorno === 0 || FESTIVI.includes(dataIso);
-}
-
 // ---------- Codici e token ----------
 
 // Token privato: lungo e casuale, destinato al link/QR del biglietto.
@@ -1464,16 +1456,22 @@ exports.dettagliGiocatori = onCall(async (request) => {
   return { dettagli };
 });
 
-// Calcola la quota di una categoria per un campo/data: prima il forfait
-// stagionale (0 se dentro il periodo e categoria inclusa), poi la tariffa
-// a slot con lo stesso criterio "il più specifico vince" già usato per la
-// quota campo dei collaboratori (quotaCampoPerPrenotazione, js/prenotazioni.js).
-// Stessa soglia 17:00 già in uso ovunque nell'app (padel, quota campo
-// collaboratori) — non una nuova convenzione.
-function fasciaOrariaCampo(startTime) {
-  return orarioToMin(startTime) < BOUNDARY ? "diurno" : "serale";
+// Giorno della settimana come codice "lun".."dom" (stesso vocabolario di
+// GIORNI_SETTIMANA/GIORNO_JS_DAY già usato per i corsi, js/utils.js) — qui
+// serve la direzione inversa (da Date a codice), non condivisibile col
+// client (runtime separati), duplicata per lo stesso motivo di sempre.
+const GIORNO_JS_DAY_INV = ["dom", "lun", "mar", "mer", "gio", "ven", "sab"];
+function giornoSettimanaCodice(dataIso) {
+  return GIORNO_JS_DAY_INV[new Date(dataIso + "T00:00:00").getDay()];
 }
 
+// Calcola la quota di una categoria per un campo/data/orario: prima il
+// forfait stagionale (0 se dentro il periodo e categoria inclusa), poi la
+// tariffa a fascia — l'amministratore definisce liberamente in
+// Configurazione quante fasce vuole (dalle-alle-prezzo), ciascuna
+// applicabile a giorni della settimana specifici o a tutti. Se più fasce
+// si sovrappongono per errore di configurazione, vince quella più
+// specifica (banda oraria più stretta, poi meno giorni selezionati).
 async function quotaCategoria({ disciplina, posizione, categoria, dataIso, startTime }) {
   const forfaitSnap = await db.collection("forfaitCampi")
     .where("disciplina", "==", disciplina)
@@ -1485,24 +1483,24 @@ async function quotaCategoria({ disciplina, posizione, categoria, dataIso, start
   });
   if (forfaitAttivo) return 0;
 
-  const tipoGiorno = domenicaOFestivo(dataIso) ? "domenica_festivo" : "feriale";
-  const fasciaOraria = fasciaOrariaCampo(startTime);
+  const giorno = giornoSettimanaCodice(dataIso);
+  const startMin = orarioToMin(startTime);
   const tariffeSnap = await db.collection("tariffeCampi")
     .where("disciplina", "==", disciplina)
     .where("posizione", "==", posizione)
     .where("categoria", "==", categoria)
     .get();
-  // Il più specifico vince: una riga che fissa sia tipo giorno sia fascia
-  // oraria batte una che ne fissa solo uno, che batte una "jolly" senza
-  // nessuno dei due — stesso criterio già in uso per la quota campo dei
-  // collaboratori.
   const candidates = tariffeSnap.docs.map(d => d.data())
-    .filter(t => !t.tipoGiorno || t.tipoGiorno === tipoGiorno)
-    .filter(t => !t.fasciaOraria || t.fasciaOraria === fasciaOraria)
+    .filter(t => t.oraInizio != null && t.oraFine != null)
+    .filter(t => !(t.giorniSettimana || []).length || t.giorniSettimana.includes(giorno))
+    .filter(t => startMin >= orarioToMin(t.oraInizio) && startMin < orarioToMin(t.oraFine))
     .sort((a, b) => {
-      const specificitaA = (a.tipoGiorno ? 1 : 0) + (a.fasciaOraria ? 1 : 0);
-      const specificitaB = (b.tipoGiorno ? 1 : 0) + (b.fasciaOraria ? 1 : 0);
-      return specificitaB - specificitaA;
+      const durataA = orarioToMin(a.oraFine) - orarioToMin(a.oraInizio);
+      const durataB = orarioToMin(b.oraFine) - orarioToMin(b.oraInizio);
+      if (durataA !== durataB) return durataA - durataB;
+      const giorniA = (a.giorniSettimana || []).length || 7;
+      const giorniB = (b.giorniSettimana || []).length || 7;
+      return giorniA - giorniB;
     });
   return candidates.length > 0 ? candidates[0].prezzo : null;
 }
