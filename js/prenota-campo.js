@@ -197,6 +197,16 @@ function quotaCategoriaClient(disciplina, posizione, categoria, dataIso) {
 
 // ---------- Gruppi/campi ----------
 
+// Ordine fisso delle schede (non alfabetico, deciso esplicitamente):
+// Tennis Interno, Tennis Esterno, Padel, Squash.
+function rangoGruppo(g) {
+  if (g.disciplina === "tennis" && g.posizione === "interno") return 0;
+  if (g.disciplina === "tennis" && g.posizione === "esterno") return 1;
+  if (g.disciplina === "padel") return 2;
+  if (g.disciplina === "squash") return 3;
+  return 99;
+}
+
 function costruisciGruppi() {
   const map = new Map();
   CAMPI.forEach(c => {
@@ -210,11 +220,12 @@ function costruisciGruppi() {
     }
     map.get(key).campi.push(c);
   });
-  GRUPPI = [...map.values()].sort((a, b) => a.label.localeCompare(b.label));
+  GRUPPI = [...map.values()];
   // Il padel ha oggi un solo campo, non modellato nella collection "campi"
   // (courtId fisso "1", come in prenota-padel.js/functions/index.js) —
   // voce sintetica per includerlo nello stesso ingresso unico.
   GRUPPI.push({ key: "padel__", disciplina: "padel", posizione: null, label: "Padel", campi: [{ id: "1", numero: "1", disciplina: "padel" }] });
+  GRUPPI.sort((a, b) => rangoGruppo(a) - rangoGruppo(b));
 }
 
 function renderGruppoPills() {
@@ -376,7 +387,7 @@ function render() {
       <div class="slot-row">
         <div class="si">
           <span class="st">${s.inizio}–${s.fine}</span>
-          <span class="sc">Campo ${escapeHtml(s.campo.numero)}</span>
+          <span class="sc">${escapeHtml(disciplinaLabel(gruppo.disciplina))} · Campo ${escapeHtml(s.campo.numero)}</span>
         </div>
         <span class="sp">${prezzoLabel}${gruppo.disciplina === "tennis" ? " · a testa" : ""}</span>
         <button type="button" class="btn btn-ghost apri-prenota-btn" style="width:auto;padding:8px 14px;font-size:0.76rem;" data-idx="${i}">Prenota</button>
