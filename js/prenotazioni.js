@@ -633,6 +633,80 @@ async function eliminaChiusura(dataIso, btn) {
   }
 }
 
+// ---------- Attivazione soci (QR, tennis/squash) ----------
+//
+// Per chi non ha email in anagrafica, o Studente/Azienda partner/Junior
+// verificato di persona: lo staff cerca il socio (cercaSociStaff, mai
+// esposta al pubblico) e genera un token di attivazione (generaTokenAttivazione)
+// da mostrare come QR — lo stesso schema del biglietto padel (qrcodejs,
+// già caricato in questa pagina).
+
+let attivazioneCercaTimeout = null;
+
+function wireAttivazioneSoci() {
+  document.getElementById("attivazione-cerca-input").addEventListener("input", (e) => {
+    clearTimeout(attivazioneCercaTimeout);
+    document.getElementById("attivazione-qr-box").classList.add("hidden");
+    const testo = e.target.value.trim();
+    if (testo.length < 2) {
+      document.getElementById("attivazione-risultati").innerHTML = "";
+      return;
+    }
+    attivazioneCercaTimeout = setTimeout(() => cercaSociAttivazione(testo), 400);
+  });
+}
+
+async function cercaSociAttivazione(testo) {
+  const risultatiEl = document.getElementById("attivazione-risultati");
+  const errorEl = document.getElementById("attivazione-error");
+  errorEl.textContent = "";
+  risultatiEl.innerHTML = `<div class="empty-state"><div class="display">Ricerca…</div></div>`;
+  try {
+    const fn = firebase.functions().httpsCallable("cercaSociStaff");
+    const { data } = await fn({ testo });
+    if (data.risultati.length === 0) {
+      risultatiEl.innerHTML = `<div class="empty-state"><div class="display">Nessun risultato</div></div>`;
+      return;
+    }
+    risultatiEl.innerHTML = data.risultati.map(s => `
+      <div class="entry-card" data-id="${s.id}">
+        <div class="entry-main">
+          <div class="entry-tipo">${escapeHtml(s.nome)} ${escapeHtml(s.cognome)}</div>
+          <div class="entry-meta">${escapeHtml(s.categoria)}${s.tessera ? " · " + escapeHtml(s.tessera) : ""}</div>
+        </div>
+        <button type="button" class="btn btn-ghost genera-qr-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;"
+          data-id="${s.id}" data-nome="${escapeHtml(s.nome)} ${escapeHtml(s.cognome)}">Genera QR</button>
+      </div>
+    `).join("");
+    risultatiEl.querySelectorAll(".genera-qr-btn").forEach(btn => {
+      btn.addEventListener("click", () => generaQrAttivazione(btn.dataset.id, btn.dataset.nome));
+    });
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+    risultatiEl.innerHTML = "";
+  }
+}
+
+async function generaQrAttivazione(socioId, nome) {
+  const errorEl = document.getElementById("attivazione-error");
+  errorEl.textContent = "";
+  try {
+    const fn = firebase.functions().httpsCallable("generaTokenAttivazione");
+    const { data } = await fn({ socioId });
+    const url = `${basePageUrl()}attiva-socio.html?t=${data.token}`;
+    const container = document.getElementById("attivazione-qr-container");
+    container.innerHTML = "";
+    new QRCode(container, {
+      text: url, width: 200, height: 200,
+      colorDark: "#0d1f30", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M
+    });
+    document.getElementById("attivazione-qr-nome").textContent = `${nome} — fai scansionare questo QR con il telefono del socio`;
+    document.getElementById("attivazione-qr-box").classList.remove("hidden");
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+  }
+}
+
 // ---------- Buoni regalo (emissione omaggio) ----------
 //
 // Stesso identico effetto di un buono acquistato dai clienti sulla
@@ -975,6 +1049,8 @@ requireAuth(async (profile) => {
   if (puoGestire) {
     document.getElementById("aggiungi-chiusura-btn").addEventListener("click", onAggiungiChiusura);
     await caricaChiusureList();
+
+    wireAttivazioneSoci();
 
     document.getElementById("emetti-buono-btn").addEventListener("click", onEmettiBuonoOmaggio);
 

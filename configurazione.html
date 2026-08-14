@@ -402,6 +402,164 @@
 
       <hr class="court-divider">
 
+      <!-- Soci -->
+      <div class="section-title"><h2>Soci (prenotazione campi)</h2></div>
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Anagrafica per riconoscere chi prenota tennis/squash e applicare la tariffa giusta — mai visibile lato pubblico. Incolla una riga per persona: <code>nome;cognome;email;categoria;telefono;tessera</code> (categoria: socio, junior, studente, azienda).</p>
+      <form id="import-soci-form">
+        <div class="field">
+          <label for="import-soci-testo">Righe da importare</label>
+          <textarea id="import-soci-testo" rows="6" placeholder="Mario;Rossi;mario.rossi@email.ch;socio;0791234567;T-102"></textarea>
+        </div>
+        <div class="error-msg" id="import-soci-error"></div>
+        <div class="success-msg" id="import-soci-success"></div>
+        <button type="submit" class="btn btn-ghost" id="import-soci-btn">Importa</button>
+      </form>
+
+      <hr class="court-divider">
+
+      <!-- Tariffe campi (tennis/squash) -->
+      <div class="section-title"><h2>Tariffe campi (tennis/squash)</h2></div>
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Prezzo a slot per disciplina, posizione e categoria di chi gioca. Nel tennis il prezzo dello slot è la somma delle tariffe dei due giocatori.</p>
+      <div id="tariffecampi-list">
+        <div class="empty-state"><div class="display">Caricamento…</div></div>
+      </div>
+      <form id="new-tariffacampo-form">
+        <div class="row2">
+          <div class="field">
+            <label for="new-tariffacampo-disciplina">Disciplina</label>
+            <select id="new-tariffacampo-disciplina" required>
+              <option value="tennis">Tennis</option>
+              <option value="squash">Squash</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="new-tariffacampo-posizione">Posizione campo</label>
+            <select id="new-tariffacampo-posizione"></select>
+          </div>
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label for="new-tariffacampo-categoria">Categoria</label>
+            <select id="new-tariffacampo-categoria"></select>
+          </div>
+          <div class="field">
+            <label for="new-tariffacampo-giorno">Giorno</label>
+            <select id="new-tariffacampo-giorno">
+              <option value="">Tutti i giorni</option>
+              <option value="feriale">Feriale (lun-sab)</option>
+              <option value="domenica_festivo">Domenica e festivi</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label for="new-tariffacampo-prezzo">Prezzo a slot (CHF)</label>
+          <input type="number" id="new-tariffacampo-prezzo" min="0" step="0.5" required placeholder="es. 20">
+        </div>
+        <div class="error-msg" id="new-tariffacampo-error"></div>
+        <button type="submit" class="btn btn-ghost">+ Aggiungi tariffa</button>
+      </form>
+
+      <hr class="court-divider">
+
+      <!-- Forfait stagionale -->
+      <div class="section-title"><h2>Forfait stagionale</h2></div>
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Periodo in cui le categorie selezionate giocano incluse (0 CHF), invece della tariffa a slot. I campi esterni tipicamente hanno un periodo più lungo degli interni.</p>
+      <div id="forfaitcampi-list">
+        <div class="empty-state"><div class="display">Caricamento…</div></div>
+      </div>
+      <form id="new-forfaitcampo-form">
+        <div class="row2">
+          <div class="field">
+            <label for="new-forfaitcampo-disciplina">Disciplina</label>
+            <select id="new-forfaitcampo-disciplina" required>
+              <option value="tennis">Tennis</option>
+              <option value="squash">Squash</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="new-forfaitcampo-posizione">Posizione campo</label>
+            <select id="new-forfaitcampo-posizione"></select>
+          </div>
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label for="new-forfaitcampo-dal">Dal</label>
+            <input type="date" id="new-forfaitcampo-dal" required>
+          </div>
+          <div class="field">
+            <label for="new-forfaitcampo-al">Al</label>
+            <input type="date" id="new-forfaitcampo-al" required>
+          </div>
+        </div>
+        <div class="field">
+          <label>Categorie incluse</label>
+          <div id="forfaitcampo-categorie-checks"></div>
+        </div>
+        <div class="error-msg" id="new-forfaitcampo-error"></div>
+        <button type="submit" class="btn btn-ghost">+ Aggiungi forfait</button>
+      </form>
+
+      <hr class="court-divider">
+
+      <!-- Chiusure centro -->
+      <div class="section-title"><h2>Chiusure centro</h2></div>
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Giornate in cui il centro (o solo alcune discipline) non è prenotabile.</p>
+      <div id="chiusurecentro-list">
+        <div class="empty-state"><div class="display">Caricamento…</div></div>
+      </div>
+      <form id="new-chiusuracentro-form">
+        <div class="row2">
+          <div class="field">
+            <label for="new-chiusuracentro-data">Data</label>
+            <input type="date" id="new-chiusuracentro-data" required>
+          </div>
+          <div class="field">
+            <label for="new-chiusuracentro-motivo">Motivo</label>
+            <input type="text" id="new-chiusuracentro-motivo" placeholder="es. Torneo, manutenzione">
+          </div>
+        </div>
+        <div class="field">
+          <label>Discipline (nessuna selezionata = tutto il centro)</label>
+          <div id="chiusuracentro-discipline-checks"></div>
+        </div>
+        <div class="error-msg" id="new-chiusuracentro-error"></div>
+        <button type="submit" class="btn btn-ghost">+ Aggiungi chiusura</button>
+      </form>
+
+      <hr class="court-divider">
+
+      <!-- Impostazioni prenotazioni campi -->
+      <div class="section-title"><h2>Impostazioni prenotazioni campi</h2></div>
+      <form id="prenotazionicampi-form">
+        <div class="row2">
+          <div class="field">
+            <label for="pc-max-attive">Prenotazioni attive max per persona riconosciuta</label>
+            <input type="number" id="pc-max-attive" min="1" step="1" placeholder="es. 3">
+          </div>
+          <div class="field">
+            <label for="pc-settimane-visibili">Settimane visualizzabili/prenotabili</label>
+            <input type="number" id="pc-settimane-visibili" min="1" step="1" placeholder="es. 4">
+          </div>
+        </div>
+        <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Giorni di anticipo con cui ciascuna categoria può prenotare (priorità ai soci):</p>
+        <div class="row2">
+          <div class="field"><label for="pc-anticipo-socio">Socio</label><input type="number" id="pc-anticipo-socio" min="0" step="1"></div>
+          <div class="field"><label for="pc-anticipo-junior">Junior</label><input type="number" id="pc-anticipo-junior" min="0" step="1"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label for="pc-anticipo-studente">Studente</label><input type="number" id="pc-anticipo-studente" min="0" step="1"></div>
+          <div class="field"><label for="pc-anticipo-azienda">Azienda partner</label><input type="number" id="pc-anticipo-azienda" min="0" step="1"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label for="pc-anticipo-maestro">Maestro</label><input type="number" id="pc-anticipo-maestro" min="0" step="1"></div>
+          <div class="field"><label for="pc-anticipo-esterno">Esterno</label><input type="number" id="pc-anticipo-esterno" min="0" step="1"></div>
+        </div>
+        <div class="error-msg" id="prenotazionicampi-error"></div>
+        <button type="submit" class="btn btn-ghost" id="salva-prenotazionicampi-btn">Salva</button>
+      </form>
+
+      <hr class="court-divider">
+
       <!-- Articoli (Cassa/Bar) -->
       <div class="section-title"><h2>Articoli (Cassa)</h2></div>
       <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Catalogo articoli in vendita alla Cassa (palline, noleggi, ore campo, tornei...), con prezzo di default modificabile al momento della vendita.</p>
@@ -449,6 +607,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
 <script src="js/firebase-config.js"></script>
 <script src="js/utils.js"></script>
 <script src="js/auth.js"></script>

@@ -50,6 +50,27 @@ async function caricaEsitoPagamento(token) {
   return null;
 }
 
+// Ricevuta stampabile: stesso schema già in uso per le liste corsi
+// (#print-area + window.print(), css/style.css se ne occupa in stampa —
+// niente libreria PDF, il cliente usa "Salva come PDF" del browser). Il
+// circolo non è soggetto IVA, quindi nessuno scorporo/numerazione
+// fiscale: solo la dicitura richiesta.
+function stampaRicevuta(data) {
+  document.getElementById("print-area").innerHTML = `
+    ${intestazioneStampaHtml()}
+    <h2 style="margin:16px 0 10px;">Ricevuta di pagamento</h2>
+    <table>
+      <tbody>
+        <tr><th>Descrizione</th><td>${escapeHtml(data.descrizione || "—")}</td></tr>
+        <tr><th>Importo</th><td>CHF ${(data.importo || 0).toFixed(2)}</td></tr>
+        <tr><th>Pagato il</th><td>${escapeHtml(formatTimestamp(data.esitoAt))}</td></tr>
+      </tbody>
+    </table>
+    <p style="margin-top:16px;font-size:0.85rem;">Non soggetto ad IVA.</p>
+  `;
+  window.print();
+}
+
 function mostraStato(id) {
   ["stato-caricamento", "stato-non-trovato", "stato-fallito", "pagamento-content"].forEach(altroId => {
     document.getElementById(altroId).classList.toggle("hidden", altroId !== id);
@@ -91,6 +112,8 @@ function mostraStato(id) {
   document.getElementById("p-richiedente").textContent = data.createdByNome || "—";
   document.getElementById("p-timestamp").textContent = formatTimestamp(data.esitoAt);
   mostraStato("pagamento-content");
+
+  document.getElementById("ricevuta-btn").addEventListener("click", () => stampaRicevuta(data));
 
   document.getElementById("chiudi-btn").addEventListener("click", () => {
     window.close();

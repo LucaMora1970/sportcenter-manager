@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Attiva il tuo accesso — Tennis Club Mendrisio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script>if(localStorage.getItem("sportos-tema")==="light")document.documentElement.setAttribute("data-theme","light");</script>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d1f30">
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <div>
+      <div class="topbar-kicker" id="centro-kicker">Tennis Club Mendrisio</div>
+      <h1>Il tuo accesso</h1>
+    </div>
+    <div></div>
+    <button type="button" class="topbar-link" id="theme-toggle-btn">Tema chiaro</button>
+  </div>
+
+  <main>
+
+    <div id="stato-attivazione" class="empty-state">
+      <div class="display">Attivazione in corso…</div>
+      <p>Un istante, stiamo riconoscendo questo dispositivo.</p>
+    </div>
+
+    <div id="stato-errore" class="empty-state hidden">
+      <div class="display">Link non valido</div>
+      <p id="errore-testo">Il link è scaduto oppure è già stato usato. Richiedine uno nuovo dalla pagina di prenotazione.</p>
+      <a href="prenota-campo.html" class="btn btn-ghost" style="margin-top:14px;display:inline-block;">Torna alla prenotazione</a>
+    </div>
+
+    <div id="stato-ok" class="empty-state hidden">
+      <div class="display">Dispositivo attivato</div>
+      <p id="ok-testo">Da ora questo telefono riconosce la tua tariffa automaticamente.</p>
+      <a href="prenota-campo.html" class="btn btn-primary" style="margin-top:14px;display:inline-block;">Vai alla prenotazione</a>
+    </div>
+
+    <div id="richiedi-email-box" class="hidden">
+      <p style="color:var(--chalk-grey);font-size:0.85rem;">Inserisci l'email che il circolo ha in anagrafica: ti mandiamo un link per attivare questo dispositivo.</p>
+      <form id="richiedi-email-form">
+        <div class="field">
+          <label for="richiedi-email-input">Email</label>
+          <input type="email" id="richiedi-email-input" required placeholder="mario.rossi@email.ch">
+        </div>
+        <div class="error-msg" id="richiedi-email-error"></div>
+        <button type="submit" class="btn btn-primary" id="richiedi-email-btn">Invia il link</button>
+      </form>
+      <div id="richiedi-email-inviato" class="hidden empty-state">
+        <div class="display">Controlla la posta</div>
+        <p>Se l'indirizzo è in anagrafica, riceverai a breve un'email con il link di attivazione.</p>
+      </div>
+    </div>
+
+  </main>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/attiva-socio.js"></script>
+</body>
+</html>

@@ -376,6 +376,75 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // ============================================================
+    // Prenotazione campi tennis/squash con tariffe a categoria e
+    // riconoscimento del dispositivo (nessun account tradizionale):
+    // stesso principio del padel, "tutte le scritture passano da Cloud
+    // Function con Admin SDK" — qui solo permessi di lettura.
+    // ============================================================
+
+    // Anagrafica soci importata dal gestionale attuale: contiene email e
+    // dati personali, e determina la tariffa applicata — non deve MAI
+    // essere leggibile dal client (né il singolo profilo né, tanto meno,
+    // l'intera lista). Solo le Cloud Functions (Admin SDK) la leggono,
+    // per la verifica email/QR e la ricerca del secondo giocatore.
+    match /soci/{id} {
+      allow read, write: if false;
+    }
+
+    // Collega una sessione Firebase Auth (link email o QR staff) ai
+    // profili soci agganciati su quel dispositivo — un dispositivo di
+    // famiglia può avere più profili. Solo il proprietario della sessione
+    // può leggere i propri; scrittura solo da Cloud Function.
+    match /sociDevices/{authUid} {
+      allow get: if isSignedIn() && request.auth.uid == authUid;
+      allow write: if false;
+    }
+
+    // Token di attivazione di un dispositivo (via email inviata dalla
+    // Cloud Function, o via QR generato dallo staff in reception per chi
+    // non ha email/è Studente/Azienda partner): stesso pattern di
+    // bookingTickets, l'ID del documento È il token, conoscerlo (dal link
+    // o dal QR) è l'autorizzazione a consumarlo — non a enumerarli.
+    match /attivazioniSoci/{token} {
+      allow get: if true;
+      allow list: if puoOperarePrenotazioni();
+      allow write: if false;
+    }
+
+    // Tariffe e periodo forfait per campo/categoria/tipo giorno: lettura
+    // pubblica (la pagina di prenotazione senza login deve mostrare il
+    // prezzo prima del pagamento, stesso ragionamento di tariffePadel).
+    match /tariffeCampi/{id} {
+      allow read: if true;
+      allow write: if hasPermission("config:gestisci");
+    }
+
+    match /forfaitCampi/{id} {
+      allow read: if true;
+      allow write: if hasPermission("config:gestisci");
+    }
+
+    // Nome del prenotante e del secondo giocatore (tennis) + dettaglio
+    // prezzo: separati da "bookings" apposta, perché "bookings" è
+    // leggibile da chiunque (serve al calcolo pubblico degli slot liberi)
+    // e questi dati non devono esserlo — solo lo staff li legge
+    // direttamente, il pubblico li vede (nomi soltanto) tramite la
+    // funzione dettagliGiocatori, che applica il proprio controllo
+    // "dispositivo riconosciuto" invece di questa regola.
+    match /bookingDettagli/{bookingId} {
+      allow get, list: if puoOperarePrenotazioni();
+      allow write: if false;
+    }
+
+    // Giorni di chiusura di tutto il centro (o solo di alcune discipline):
+    // lettura pubblica per lo stesso motivo di chiusurePadel, di cui è
+    // il complemento centro-wide (non la sostituisce).
+    match /chiusureCentro/{data} {
+      allow read: if true;
+      allow write: if hasPermission("config:gestisci");
+    }
+
     // Placeholder per collezioni future (camp): aggiungere qui blocchi
     // match dedicati man mano che si sviluppano le pagine, seguendo lo
     // stesso pattern basato su hasPermission().

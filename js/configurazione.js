@@ -926,6 +926,258 @@ async function onCreateArticolo(e) {
   }
 }
 
+// ---------- Prenotazione campi: soci, tariffe, forfait, chiusure ----------
+
+const CATEGORIE_TARIFFA = [
+  { id: "socio", nome: "Socio" },
+  { id: "junior", nome: "Junior (scuola)" },
+  { id: "studente", nome: "Studente" },
+  { id: "azienda", nome: "Azienda partner" },
+  { id: "esterno", nome: "Esterno" }
+];
+const CATEGORIA_LABEL = Object.fromEntries(CATEGORIE_TARIFFA.map(c => [c.id, c.nome]));
+
+// Solo le discipline che usano davvero un tabellone campi (non ha senso
+// chiudere "Preparatore atletico" ecc.).
+const DISCIPLINE_CHIUDIBILI = [
+  { id: "tennis", nome: "Tennis" },
+  { id: "squash", nome: "Squash" },
+  { id: "padel", nome: "Padel" }
+];
+
+async function onImportSoci(e) {
+  e.preventDefault();
+  const btn = document.getElementById("import-soci-btn");
+  const errorEl = document.getElementById("import-soci-error");
+  const successEl = document.getElementById("import-soci-success");
+  errorEl.textContent = "";
+  successEl.textContent = "";
+  btn.disabled = true;
+
+  const testo = document.getElementById("import-soci-testo").value.trim();
+  const righe = testo.split("\n").map(r => r.trim()).filter(Boolean).map(riga => {
+    const [nome, cognome, email, categoria, telefono, tessera] = riga.split(";").map(v => (v || "").trim());
+    return { nome, cognome, email, categoria, telefono: telefono || null, tessera: tessera || null };
+  });
+
+  try {
+    if (righe.length === 0) throw new Error("Incolla almeno una riga.");
+    const fn = firebase.functions().httpsCallable("importaSoci");
+    const result = await fn({ righe });
+    successEl.textContent = `Importati ${result.data.importate} soci`
+      + (result.data.scartate ? ` (${result.data.scartate} righe scartate — controlla il formato).` : ".");
+    document.getElementById("import-soci-testo").value = "";
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ---------- Tariffe campi ----------
+
+function tariffaCampoLabel(it) {
+  return `${disciplinaLabel(it.disciplina)} · ${it.posizione ? posizioneLabel(it.posizione) : "Tutti i campi"} · ${CATEGORIA_LABEL[it.categoria] || it.categoria}`;
+}
+
+function tariffaCampoMeta(it) {
+  const parts = [];
+  if (it.tipoGiorno) parts.push(TIPO_GIORNO_LABEL[it.tipoGiorno] || it.tipoGiorno);
+  parts.push("CHF " + (it.prezzo || 0).toFixed(2) + " a slot");
+  return parts.join(" · ");
+}
+
+async function loadTariffeCampi() {
+  const snap = await db.collection("tariffeCampi").get();
+  const tariffe = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  renderSimpleList("tariffecampi-list", tariffe, tariffaCampoLabel, tariffaCampoMeta, "tariffeCampi", loadTariffeCampi);
+}
+
+async function onCreateTariffaCampo(e) {
+  e.preventDefault();
+  const btn = e.target.querySelector("button[type=submit]");
+  const errorEl = document.getElementById("new-tariffacampo-error");
+  errorEl.textContent = "";
+  btn.disabled = true;
+
+  const prezzoRaw = document.getElementById("new-tariffacampo-prezzo").value;
+  try {
+    if (!prezzoRaw) throw new Error("Inserisci un prezzo.");
+    await db.collection("tariffeCampi").add({
+      disciplina: document.getElementById("new-tariffacampo-disciplina").value,
+      posizione: document.getElementById("new-tariffacampo-posizione").value || null,
+      categoria: document.getElementById("new-tariffacampo-categoria").value,
+      tipoGiorno: document.getElementById("new-tariffacampo-giorno").value || null,
+      prezzo: parseFloat(prezzoRaw),
+      attivo: true
+    });
+    document.getElementById("new-tariffacampo-form").reset();
+    await loadTariffeCampi();
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ---------- Forfait stagionale ----------
+
+function forfaitCampoLabel(it) {
+  return `${disciplinaLabel(it.disciplina)} · ${it.posizione ? posizioneLabel(it.posizione) : "Tutti i campi"}`;
+}
+
+function forfaitCampoMeta(it) {
+  const categorie = (it.categorie || []).map(c => CATEGORIA_LABEL[c] || c).join(", ");
+  return `${it.periodoInizio} → ${it.periodoFine} · ${categorie || "nessuna categoria"}`;
+}
+
+async function loadForfaitCampi() {
+  const snap = await db.collection("forfaitCampi").get();
+  const forfait = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  renderSimpleList("forfaitcampi-list", forfait, forfaitCampoLabel, forfaitCampoMeta, "forfaitCampi", loadForfaitCampi);
+}
+
+async function onCreateForfaitCampo(e) {
+  e.preventDefault();
+  const btn = e.target.querySelector("button[type=submit]");
+  const errorEl = document.getElementById("new-forfaitcampo-error");
+  errorEl.textContent = "";
+  btn.disabled = true;
+
+  const dal = document.getElementById("new-forfaitcampo-dal").value;
+  const al = document.getElementById("new-forfaitcampo-al").value;
+  const categorie = Array.from(document.querySelectorAll("#forfaitcampo-categorie-checks input:checked")).map(c => c.value);
+
+  try {
+    if (!dal || !al) throw new Error("Inserisci il periodo.");
+    if (categorie.length === 0) throw new Error("Seleziona almeno una categoria.");
+    await db.collection("forfaitCampi").add({
+      disciplina: document.getElementById("new-forfaitcampo-disciplina").value,
+      posizione: document.getElementById("new-forfaitcampo-posizione").value || null,
+      periodoInizio: dal,
+      periodoFine: al,
+      categorie,
+      attivo: true
+    });
+    document.getElementById("new-forfaitcampo-form").reset();
+    await loadForfaitCampi();
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ---------- Chiusure centro ----------
+//
+// Doc ID = data ISO (come chiusurePadel, di cui questa è il complemento
+// centro-wide): niente toggle attivo/disattivo, o la chiusura c'è o non
+// c'è, quindi non riusa renderSimpleList.
+
+function renderChiusureCentro(chiusure) {
+  const el = document.getElementById("chiusurecentro-list");
+  if (chiusure.length === 0) {
+    el.innerHTML = `<div class="empty-state"><div class="display">Nessuna chiusura</div></div>`;
+    return;
+  }
+  el.innerHTML = chiusure.map(c => {
+    const discipline = (c.discipline || []).map(d => (DISCIPLINE_CHIUDIBILI.find(x => x.id === d) || {}).nome || d).join(", ");
+    return `
+      <div class="entry-card" data-id="${c.id}">
+        <div class="entry-main">
+          <div class="entry-tipo">${escapeHtml(c.id)}</div>
+          <div class="entry-meta">${escapeHtml(discipline || "Tutto il centro")}${c.motivo ? " · " + escapeHtml(c.motivo) : ""}</div>
+        </div>
+        <button class="btn btn-danger delete-chiusuracentro-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Elimina</button>
+      </div>
+    `;
+  }).join("");
+
+  el.querySelectorAll(".delete-chiusuracentro-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      if (!confirm(`Riaprire il ${btn.dataset.id}?`)) return;
+      btn.disabled = true;
+      await db.collection("chiusureCentro").doc(btn.dataset.id).delete();
+      await loadChiusureCentro();
+    });
+  });
+}
+
+async function loadChiusureCentro() {
+  const snap = await db.collection("chiusureCentro").orderBy(firebase.firestore.FieldPath.documentId()).get();
+  renderChiusureCentro(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+}
+
+async function onCreateChiusuraCentro(e) {
+  e.preventDefault();
+  const btn = e.target.querySelector("button[type=submit]");
+  const errorEl = document.getElementById("new-chiusuracentro-error");
+  errorEl.textContent = "";
+  btn.disabled = true;
+
+  const data = document.getElementById("new-chiusuracentro-data").value;
+  const discipline = Array.from(document.querySelectorAll("#chiusuracentro-discipline-checks input:checked")).map(c => c.value);
+
+  try {
+    if (!data) throw new Error("Scegli una data.");
+    await db.collection("chiusureCentro").doc(data).set({
+      motivo: document.getElementById("new-chiusuracentro-motivo").value.trim() || null,
+      discipline,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    document.getElementById("new-chiusuracentro-form").reset();
+    await loadChiusureCentro();
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ---------- Impostazioni prenotazioni campi ----------
+
+async function loadPrenotazioniCampiForm() {
+  const doc = await db.collection("impostazioni").doc("prenotazioniCampi").get();
+  const dati = doc.exists ? doc.data() : {};
+  document.getElementById("pc-max-attive").value = dati.maxPrenotazioniAttivePerUtente ?? "";
+  document.getElementById("pc-settimane-visibili").value = dati.settimaneVisibili ?? "";
+  const anticipo = dati.giorniAnticipoPrenotazione || {};
+  ["socio", "junior", "studente", "azienda", "maestro", "esterno"].forEach(cat => {
+    const el = document.getElementById(`pc-anticipo-${cat}`);
+    if (el) el.value = anticipo[cat] ?? "";
+  });
+}
+
+async function onSavePrenotazioniCampi(e) {
+  e.preventDefault();
+  const btn = document.getElementById("salva-prenotazionicampi-btn");
+  const errorEl = document.getElementById("prenotazionicampi-error");
+  errorEl.textContent = "";
+  btn.disabled = true;
+
+  const numOrNull = (id) => {
+    const v = document.getElementById(id).value;
+    return v === "" ? null : parseInt(v, 10);
+  };
+
+  try {
+    const giorniAnticipoPrenotazione = {};
+    ["socio", "junior", "studente", "azienda", "maestro", "esterno"].forEach(cat => {
+      const v = numOrNull(`pc-anticipo-${cat}`);
+      if (v != null) giorniAnticipoPrenotazione[cat] = v;
+    });
+    await db.collection("impostazioni").doc("prenotazioniCampi").set({
+      maxPrenotazioniAttivePerUtente: numOrNull("pc-max-attive"),
+      settimaneVisibili: numOrNull("pc-settimane-visibili"),
+      giorniAnticipoPrenotazione
+    }, { merge: true });
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // ---------- Init ----------
 
 requireAuth(async (profile) => {
@@ -951,6 +1203,17 @@ requireAuth(async (profile) => {
   populateSelect(document.getElementById("new-tipoattivita-disciplina"), DISCIPLINE);
   populateSelect(document.getElementById("new-quotacampo-disciplina"), DISCIPLINE);
   populateSelect(document.getElementById("new-quotacampo-posizione"), POSIZIONI_CAMPO, "— tutti —");
+  populateSelect(document.getElementById("new-tariffacampo-posizione"), POSIZIONI_CAMPO, "— tutti —");
+  populateSelect(document.getElementById("new-tariffacampo-categoria"), CATEGORIE_TARIFFA);
+  populateSelect(document.getElementById("new-forfaitcampo-posizione"), POSIZIONI_CAMPO, "— tutti —");
+
+  document.getElementById("forfaitcampo-categorie-checks").innerHTML = CATEGORIE_TARIFFA
+    .filter(c => c.id !== "esterno")
+    .map(c => `<div class="checkbox-row"><input type="checkbox" id="fc-cat-${c.id}" value="${c.id}"><label for="fc-cat-${c.id}">${c.nome}</label></div>`)
+    .join("");
+  document.getElementById("chiusuracentro-discipline-checks").innerHTML = DISCIPLINE_CHIUDIBILI
+    .map(d => `<div class="checkbox-row"><input type="checkbox" id="cc-disc-${d.id}" value="${d.id}"><label for="cc-disc-${d.id}">${d.nome}</label></div>`)
+    .join("");
 
   document.getElementById("centro-form").addEventListener("submit", onSaveDatiCentro);
   document.getElementById("impostazioni-form").addEventListener("submit", onSaveImpostazioni);
@@ -974,6 +1237,12 @@ requireAuth(async (profile) => {
   document.getElementById("new-articolo-form").addEventListener("submit", onCreateArticolo);
   document.getElementById("cancel-edit-articolo-btn").addEventListener("click", cancelEditArticolo);
 
+  document.getElementById("import-soci-form").addEventListener("submit", onImportSoci);
+  document.getElementById("new-tariffacampo-form").addEventListener("submit", onCreateTariffaCampo);
+  document.getElementById("new-forfaitcampo-form").addEventListener("submit", onCreateForfaitCampo);
+  document.getElementById("new-chiusuracentro-form").addEventListener("submit", onCreateChiusuraCentro);
+  document.getElementById("prenotazionicampi-form").addEventListener("submit", onSavePrenotazioniCampi);
+
   await loadImpostazioniForm();
   await loadDatiCentroForm();
   await loadTariffePadelForm();
@@ -984,6 +1253,10 @@ requireAuth(async (profile) => {
   await loadTipiGruppoPadel();
   await loadTipiAttivita();
   await loadQuoteCampo();
+  await loadTariffeCampi();
+  await loadForfaitCampi();
+  await loadChiusureCentro();
+  await loadPrenotazioniCampiForm();
   await loadArticoli();
 });
 

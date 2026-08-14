@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Chi c'è in campo — Tennis Club Mendrisio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script>if(localStorage.getItem("sportos-tema")==="light")document.documentElement.setAttribute("data-theme","light");</script>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d1f30">
+<style>
+  .cic-pills { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 14px; }
+  .cic-pills button {
+    flex: 0 0 auto; font-size: 0.78rem; font-weight: 600; padding: 8px 14px;
+    border-radius: 999px; border: 1px solid var(--court-blue-700); background: var(--court-blue-900);
+    color: var(--chalk-grey); white-space: nowrap;
+  }
+  .cic-pills button[aria-pressed="true"] { background: var(--ball); border-color: var(--ball); color: #0d1f30; }
+
+  .cic-section-label { display: flex; align-items: center; gap: 7px; font-size: 0.7rem; font-weight: 700;
+    letter-spacing: 0.06em; text-transform: uppercase; color: var(--chalk-grey); margin: 18px 0 8px; }
+  .cic-section-label:first-child { margin-top: 0; }
+  .cic-live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ball); box-shadow: 0 0 0 3px rgba(198,223,46,0.22); }
+
+  .cic-row { padding: 10px 14px; border-radius: var(--radius); background: var(--court-blue-900);
+    border: 1px solid var(--court-blue-700); margin-bottom: 8px; }
+  .cic-row.dim { background: transparent; border-color: transparent; padding: 6px 2px; }
+  .cic-row .n { font-size: 0.86rem; font-weight: 700; }
+  .cic-row.dim .n { font-weight: 600; color: var(--chalk-grey); }
+  .cic-row .m { font-size: 0.72rem; color: var(--chalk-grey); margin-top: 2px; }
+  .cic-row.dim .m { color: var(--chalk-grey-dim); }
+
+  .cic-nascosto { text-align: center; padding: 20px 0 4px; color: var(--chalk-grey); font-size: 0.8rem; }
+  .cic-nascosto a { color: var(--ball); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <div>
+      <div class="topbar-kicker" id="centro-kicker">Tennis Club Mendrisio</div>
+      <h1>Chi c'è in campo</h1>
+    </div>
+    <div></div>
+    <button type="button" class="topbar-link" id="theme-toggle-btn">Tema chiaro</button>
+  </div>
+
+  <main>
+    <div class="cic-pills" id="cic-pills"></div>
+    <div id="cic-list">
+      <div class="empty-state"><div class="display">Caricamento…</div></div>
+    </div>
+  </main>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/chi-in-campo.js"></script>
+</body>
+</html>

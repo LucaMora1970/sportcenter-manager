@@ -27,6 +27,7 @@
 // ============================================================
 
 const crypto = require("crypto");
+const nodemailer = require("nodemailer");
 const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const { initializeApp } = require("firebase-admin/app");
@@ -50,6 +51,39 @@ const db = getFirestore();
 const POSTFINANCE_SPACE_ID = defineSecret("POSTFINANCE_SPACE_ID");
 const POSTFINANCE_USER_ID = defineSecret("POSTFINANCE_USER_ID");
 const POSTFINANCE_APP_KEY = defineSecret("POSTFINANCE_APP_KEY");
+
+// Invio email reale (attivazione soci) tramite l'host email già associato
+// a sport-os.ch — deciso al posto dell'invio automatico di Firebase
+// (sendSignInLinkToEmail) perché, come già annotato più sotto per
+// generaLinkResetPassword, quell'invio finisce spesso in spam/filtrato.
+// Credenziali impostate con:
+//   firebase functions:secrets:set SMTP_HOST
+//   firebase functions:secrets:set SMTP_PORT
+//   firebase functions:secrets:set SMTP_USER
+//   firebase functions:secrets:set SMTP_PASS
+//   firebase functions:secrets:set MAIL_FROM
+const SMTP_HOST = defineSecret("SMTP_HOST");
+const SMTP_PORT = defineSecret("SMTP_PORT");
+const SMTP_USER = defineSecret("SMTP_USER");
+const SMTP_PASS = defineSecret("SMTP_PASS");
+const MAIL_FROM = defineSecret("MAIL_FROM");
+const MAIL_SECRETS = [SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, MAIL_FROM];
+
+function mailTransporter() {
+  const port = parseInt(SMTP_PORT.value(), 10);
+  return nodemailer.createTransport({
+    host: SMTP_HOST.value(),
+    port,
+    secure: port === 465, // 465 = TLS implicito fin dall'inizio (SMTPS)
+    requireTLS: port !== 465, // 587 = STARTTLS, ma imposta esplicitamente: mai inviare in chiaro se il server non riesce a fare l'upgrade
+    auth: { user: SMTP_USER.value(), pass: SMTP_PASS.value() }
+  });
+}
+
+async function inviaEmail({ to, subject, html }) {
+  const transporter = mailTransporter();
+  await transporter.sendMail({ from: MAIL_FROM.value(), to, subject, html });
+}
 
 // URL base dell'app (dominio personalizzato via GitHub Pages), per i
 // redirect di successo/fallimento del pagamento e i link di reset password.
@@ -212,6 +246,57 @@ function validStarts(bookings, duration, close, feriale, oggi) {
   return [...new Set(starts)].sort((x, y) => x - y);
 }
 
+// ---------- Tennis/Squash: slot fissi, niente anti-buco ----------
+//
+// A differenza del padel (griglia continua, durate miste, ancore fisse —
+// vedi sopra), tennis e squash hanno slot già discreti e a durata fissa:
+// basta verificare che il candidato non si sovrapponga a una prenotazione
+// esistente. Duplicato da js/utils.js (SLOT_TENNIS/ORARI_INIZIO_AUTO.squash)
+// per lo stesso motivo di tariffa/slot padel: mai fidarsi del client.
+const SLOT_TENNIS = [
+  ["08:15", "09:15"], ["09:15", "10:15"], ["10:15", "11:15"], ["11:15", "12:15"], ["12:15", "13:15"],
+  ["13:30", "14:30"], ["14:30", "15:30"], ["15:30", "16:30"], ["16:30", "17:30"],
+  ["17:30", "18:30"], ["18:30", "19:30"], ["19:30", "20:30"], ["20:30", "21:30"], ["21:30", "22:30"]
+];
+
+function minutiToOrario(min) {
+  return `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+}
+
+function generaOrari(inizioMin, fineMin, stepMin) {
+  const out = [];
+  for (let m = inizioMin; m <= fineMin; m += stepMin) out.push(minutiToOrario(m));
+  return out;
+}
+
+function addMinuti(orario, minuti) {
+  const [h, m] = orario.split(":").map(Number);
+  return minutiToOrario(h * 60 + m + minuti);
+}
+
+const ORARI_INIZIO_SQUASH = generaOrari(8 * 60 + 15, 21 * 60 + 45, 45); // 08:15–21:45 ogni 45'
+
+// Elenco {inizio, fine} degli slot fissi prenotabili per la disciplina, o
+// [] se la disciplina non usa questo modello (es. padel, che resta sulla
+// griglia continua sopra).
+function slotFissiDisciplina(disciplina) {
+  if (disciplina === "tennis") return SLOT_TENNIS.map(([inizio, fine]) => ({ inizio, fine }));
+  if (disciplina === "squash") return ORARI_INIZIO_SQUASH.map(inizio => ({ inizio, fine: addMinuti(inizio, 45) }));
+  return [];
+}
+
+function sovrapposto(aInizio, aFine, bInizio, bFine) {
+  return orarioToMin(aInizio) < orarioToMin(bFine) && orarioToMin(aFine) > orarioToMin(bInizio);
+}
+
+// Diversa da feriale() più sopra (che esclude sabato E domenica, per gli
+// orari di chiusura campo): qui la tariffa distingue solo la domenica,
+// stesso criterio già in uso per la quota campo in js/prenotazioni.js.
+function domenicaOFestivo(dataIso) {
+  const giorno = new Date(dataIso + "T00:00:00").getDay();
+  return giorno === 0 || FESTIVI.includes(dataIso);
+}
+
 // ---------- Codici e token ----------
 
 // Token privato: lungo e casuale, destinato al link/QR del biglietto.
@@ -256,7 +341,12 @@ const COURT_ID = "1";
 // se c'è un credito coinvolto lo scala e lo registra. Chiamata sia dal
 // caso "credito copre tutto" (creaPrenotazionePubblica, sincrono) sia dal
 // webhook (dopo la conferma PostFinance).
-async function confermaPrenotazionePubblica({ bookingId, courtId, date, startTime, endTime, prezzo, token, paymentId, creditCode, creditoScalato }) {
+// disciplina/campoLabel sono facoltativi (assenti = null): il flusso
+// padel esistente non li passa e biglietto.js ricade sul suo default
+// "Padel"/"Campo {courtId}" — per tennis/squash (dove courtId è l'id
+// interno del doc "campi", non il numero mostrato) servono per mostrare
+// un'etichetta leggibile sul biglietto.
+async function confermaPrenotazionePubblica({ bookingId, courtId, date, startTime, endTime, prezzo, token, paymentId, creditCode, creditoScalato, disciplina, campoLabel }) {
   const bookingCode = await generaCodicePrenotazioneUnivoco();
 
   // L'id transazione di PostFinance è un numero (Transaction.id: number
@@ -270,6 +360,8 @@ async function confermaPrenotazionePubblica({ bookingId, courtId, date, startTim
   batch.set(db.collection("bookingTickets").doc(token), {
     bookingId, bookingCode, courtId, date, startTime, endTime,
     price: prezzo, currency: "CHF", paymentId: paymentIdStr,
+    disciplina: disciplina || null,
+    campoLabel: campoLabel || null,
     createdAt: FieldValue.serverTimestamp()
   });
   batch.set(db.collection("bookingCodes").doc(bookingCode), { bookingId, token });
@@ -670,6 +762,25 @@ exports.webhookPostFinance = onRequest(
             : { pagamentoOnlineStato: "FAILED" };
           await db.collection("diario").doc(meta.entryId).update(campiDiario);
         }
+      } else if (meta.tipoTransazione === "rinnovo_socio" && meta.token) {
+        // Rinnovo tesseramento/forfait: stesso pattern di pagamento_diario
+        // (il documento paymentRequests esiste già in PENDING dalla
+        // creazione). Sul successo rinnova di un anno da oggi — un
+        // rinnovo anticipato o posticipato non estende oltre l'anno.
+        const stato = successo ? "PAID" : "FAILED";
+        await db.collection("paymentRequests").doc(meta.token).update({
+          stato, paymentId: String(transaction.id), esitoAt: FieldValue.serverTimestamp()
+        });
+        if (successo && meta.socioId) {
+          const oggi = oraLocaleZurigo().dataIso;
+          const scadenzaDate = new Date(oggi);
+          scadenzaDate.setFullYear(scadenzaDate.getFullYear() + 1);
+          const scadenzaIso = scadenzaDate.toISOString().slice(0, 10);
+          await db.collection("soci").doc(meta.socioId).update({
+            scadenza: scadenzaDate,
+            forfaitPagato: { inizio: oggi, fine: scadenzaIso }
+          });
+        }
       } else if (meta.tipoTransazione === "voucher" && meta.token) {
         // Buono regalo acquistato dalla pagina pubblica — nessun documento
         // esiste prima del successo (a differenza delle prenotazioni non
@@ -696,13 +807,21 @@ exports.webhookPostFinance = onRequest(
           });
         }
       } else if (meta.bookingId && meta.token) {
-        // Flusso pubblico.
+        // Flusso pubblico (padel, o tennis/squash via creaPrenotazioneCampo
+        // — stesso schema "bookings"/"bookingTickets", distinti solo dal
+        // fatto che per tennis/squash courtId punta a un doc "campi").
         if (successo) {
           const bookingSnap = await db.collection("bookings").doc(meta.bookingId).get();
           if (bookingSnap.exists && bookingSnap.data().status === "PENDING_PAYMENT") {
+            const courtId = bookingSnap.data().courtId;
+            const campoSnap = await db.collection("campi").doc(courtId).get();
+            const disciplina = campoSnap.exists ? campoSnap.data().disciplina : null;
+            const campoLabel = campoSnap.exists
+              ? `Campo ${campoSnap.data().numero}${campoSnap.data().posizione ? ` (${campoSnap.data().posizione})` : ""}`
+              : null;
             await confermaPrenotazionePubblica({
               bookingId: meta.bookingId,
-              courtId: bookingSnap.data().courtId,
+              courtId,
               date: bookingSnap.data().date,
               startTime: bookingSnap.data().startTime,
               endTime: bookingSnap.data().endTime,
@@ -710,7 +829,8 @@ exports.webhookPostFinance = onRequest(
               token: meta.token,
               paymentId: transaction.id,
               creditCode: meta.creditCode || null,
-              creditoScalato: parseFloat(meta.creditoScalato || "0")
+              creditoScalato: parseFloat(meta.creditoScalato || "0"),
+              disciplina, campoLabel
             });
           }
         } else {
@@ -988,6 +1108,527 @@ exports.richiediPagamentoDiario = onCall(
       return { token, paymentPageUrl };
     } catch (err) {
       console.error("richiediPagamentoDiario: errore PostFinance:", err);
+      throw new HttpsError("internal", "Errore nella creazione del pagamento. Riprova.");
+    }
+  }
+);
+
+// ---------- 4. Prenotazione campi tennis/squash: riconoscimento soci ----------
+//
+// Categorie: socio, junior (della scuola), studente, azienda (partner),
+// esterno (nessuna categoria, tariffa piena), maestro (staff, vedi
+// risolviCategoriaPrenotante). Nessun account tradizionale: un dispositivo
+// diventa "riconosciuto" consumando un token (via email o QR staff, stesso
+// schema), che genera una sessione Firebase Auth stabile per quella
+// persona (stesso uid ad ogni riattivazione, anche su un altro
+// dispositivo) — vedi attivaSocioDaToken/collegaSocioAlDispositivo.
+
+async function permessiUtente(uid) {
+  const userSnap = await db.collection("users").doc(uid).get();
+  const userData = userSnap.exists ? userSnap.data() : null;
+  let permessi = [];
+  if (userData && userData.ruoloId) {
+    const roleSnap = await db.collection("roles").doc(userData.ruoloId).get();
+    if (roleSnap.exists) permessi = roleSnap.data().permessi || [];
+  }
+  return { userData, permessi, isAdmin: permessi.includes("*") };
+}
+
+// Import/aggiornamento massivo dell'anagrafica soci (a inizio stagione,
+// incollando l'export del gestionale attuale) — upsert per email. Righe
+// senza i campi minimi vengono scartate e contate, non bloccano le altre.
+exports.importaSoci = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+  const { permessi, isAdmin } = await permessiUtente(request.auth.uid);
+  if (!isAdmin && !permessi.includes("config:gestisci")) {
+    throw new HttpsError("permission-denied", "Permesso mancante.");
+  }
+
+  const { righe } = request.data || {};
+  if (!Array.isArray(righe) || righe.length === 0) {
+    throw new HttpsError("invalid-argument", "Nessuna riga da importare.");
+  }
+
+  const CATEGORIE_VALIDE = ["socio", "junior", "studente", "azienda"];
+  let importate = 0;
+  let scartate = 0;
+  for (const riga of righe) {
+    const email = (riga.email || "").trim().toLowerCase();
+    if (!email || !riga.nome || !riga.cognome || !CATEGORIE_VALIDE.includes(riga.categoria)) {
+      scartate++;
+      continue;
+    }
+    const dati = {
+      nome: riga.nome, cognome: riga.cognome, email,
+      telefono: riga.telefono || null,
+      categoria: riga.categoria,
+      aziendaNome: riga.aziendaNome || null,
+      tessera: riga.tessera || null,
+      scadenza: riga.scadenza ? new Date(riga.scadenza) : null,
+      attivo: true
+    };
+    const esistente = await db.collection("soci").where("email", "==", email).limit(1).get();
+    if (!esistente.empty) {
+      await esistente.docs[0].ref.set(dati, { merge: true });
+    } else {
+      await db.collection("soci").add({ ...dati, authUid: null, forfaitPagato: null, createdAt: FieldValue.serverTimestamp() });
+    }
+    importate++;
+  }
+  return { importate, scartate };
+});
+
+// Il client invia l'email inserita dal socio; la risposta è sempre
+// {ok:true} indipendentemente dal risultato reale della ricerca — non deve
+// essere possibile usare questo endpoint per scoprire se un indirizzo
+// appartiene o no a un socio del circolo.
+exports.richiediAttivazioneEmail = onCall({ secrets: MAIL_SECRETS }, async (request) => {
+  const email = (request.data?.email || "").trim().toLowerCase();
+  if (!email) throw new HttpsError("invalid-argument", "Email mancante.");
+
+  const snap = await db.collection("soci").where("email", "==", email).where("attivo", "==", true).limit(1).get();
+  if (!snap.empty) {
+    const socioId = snap.docs[0].id;
+    const token = generaToken();
+    await db.collection("attivazioniSoci").doc(token).set({
+      socioId, metodo: "email", usato: false, createdByUid: null, createdAt: FieldValue.serverTimestamp()
+    });
+    const link = `${APP_URL}attiva-socio.html?t=${token}`;
+    try {
+      await inviaEmail({
+        to: email,
+        subject: "Il tuo accesso a Sport-OS",
+        html: `<p>Tocca il link qui sotto per attivare questo dispositivo e prenotare i campi con la tua tariffa socio:</p>`
+          + `<p><a href="${link}">${link}</a></p><p>Il link è valido una sola volta.</p>`
+      });
+    } catch (err) {
+      console.error("richiediAttivazioneEmail: invio email fallito:", err);
+    }
+  }
+  return { ok: true };
+});
+
+// Ricerca soci per il pannello operatore (per generare il QR di
+// attivazione) — dietro permesso, mai esposta al pubblico.
+exports.cercaSociStaff = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+  const { permessi, isAdmin } = await permessiUtente(request.auth.uid);
+  if (!isAdmin && !permessi.includes("prenotazioni:gestisci")) {
+    throw new HttpsError("permission-denied", "Permesso mancante.");
+  }
+  const testo = (request.data?.testo || "").trim().toLowerCase();
+  if (testo.length < 2) return { risultati: [] };
+
+  const snap = await db.collection("soci").where("attivo", "==", true).limit(500).get();
+  const risultati = snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(s => `${s.nome} ${s.cognome} ${s.tessera || ""}`.toLowerCase().includes(testo))
+    .slice(0, 20)
+    .map(s => ({ id: s.id, nome: s.nome, cognome: s.cognome, categoria: s.categoria, tessera: s.tessera || null }));
+  return { risultati };
+});
+
+// Pannello operatore: genera il token da cui disegnare il QR di
+// attivazione (qrcodejs, già in uso per i biglietti) per chi non ha email
+// in anagrafica, o è Studente/Azienda partner/Junior verificato di persona.
+exports.generaTokenAttivazione = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+  const { permessi, isAdmin } = await permessiUtente(request.auth.uid);
+  if (!isAdmin && !permessi.includes("prenotazioni:gestisci")) {
+    throw new HttpsError("permission-denied", "Permesso mancante.");
+  }
+  const { socioId } = request.data || {};
+  if (!socioId) throw new HttpsError("invalid-argument", "socioId mancante.");
+  const socioSnap = await db.collection("soci").doc(socioId).get();
+  if (!socioSnap.exists) throw new HttpsError("not-found", "Socio non trovato.");
+
+  const token = generaToken();
+  await db.collection("attivazioniSoci").doc(token).set({
+    socioId, metodo: "qr", usato: false, createdByUid: request.auth.uid, createdAt: FieldValue.serverTimestamp()
+  });
+  return { token };
+});
+
+// Consuma un token (email o QR, stesso formato) e crea/riusa una sessione
+// Firebase Auth stabile per quel socio — stesso uid ogni volta che si
+// riattiva, anche su un dispositivo diverso, così l'identità resta
+// coerente ovunque (limite prenotazioni, priorità di anticipo).
+exports.attivaSocioDaToken = onCall(async (request) => {
+  const { token } = request.data || {};
+  if (!token) throw new HttpsError("invalid-argument", "Token mancante.");
+
+  const tokenRef = db.collection("attivazioniSoci").doc(token);
+  const tokenSnap = await tokenRef.get();
+  if (!tokenSnap.exists || tokenSnap.data().usato) {
+    throw new HttpsError("failed-precondition", "Link o codice non valido o già usato.");
+  }
+  const { socioId } = tokenSnap.data();
+  const socioRef = db.collection("soci").doc(socioId);
+  const socioSnap = await socioRef.get();
+  if (!socioSnap.exists || socioSnap.data().attivo === false) {
+    throw new HttpsError("not-found", "Profilo non trovato.");
+  }
+
+  let uid = socioSnap.data().authUid;
+  if (!uid) {
+    uid = `socio_${socioId}`;
+    try {
+      await getAuth().createUser({ uid });
+    } catch (err) {
+      if (err.code !== "auth/uid-already-exists") throw err;
+    }
+    await socioRef.update({ authUid: uid });
+  }
+
+  await tokenRef.update({ usato: true, usatoAt: FieldValue.serverTimestamp() });
+  const customToken = await getAuth().createCustomToken(uid);
+  return { customToken, socioId };
+});
+
+// Dopo signInWithCustomToken il dispositivo ha una sessione Firebase Auth
+// ma non è ancora "agganciato" a nessun profilo: aggiunge il profilo a
+// sociDevices/{uid}, supportando più profili sullo stesso dispositivo (un
+// tablet di famiglia condiviso) — ogni familiare la richiama dopo il
+// proprio giro email/QR.
+exports.collegaSocioAlDispositivo = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+  const { socioId } = request.data || {};
+  if (!socioId) throw new HttpsError("invalid-argument", "socioId mancante.");
+
+  const socioSnap = await db.collection("soci").doc(socioId).get();
+  if (!socioSnap.exists || socioSnap.data().authUid !== request.auth.uid) {
+    throw new HttpsError("permission-denied", "Profilo non valido per questo dispositivo.");
+  }
+  const socio = socioSnap.data();
+
+  const deviceRef = db.collection("sociDevices").doc(request.auth.uid);
+  const deviceSnap = await deviceRef.get();
+  const profili = deviceSnap.exists ? (deviceSnap.data().profili || []) : [];
+  if (!profili.some(p => p.socioId === socioId)) {
+    profili.push({ socioId, nome: `${socio.nome} ${socio.cognome}`, categoria: socio.categoria });
+  }
+  await deviceRef.set({ profili, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  return { profili };
+});
+
+// Ricerca del secondo giocatore (tennis, solo singolo): mai esposto
+// l'elenco soci al client, solo nome+categoria di un match esatto (per
+// non applicare per errore la tariffa sbagliata su un'omonimia parziale).
+exports.cercaGiocatore = onCall(async (request) => {
+  const testo = (request.data?.nome || "").trim().toLowerCase();
+  if (testo.length < 2) return { trovato: false };
+
+  const snap = await db.collection("soci").where("attivo", "==", true).limit(500).get();
+  const match = snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .find(s => `${s.nome} ${s.cognome}`.toLowerCase() === testo || `${s.cognome} ${s.nome}`.toLowerCase() === testo);
+  if (!match) return { trovato: false };
+  return { trovato: true, socioId: match.id, nomeVisualizzato: `${match.nome} ${match.cognome}`, categoria: match.categoria };
+});
+
+// Vista "Chi c'è in campo": nomi (o pseudonimo, se impostato) visibili
+// solo a un dispositivo già riconosciuto (request.auth != null) — un
+// visitatore non riconosciuto continua a vedere solo "Occupato" come sul
+// tabellone pubblico. Legge "bookingDettagli" (mai pubblico) via Admin
+// SDK, mai la collection "soci".
+exports.dettagliGiocatori = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Dispositivo non riconosciuto.");
+  const { bookingIds } = request.data || {};
+  if (!Array.isArray(bookingIds) || bookingIds.length === 0) return { dettagli: {} };
+
+  const dettagli = {};
+  await Promise.all(bookingIds.slice(0, 50).map(async (id) => {
+    const snap = await db.collection("bookingDettagli").doc(id).get();
+    if (!snap.exists) return;
+    const d = snap.data();
+    dettagli[id] = { nome1: d.prenotanteNome || null, nome2: d.giocatore2Nome || null };
+  }));
+  return { dettagli };
+});
+
+// Calcola la quota di una categoria per un campo/data: prima il forfait
+// stagionale (0 se dentro il periodo e categoria inclusa), poi la tariffa
+// a slot con lo stesso criterio "il più specifico vince" già usato per la
+// quota campo dei collaboratori (quotaCampoPerPrenotazione, js/prenotazioni.js).
+async function quotaCategoria({ disciplina, posizione, categoria, dataIso }) {
+  const forfaitSnap = await db.collection("forfaitCampi")
+    .where("disciplina", "==", disciplina)
+    .where("posizione", "==", posizione)
+    .get();
+  const forfaitAttivo = forfaitSnap.docs.some(d => {
+    const f = d.data();
+    return dataIso >= f.periodoInizio && dataIso <= f.periodoFine && (f.categorie || []).includes(categoria);
+  });
+  if (forfaitAttivo) return 0;
+
+  const tipoGiorno = domenicaOFestivo(dataIso) ? "domenica_festivo" : "feriale";
+  const tariffeSnap = await db.collection("tariffeCampi")
+    .where("disciplina", "==", disciplina)
+    .where("posizione", "==", posizione)
+    .where("categoria", "==", categoria)
+    .get();
+  const candidates = tariffeSnap.docs.map(d => d.data())
+    .filter(t => !t.tipoGiorno || t.tipoGiorno === tipoGiorno)
+    .sort((a, b) => (b.tipoGiorno ? 1 : 0) - (a.tipoGiorno ? 1 : 0));
+  return candidates.length > 0 ? candidates[0].prezzo : null;
+}
+
+// Chi prenota: un maestro/responsabile loggato (ha un documento "users",
+// controllo con priorità perché lo staff non ha mai un profilo in "soci")
+// paga come "maestro" ed è esente se soggettoQuotaCampo (come lo
+// STAFF_EXEMPT del padel); un dispositivo riconosciuto legge il profilo
+// scelto da sociDevices (profiloId, per il caso famiglia); altrimenti
+// esterno anonimo.
+async function risolviCategoriaPrenotante(auth, profiloId) {
+  if (!auth) return { categoria: "esterno", nome: null, authUid: null, isStaff: false };
+
+  const userSnap = await db.collection("users").doc(auth.uid).get();
+  if (userSnap.exists) {
+    const u = userSnap.data();
+    return {
+      categoria: "maestro", nome: u.nome || null, authUid: auth.uid,
+      isStaff: true, soggettoQuotaCampo: !!u.soggettoQuotaCampo
+    };
+  }
+
+  const deviceSnap = await db.collection("sociDevices").doc(auth.uid).get();
+  if (deviceSnap.exists) {
+    const profili = deviceSnap.data().profili || [];
+    const scelto = profiloId ? profili.find(p => p.socioId === profiloId) : profili[0];
+    if (scelto) return { categoria: scelto.categoria, nome: scelto.nome, authUid: auth.uid, isStaff: false, socioId: scelto.socioId };
+  }
+
+  return { categoria: "esterno", nome: null, authUid: auth.uid, isStaff: false };
+}
+
+// Prenotazione tennis/squash: invocabile da chiunque (esterno anonimo),
+// da un dispositivo riconosciuto (tariffa/priorità/limite di categoria) o
+// da un maestro loggato. Non modifica creaPrenotazionePubblica (padel),
+// che resta la funzione dedicata a quel flusso già in produzione.
+exports.creaPrenotazioneCampo = onCall(
+  { secrets: [POSTFINANCE_SPACE_ID, POSTFINANCE_USER_ID, POSTFINANCE_APP_KEY] },
+  async (request) => {
+    const { courtId, date, startTime, giocatore2Nome, giocatore2SocioId, profiloId } = request.data || {};
+    if (!courtId || !date || !startTime) {
+      throw new HttpsError("invalid-argument", "Dati prenotazione incompleti.");
+    }
+
+    const campoSnap = await db.collection("campi").doc(courtId).get();
+    if (!campoSnap.exists || campoSnap.data().attivo === false) {
+      throw new HttpsError("not-found", "Campo non disponibile.");
+    }
+    const { disciplina, posizione, numero } = campoSnap.data();
+    const campoLabel = `Campo ${numero}${posizione ? ` (${posizione})` : ""}`;
+    if (disciplina !== "tennis" && disciplina !== "squash") {
+      throw new HttpsError("invalid-argument", "Disciplina non gestita da questa funzione.");
+    }
+
+    const slot = slotFissiDisciplina(disciplina).find(s => s.inizio === startTime);
+    if (!slot) throw new HttpsError("invalid-argument", "Orario non valido per questa disciplina.");
+    const endTime = slot.fine;
+
+    const chiusuraSnap = await db.collection("chiusureCentro").doc(date).get();
+    if (chiusuraSnap.exists) {
+      const discipline = chiusuraSnap.data().discipline || [];
+      if (discipline.length === 0 || discipline.includes(disciplina)) {
+        throw new HttpsError("failed-precondition", "Il centro è chiuso in questa data.");
+      }
+    }
+
+    if (eOrmaiPassato(date, orarioToMin(startTime))) {
+      throw new HttpsError("failed-precondition", "Questo slot non è più disponibile — scegline un altro.");
+    }
+
+    const prenotante = await risolviCategoriaPrenotante(request.auth, profiloId);
+
+    // Finestra di anticipo: quanti giorni prima ciascuna categoria può
+    // prenotare — priorità ai soci, come richiesto. 7 giorni se non
+    // configurato.
+    const impostazioniSnap = await db.collection("impostazioni").doc("prenotazioniCampi").get();
+    const impostazioni = impostazioniSnap.exists ? impostazioniSnap.data() : {};
+    const anticipoMax = (impostazioni.giorniAnticipoPrenotazione || {})[prenotante.categoria] ?? 7;
+    const oggiIso = oraLocaleZurigo().dataIso;
+    const giorniAvanti = Math.round((new Date(date) - new Date(oggiIso)) / 86400000);
+    if (giorniAvanti > anticipoMax) {
+      throw new HttpsError("failed-precondition", "Questa data non è ancora aperta alle prenotazioni per la tua categoria.");
+    }
+
+    // Limite prenotazioni attive: solo per chi è riconosciuto (un esterno
+    // anonimo non ha un'identità stabile su cui contarlo).
+    if (prenotante.authUid && !prenotante.isStaff && impostazioni.maxPrenotazioniAttivePerUtente != null) {
+      const attiveSnap = await db.collection("bookings")
+        .where("authUid", "==", prenotante.authUid)
+        .where("date", ">=", oggiIso)
+        .get();
+      const attive = attiveSnap.docs.filter(d => {
+        const b = d.data();
+        return !pendingScaduto(b) && (b.status === "PENDING_PAYMENT" || b.status === "CONFIRMED");
+      });
+      if (attive.length >= impostazioni.maxPrenotazioniAttivePerUtente) {
+        throw new HttpsError("failed-precondition", "Hai raggiunto il numero massimo di prenotazioni attive.");
+      }
+    }
+
+    // Pulizia best-effort delle "PENDING_PAYMENT" scadute.
+    const preSnap = await db.collection("bookings").where("date", "==", date).where("courtId", "==", courtId).get();
+    const scadute = preSnap.docs.filter(d => pendingScaduto(d.data()));
+    if (scadute.length > 0) await Promise.all(scadute.map(d => d.ref.delete()));
+
+    // Prezzo: sempre ricalcolato lato server. Per il tennis si gioca in
+    // due — mai fidarsi del nome libero del secondo giocatore, si
+    // riverifica sempre giocatore2SocioId contro "soci" (se non risolto,
+    // resta "esterno").
+    let giocatore2Categoria = "esterno";
+    let giocatore2NomeRisolto = giocatore2Nome || null;
+    if (disciplina === "tennis" && giocatore2SocioId) {
+      const g2Snap = await db.collection("soci").doc(giocatore2SocioId).get();
+      if (g2Snap.exists && g2Snap.data().attivo !== false) {
+        giocatore2Categoria = g2Snap.data().categoria;
+        giocatore2NomeRisolto = `${g2Snap.data().nome} ${g2Snap.data().cognome}`;
+      }
+    }
+
+    const quota1 = await quotaCategoria({ disciplina, posizione, categoria: prenotante.categoria, dataIso: date });
+    if (quota1 == null) throw new HttpsError("failed-precondition", "Tariffa non configurata per questo campo/categoria.");
+    let prezzo = quota1;
+    const prezzoDettaglio = [{ ruolo: "prenotante", categoria: prenotante.categoria, importo: quota1 }];
+
+    if (disciplina === "tennis") {
+      const quota2 = await quotaCategoria({ disciplina, posizione, categoria: giocatore2Categoria, dataIso: date });
+      if (quota2 == null) throw new HttpsError("failed-precondition", "Tariffa non configurata per il secondo giocatore.");
+      prezzo += quota2;
+      prezzoDettaglio.push({ ruolo: "secondo giocatore", categoria: giocatore2Categoria, importo: quota2 });
+    }
+
+    // Un maestro soggetto a quota campo (come per il padel STAFF_EXEMPT)
+    // non paga qui la propria quota: è già fatturata nella lezione via
+    // richiediPagamentoDiario, non due volte.
+    if (prenotante.isStaff && prenotante.soggettoQuotaCampo) {
+      prezzo -= quota1;
+      prezzoDettaglio[0].importo = 0;
+    }
+
+    const token = generaToken();
+    const bookingRef = db.collection("bookings").doc();
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(db.collection("bookings").where("date", "==", date).where("courtId", "==", courtId));
+      const occupato = snap.docs
+        .filter(d => !pendingScaduto(d.data()))
+        .map(d => d.data())
+        .filter(b => b.status === "PENDING_PAYMENT" || b.status === "CONFIRMED" || b.status === "COMPLETED")
+        .some(b => sovrapposto(startTime, endTime, b.startTime, b.endTime));
+      if (occupato) throw new HttpsError("failed-precondition", "Questo slot non è più disponibile — scegline un altro.");
+
+      // "bookings" è leggibile da chiunque (allow get,list: if true — serve
+      // al calcolo pubblico degli slot liberi): niente nomi qui, mai, o
+      // sarebbero interrogabili da chiunque via SDK client, bypassando
+      // completamente il controllo "solo dispositivi riconosciuti" di
+      // dettagliGiocatori. Nome/dettaglio prezzo vanno in "bookingDettagli",
+      // collection separata e non pubblica (vedi firestore.rules).
+      tx.set(bookingRef, {
+        courtId, date, startTime, endTime, status: "PENDING_PAYMENT", type: "CUSTOMER",
+        authUid: prenotante.authUid || null,
+        createdAt: FieldValue.serverTimestamp()
+      });
+      tx.set(db.collection("bookingDettagli").doc(bookingRef.id), {
+        prenotanteNome: prenotante.nome || null,
+        giocatore2Nome: disciplina === "tennis" ? giocatore2NomeRisolto : null,
+        giocatore2SocioId: disciplina === "tennis" && giocatore2Categoria !== "esterno" ? giocatore2SocioId : null,
+        prezzoDettaglio
+      });
+    });
+
+    if (prezzo <= 0) {
+      await confermaPrenotazionePubblica({
+        bookingId: bookingRef.id, courtId, date, startTime, endTime, prezzo: 0, token,
+        paymentId: null, creditCode: null, creditoScalato: 0, disciplina, campoLabel
+      });
+      return { pagamentoNecessario: false, token };
+    }
+
+    const spaceId = parseInt(POSTFINANCE_SPACE_ID.value(), 10);
+    const service = transactionsService();
+    try {
+      const transaction = await service.postPaymentTransactions({
+        space: spaceId,
+        transactionCreate: {
+          currency: "CHF",
+          merchantReference: bookingRef.id,
+          successUrl: `${APP_URL}biglietto.html?t=${token}`,
+          failedUrl: `${APP_URL}prenota-campo.html?pagamento=fallito`,
+          lineItems: [{
+            uniqueId: bookingRef.id,
+            name: `Campo ${disciplina} ${date} ${startTime}–${endTime}`,
+            quantity: 1,
+            amountIncludingTax: prezzo,
+            type: LineItemType.Product
+          }],
+          metaData: { bookingId: bookingRef.id, token, prezzoTotale: String(prezzo) },
+          environmentSelectionStrategy: FORZA_AMBIENTE_TEST
+            ? TransactionEnvironmentSelectionStrategy.ForceTestEnvironment
+            : TransactionEnvironmentSelectionStrategy.UseConfiguration
+        }
+      });
+      const paymentPageUrl = await service.getPaymentTransactionsIdPaymentPageUrl({ id: transaction.id, space: spaceId });
+      return { pagamentoNecessario: true, token, paymentPageUrl };
+    } catch (err) {
+      await bookingRef.delete();
+      console.error("creaPrenotazioneCampo: errore PostFinance:", err);
+      throw new HttpsError("internal", "Errore nella creazione del pagamento. Riprova.");
+    }
+  }
+);
+
+// ---------- Rinnovo tesseramento/forfait (pagamento online) ----------
+exports.richiediRinnovoAbbonamento = onCall(
+  { secrets: [POSTFINANCE_SPACE_ID, POSTFINANCE_USER_ID, POSTFINANCE_APP_KEY] },
+  async (request) => {
+    if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+    const { socioId, importo, descrizione } = request.data || {};
+    if (!socioId || typeof importo !== "number" || !isFinite(importo) || importo <= 0) {
+      throw new HttpsError("invalid-argument", "Dati di rinnovo incompleti.");
+    }
+    const socioSnap = await db.collection("soci").doc(socioId).get();
+    if (!socioSnap.exists || socioSnap.data().authUid !== request.auth.uid) {
+      throw new HttpsError("permission-denied", "Puoi rinnovare solo il tuo abbonamento.");
+    }
+
+    const token = generaToken();
+    const spaceId = parseInt(POSTFINANCE_SPACE_ID.value(), 10);
+    const service = transactionsService();
+    try {
+      const transaction = await service.postPaymentTransactions({
+        space: spaceId,
+        transactionCreate: {
+          currency: "CHF",
+          merchantReference: token,
+          successUrl: `${APP_URL}pagamento-conferma.html?t=${token}`,
+          failedUrl: `${APP_URL}pagamento-conferma.html?t=${token}`,
+          lineItems: [{
+            uniqueId: token,
+            name: descrizione || "Rinnovo tesseramento",
+            quantity: 1,
+            amountIncludingTax: importo,
+            type: LineItemType.Product
+          }],
+          metaData: { tipoTransazione: "rinnovo_socio", token, socioId, importo: String(importo) },
+          environmentSelectionStrategy: FORZA_AMBIENTE_TEST
+            ? TransactionEnvironmentSelectionStrategy.ForceTestEnvironment
+            : TransactionEnvironmentSelectionStrategy.UseConfiguration
+        }
+      });
+      const paymentPageUrl = await service.getPaymentTransactionsIdPaymentPageUrl({ id: transaction.id, space: spaceId });
+
+      await db.collection("paymentRequests").doc(token).set({
+        tipo: "rinnovo_socio", riferimentoId: socioId, importo,
+        descrizione: descrizione || "Rinnovo tesseramento",
+        stato: "PENDING", createdByUid: request.auth.uid, createdByNome: null,
+        createdAt: FieldValue.serverTimestamp()
+      });
+
+      return { token, paymentPageUrl };
+    } catch (err) {
+      console.error("richiediRinnovoAbbonamento: errore PostFinance:", err);
       throw new HttpsError("internal", "Errore nella creazione del pagamento. Riprova.");
     }
   }

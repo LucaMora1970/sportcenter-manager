@@ -544,6 +544,15 @@ select:focus, input:focus, textarea:focus {
   min-height: 1em;
 }
 
+.success-msg {
+  color: var(--ball-dim);
+  font-size: 0.82rem;
+  margin-top: -6px;
+  margin-bottom: 14px;
+}
+
+.success-msg:empty { display: none; }
+
 .hidden { display: none !important; }
 
 /* Overlay di caricamento a schermo intero durante le chiamate che

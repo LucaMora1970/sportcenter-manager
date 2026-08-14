@@ -17,10 +17,11 @@
 
 const TENTATIVI_MAX = 6;
 const ATTESA_TRA_TENTATIVI_MS = 2500;
-// Unica disciplina prenotabile con questo sistema per ora — indicata
-// sempre esplicitamente perché i campi sono numerati per disciplina
-// (es. "Campo 1" esiste sia per tennis sia per padel).
-const DISCIPLINA = "Padel";
+// Fallback per i biglietti creati prima dell'introduzione di
+// disciplina/campoLabel sul documento (solo padel, unica disciplina di
+// allora) — le prenotazioni più recenti (anche tennis/squash) portano
+// questi due campi già valorizzati, vedi confermaPrenotazionePubblica.
+const DISCIPLINA_FALLBACK = "Padel";
 
 let ticketData = null;
 
@@ -53,10 +54,14 @@ async function caricaBiglietto(token) {
   return null;
 }
 
+function disciplinaLabelBiglietto(disciplina) {
+  return { tennis: "Tennis", squash: "Squash", padel: "Padel" }[disciplina] || DISCIPLINA_FALLBACK;
+}
+
 function renderBiglietto(data, token) {
   document.getElementById("t-data").textContent = formatDataBreve(data.date);
-  document.getElementById("t-disciplina").textContent = DISCIPLINA;
-  document.getElementById("t-campo").textContent = `Campo ${data.courtId}`;
+  document.getElementById("t-disciplina").textContent = data.disciplina ? disciplinaLabelBiglietto(data.disciplina) : DISCIPLINA_FALLBACK;
+  document.getElementById("t-campo").textContent = data.campoLabel || `Campo ${data.courtId}`;
   document.getElementById("t-orario").textContent = `${data.startTime} – ${data.endTime}`;
   document.getElementById("t-prezzo").textContent = `CHF ${(data.price || 0).toFixed(2)}`;
   document.getElementById("t-codice").textContent = data.bookingCode || "—";
@@ -154,6 +159,29 @@ async function salvaBigliettoPng() {
   link.click();
 }
 
+// Ricevuta stampabile — stesso schema #print-area + window.print() già
+// usato per le liste corsi (nessuna libreria PDF: "Salva come PDF" del
+// browser). Il circolo non è soggetto IVA: solo la dicitura, niente
+// scorporo/numerazione fiscale.
+function stampaRicevutaBiglietto(data) {
+  document.getElementById("print-area").innerHTML = `
+    ${intestazioneStampaHtml()}
+    <h2 style="margin:16px 0 10px;">Ricevuta prenotazione</h2>
+    <table>
+      <tbody>
+        <tr><th>Data</th><td>${escapeHtml(formatDataBreve(data.date))}</td></tr>
+        <tr><th>Disciplina</th><td>${escapeHtml(document.getElementById("t-disciplina").textContent)}</td></tr>
+        <tr><th>Campo</th><td>${escapeHtml(document.getElementById("t-campo").textContent)}</td></tr>
+        <tr><th>Orario</th><td>${escapeHtml(document.getElementById("t-orario").textContent)}</td></tr>
+        <tr><th>Codice</th><td>${escapeHtml(data.bookingCode || "—")}</td></tr>
+        <tr><th>Importo</th><td>CHF ${(data.price || 0).toFixed(2)}</td></tr>
+      </tbody>
+    </table>
+    <p style="margin-top:16px;font-size:0.85rem;">Non soggetto ad IVA.</p>
+  `;
+  window.print();
+}
+
 function aggiungiAlCalendario(data) {
   const dataCompatta = data.date.replace(/-/g, "");
   const oraInizio = data.startTime.replace(":", "") + "00";
@@ -171,7 +199,7 @@ function aggiungiAlCalendario(data) {
     `DTSTAMP:${dtstamp}`,
     `DTSTART:${dataCompatta}T${oraInizio}`,
     `DTEND:${dataCompatta}T${oraFine}`,
-    `SUMMARY:${DISCIPLINA} — Campo ${data.courtId} — ${DATI_CENTRO.nome}`,
+    `SUMMARY:${data.disciplina ? disciplinaLabelBiglietto(data.disciplina) : DISCIPLINA_FALLBACK} — ${data.campoLabel || "Campo " + data.courtId} — ${DATI_CENTRO.nome}`,
     `DESCRIPTION:Codice prenotazione: ${data.bookingCode}`,
     `LOCATION:${[DATI_CENTRO.nome, DATI_CENTRO.indirizzo, DATI_CENTRO.localita].filter(Boolean).join(", ")}`,
     "END:VEVENT",
@@ -209,6 +237,7 @@ function aggiungiAlCalendario(data) {
 
   document.getElementById("salva-btn").addEventListener("click", salvaBigliettoPng);
   document.getElementById("calendario-btn").addEventListener("click", () => aggiungiAlCalendario(ticketData));
+  document.getElementById("ricevuta-btn").addEventListener("click", () => stampaRicevutaBiglietto(ticketData));
 
   // Il biglietto è l'unica prova della prenotazione (nessun account, nessuna
   // email automatica per ora) — chi torna al tabellone lo salva sempre,

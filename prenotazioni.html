@@ -106,6 +106,22 @@
 
         <hr class="court-divider">
 
+        <!-- Attivazione soci (tennis/squash) -->
+        <div class="section-title"><h2>Attivazione soci</h2></div>
+        <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Per chi non ha un'email in anagrafica, o è Studente/Azienda partner/Junior verificato di persona: cerca il socio e mostra il QR — chi lo scansiona con il proprio telefono attiva quel dispositivo con la tariffa giusta.</p>
+        <div class="field">
+          <label for="attivazione-cerca-input">Nome o numero tessera</label>
+          <input type="text" id="attivazione-cerca-input" placeholder="es. Rossi, o T-102">
+        </div>
+        <div id="attivazione-risultati"></div>
+        <div id="attivazione-qr-box" class="hidden" style="text-align:center;margin-top:14px;">
+          <div id="attivazione-qr-container" style="display:flex;justify-content:center;margin-bottom:10px;"></div>
+          <p style="color:var(--chalk-grey);font-size:0.78rem;" id="attivazione-qr-nome"></p>
+        </div>
+        <div class="error-msg" id="attivazione-error"></div>
+
+        <hr class="court-divider">
+
         <!-- Buoni regalo -->
         <div class="section-title"><h2>Buoni regalo</h2></div>
         <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Emetti un buono omaggio (nessun pagamento) — stesso effetto di uno acquistato dai clienti sulla pagina pubblica.</p>
@@ -207,6 +223,7 @@
 
 <div id="print-area"></div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>

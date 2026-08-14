@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Prenota campo — Tennis Club Mendrisio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script>if(localStorage.getItem("sportos-tema")==="light")document.documentElement.setAttribute("data-theme","light");</script>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d1f30">
+<style>
+  .gruppo-pills { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 12px; }
+  .gruppo-pills button {
+    flex: 0 0 auto; font-size: 0.78rem; font-weight: 600; padding: 8px 14px;
+    border-radius: 999px; border: 1px solid var(--court-blue-700); background: var(--court-blue-900);
+    color: var(--chalk-grey); white-space: nowrap;
+  }
+  .gruppo-pills button[aria-pressed="true"] { background: var(--ball); border-color: var(--ball); color: #0d1f30; }
+
+  .socio-box { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    background: var(--court-blue-900); border: 1px solid var(--court-blue-700); border-radius: var(--radius);
+    padding: 10px 14px; margin-bottom: 14px; font-size: 0.8rem; }
+  .socio-box a { color: var(--ball); }
+  .profilo-select { margin-bottom: 14px; }
+
+  .slot-row { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: var(--radius);
+    background: var(--court-blue-900); border: 1px solid var(--court-blue-700); margin-bottom: 8px; }
+  .slot-row .si { display: flex; flex-direction: column; gap: 2px; }
+  .slot-row .st { font-size: 0.9rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .slot-row .sc { font-size: 0.74rem; color: var(--chalk-grey); }
+  .slot-row .sp { margin-left: auto; font-size: 0.78rem; color: var(--chalk-grey); text-align: right; }
+  .slot-row button { flex: 0 0 auto; }
+
+  .prenota-panel { background: var(--court-blue-900); border: 1px solid var(--court-blue-700); border-radius: var(--radius);
+    padding: 16px; margin-top: 10px; }
+  .g2-esito { font-size: 0.76rem; margin-top: 4px; }
+  .g2-esito.ok { color: var(--ball); }
+  .g2-esito.no { color: var(--chalk-grey); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <div>
+      <div class="topbar-kicker" id="centro-kicker">Tennis Club Mendrisio</div>
+      <h1>Prenota campo</h1>
+    </div>
+    <div></div>
+    <button type="button" class="topbar-link" id="theme-toggle-btn">Tema chiaro</button>
+  </div>
+
+  <main>
+
+    <div class="socio-box" id="socio-box">
+      <span id="socio-box-testo">Prenoti come esterno.</span>
+      <a href="attiva-socio.html">Sei socio/studente/azienda partner?</a>
+    </div>
+    <p style="margin:0 0 14px;"><a href="chi-in-campo.html" style="color:var(--ball);font-size:0.8rem;">Chi c'è in campo adesso →</a></p>
+
+    <div class="field profilo-select hidden" id="profilo-select-box">
+      <label for="profilo-select">Prenoti per</label>
+      <select id="profilo-select"></select>
+    </div>
+
+    <div class="gruppo-pills" id="gruppo-pills"></div>
+
+    <div class="day-strip" id="dayStrip" role="tablist"></div>
+
+    <div id="slot-list">
+      <div class="empty-state"><div class="display">Caricamento…</div></div>
+    </div>
+
+    <div class="error-msg" id="prenota-error"></div>
+
+  </main>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/prenota-campo.js"></script>
+</body>
+</html>
