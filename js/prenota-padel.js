@@ -27,7 +27,6 @@ const PX_PER_MIN = 1.1;
 const EDGE_PAD = 10;
 const GIORNI_BREVI = ["Dom", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab"];
 const NR_GIORNI_STRIP = 14;
-const FESTIVI = [];
 
 // Data/ora corrente in fuso orario svizzero, indipendentemente da come è
 // impostato l'orologio/fuso del dispositivo di chi prenota (un cliente
@@ -76,15 +75,17 @@ function formatTimestamp(ts) {
   return `${p(d.getDate())}.${p(d.getMonth() + 1)} alle ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+// Un giorno festivo (IMPOSTAZIONI.festivi, js/utils.js) accorcia l'orario
+// come sabato/domenica — stesso criterio del server.
 function chiusuraGiorno(dataIso) {
   const giorno = new Date(dataIso + "T00:00:00").getDay();
-  return (giorno === 0 || giorno === 6 || FESTIVI.includes(dataIso)) ? CLOSE_WEEKEND : CLOSE;
+  return (giorno === 0 || giorno === 6 || (IMPOSTAZIONI.festivi || []).includes(dataIso)) ? CLOSE_WEEKEND : CLOSE;
 }
 
 // Lunedì-venerdì, festivi esclusi (stesso elenco usato per la chiusura ridotta).
 function feriale(dataIso) {
   const giorno = new Date(dataIso + "T00:00:00").getDay();
-  return giorno >= 1 && giorno <= 5 && !FESTIVI.includes(dataIso);
+  return giorno >= 1 && giorno <= 5 && !(IMPOSTAZIONI.festivi || []).includes(dataIso);
 }
 
 // Prezzo: stesso motore "Tariffe campi" di prenota-campo.js (non più la
@@ -152,8 +153,9 @@ function prezzoSlot(dataIso, startMin, duration) {
 let state = { data: null, duration: null, selected: null, bookings: [] };
 
 // Giorni di chiusura totale (collection "chiusurePadel", configurati dal
-// pannello operatore) — diverso da FESTIVI/chiusuraGiorno, che si limita
-// ad accorciare l'orario: qui il campo non è prenotabile da nessuno.
+// pannello operatore) — diverso da IMPOSTAZIONI.festivi + chiusuraGiorno,
+// che si limita ad accorciare l'orario: qui il campo non è prenotabile da
+// nessuno.
 let CHIUSURE_PADEL = new Set();
 async function caricaChiusurePadel() {
   const snap = await db.collection("chiusurePadel").get();

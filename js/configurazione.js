@@ -120,52 +120,9 @@ async function onSaveImpostazioni(e) {
   }
 }
 
-// ---------- Tariffe padel ----------
-
-async function loadTariffePadelForm() {
-  const doc = await db.collection("impostazioni").doc("tariffePadel").get();
-  const t = doc.exists ? doc.data() : {};
-  document.getElementById("tariffa-diurno-60").value = t.diurno60 != null ? t.diurno60 : "";
-  document.getElementById("tariffa-diurno-90").value = t.diurno90 != null ? t.diurno90 : "";
-  document.getElementById("tariffa-serale-90").value = t.serale90 != null ? t.serale90 : "";
-  document.getElementById("tariffa-sconto-socio").value = t.scontoSocioPercentuale != null ? t.scontoSocioPercentuale : "";
-  const categorieScelte = t.scontoSocioCategorie || [];
-  document.querySelectorAll("#tariffa-sconto-categorie-checks input").forEach(chk => {
-    chk.checked = categorieScelte.includes(chk.value);
-  });
-}
-
-async function onSaveTariffePadel(e) {
-  e.preventDefault();
-  const btn = document.getElementById("salva-tariffe-padel-btn");
-  const errorEl = document.getElementById("tariffe-padel-error");
-  errorEl.textContent = "";
-  btn.disabled = true;
-
-  const diurno60 = parseFloat(document.getElementById("tariffa-diurno-60").value);
-  const diurno90 = parseFloat(document.getElementById("tariffa-diurno-90").value);
-  const serale90 = parseFloat(document.getElementById("tariffa-serale-90").value);
-  const scontoRaw = document.getElementById("tariffa-sconto-socio").value;
-  const scontoSocioPercentuale = scontoRaw === "" ? 0 : parseFloat(scontoRaw);
-  const scontoSocioCategorie = Array.from(document.querySelectorAll("#tariffa-sconto-categorie-checks input:checked")).map(c => c.value);
-
-  try {
-    if ([diurno60, diurno90, serale90].some(v => isNaN(v) || v < 0)) throw new Error("Inserisci tre importi validi.");
-    if (isNaN(scontoSocioPercentuale) || scontoSocioPercentuale < 0) throw new Error("Percentuale sconto non valida.");
-    await db.collection("impostazioni").doc("tariffePadel").set(
-      { diurno60, diurno90, serale90, scontoSocioPercentuale, scontoSocioCategorie },
-      { merge: true }
-    );
-  } catch (err) {
-    showError(errorEl, "Errore: " + err.message);
-  } finally {
-    btn.disabled = false;
-  }
-}
-
 // ---------- Helper lista generica con toggle attivo ----------
 
-function renderSimpleList(containerId, items, labelFn, metaFn, collectionName, reloadFn, onEdit) {
+function renderSimpleList(containerId, items, labelFn, metaFn, collectionName, reloadFn, onEdit, onDuplicate) {
   const list = document.getElementById(containerId);
 
   if (items.length === 0) {
@@ -181,6 +138,7 @@ function renderSimpleList(containerId, items, labelFn, metaFn, collectionName, r
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;">
         ${onEdit ? `<button class="btn btn-ghost edit-item-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${it.id}">Modifica</button>` : ""}
+        ${onDuplicate ? `<button class="btn btn-ghost duplicate-item-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${it.id}">Duplica</button>` : ""}
         <button class="btn btn-ghost toggle-active-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${it.id}" data-attivo="${it.attivo !== false}">
           ${it.attivo !== false ? "Attivo" : "Disattivato"}
         </button>
@@ -221,6 +179,15 @@ function renderSimpleList(containerId, items, labelFn, metaFn, collectionName, r
       btn.addEventListener("click", () => {
         const item = items.find(i => i.id === btn.dataset.id);
         onEdit(item);
+      });
+    });
+  }
+
+  if (onDuplicate) {
+    list.querySelectorAll(".duplicate-item-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const item = items.find(i => i.id === btn.dataset.id);
+        onDuplicate(item);
       });
     });
   }
@@ -955,10 +922,10 @@ let categorieSocioCache = []; // [{id, nome, costoForfait, ordine, attivo}]
 let editingCategoriaSocioId = null;
 
 function categorieComplete() {
-  return [...categorieSocioCache, { id: "azienda", nome: "Azienda partner" }, { id: "esterno", nome: "Esterno" }];
+  return [...categorieSocioCache, { id: "azienda", nome: "Azienda partner" }, { id: "esterno", nome: "Utenti" }];
 }
 
-let CATEGORIA_LABEL = { azienda: "Azienda partner", esterno: "Esterno" };
+let CATEGORIA_LABEL = { azienda: "Azienda partner", esterno: "Utenti" };
 function aggiornaCategoriaLabel() {
   CATEGORIA_LABEL = Object.fromEntries(categorieComplete().map(c => [c.id, c.nome]));
 }
@@ -1056,18 +1023,14 @@ async function onCreateCategoriaSocio(e) {
 }
 
 // Ripopola tutti i punti che elencano le categorie (select Tariffe campi,
-// checkbox Forfait stagionale, checkbox sconto padel, form giorni di
-// anticipo) — richiamata dopo ogni modifica a "Categorie socio" così
-// restano sempre aggiornati senza dover ricaricare la pagina.
+// checkbox Forfait stagionale, form giorni di anticipo) — richiamata dopo
+// ogni modifica a "Categorie socio" così restano sempre aggiornati senza
+// dover ricaricare la pagina.
 function sincronizzaSelectCategorie() {
   populateSelect(document.getElementById("new-tariffacampo-categoria"), categorieComplete().map(c => ({ id: c.id, label: c.nome })));
   document.getElementById("forfaitcampo-categorie-checks").innerHTML = categorieComplete()
     .filter(c => c.id !== "esterno")
     .map(c => `<div class="checkbox-row"><input type="checkbox" id="fc-cat-${c.id}" value="${c.id}"><label for="fc-cat-${c.id}">${escapeHtml(c.nome)}</label></div>`)
-    .join("");
-  document.getElementById("tariffa-sconto-categorie-checks").innerHTML = categorieComplete()
-    .filter(c => c.id !== "esterno")
-    .map(c => `<div class="checkbox-row"><input type="checkbox" id="ts-cat-${c.id}" value="${c.id}"><label for="ts-cat-${c.id}">${escapeHtml(c.nome)}</label></div>`)
     .join("");
   renderCampiAnticipoPrenotazione();
 }
@@ -1131,12 +1094,31 @@ function tariffaCampoMeta(it) {
 async function loadTariffeCampi() {
   const snap = await db.collection("tariffeCampi").get();
   const tariffe = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  renderSimpleList("tariffecampi-list", tariffe, tariffaCampoLabel, tariffaCampoMeta, "tariffeCampi", loadTariffeCampi);
+  renderSimpleList("tariffecampi-list", tariffe, tariffaCampoLabel, tariffaCampoMeta, "tariffeCampi", loadTariffeCampi, null, startDuplicaTariffaCampo);
 }
 
 function syncTariffaCampoPadelFields() {
   const isPadel = document.getElementById("new-tariffacampo-disciplina").value === "padel";
   document.getElementById("tariffacampo-posizione-field").classList.toggle("hidden", isPadel);
+}
+
+// Precompila il form con i valori di una tariffa esistente (non è una vera
+// modifica: non imposta nessun ID in edit, submit crea sempre una riga
+// nuova) — per velocizzare l'inserimento di tante combinazioni
+// categoria/durata/fascia simili tra loro senza doverle ridigitare da zero.
+function startDuplicaTariffaCampo(item) {
+  document.getElementById("new-tariffacampo-disciplina").value = item.disciplina;
+  syncTariffaCampoPadelFields();
+  document.getElementById("new-tariffacampo-posizione").value = item.posizione || "";
+  document.getElementById("new-tariffacampo-categoria").value = item.categoria;
+  document.querySelectorAll("#tariffacampo-giorni-checks input").forEach(chk => {
+    chk.checked = (item.giorniSettimana || []).includes(chk.value);
+  });
+  document.getElementById("new-tariffacampo-orainizio").value = item.oraInizio || "";
+  document.getElementById("new-tariffacampo-orafine").value = item.oraFine || "";
+  document.getElementById("new-tariffacampo-durata").value = item.durataMinuti != null ? item.durataMinuti : "";
+  document.getElementById("new-tariffacampo-prezzo").value = item.prezzo != null ? item.prezzo : "";
+  document.getElementById("new-tariffacampo-form").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 async function onCreateTariffaCampo(e) {
@@ -1151,19 +1133,41 @@ async function onCreateTariffaCampo(e) {
   const oraInizio = document.getElementById("new-tariffacampo-orainizio").value;
   const oraFine = document.getElementById("new-tariffacampo-orafine").value;
   const disciplina = document.getElementById("new-tariffacampo-disciplina").value;
+  const posizione = disciplina === "padel" ? null : (document.getElementById("new-tariffacampo-posizione").value || null);
+  const categoria = document.getElementById("new-tariffacampo-categoria").value;
+  const durataMinuti = durataRaw !== "" ? parseInt(durataRaw, 10) : null;
   const giorniSettimana = Array.from(document.querySelectorAll("#tariffacampo-giorni-checks input:checked")).map(c => c.value);
   try {
     if (!prezzoRaw) throw new Error("Inserisci un prezzo.");
     if (!oraInizio || !oraFine) throw new Error("Inserisci l'orario di inizio e fine fascia.");
     if (oraInizio >= oraFine) throw new Error("L'orario di fine deve essere successivo a quello di inizio.");
+
+    // Con "Duplica" è facile salvare per sbaglio una copia identica senza
+    // aver cambiato nulla — blocco solo il doppione esatto (stessi giorni,
+    // stesso orario, stessa durata): fasce sovrapposte ma diverse restano
+    // valide, è il modo in cui si definiscono più fasce.
+    const giorniOrdinati = [...giorniSettimana].sort().join(",");
+    const esistentiSnap = await db.collection("tariffeCampi")
+      .where("disciplina", "==", disciplina)
+      .where("posizione", "==", posizione)
+      .where("categoria", "==", categoria)
+      .get();
+    const doppione = esistentiSnap.docs.some(d => {
+      const t = d.data();
+      return t.oraInizio === oraInizio && t.oraFine === oraFine
+        && (t.durataMinuti ?? null) === durataMinuti
+        && [...(t.giorniSettimana || [])].sort().join(",") === giorniOrdinati;
+    });
+    if (doppione) throw new Error("Esiste già una tariffa identica (stessa disciplina, posizione, categoria, giorni, orario e durata).");
+
     await db.collection("tariffeCampi").add({
       disciplina,
-      posizione: disciplina === "padel" ? null : (document.getElementById("new-tariffacampo-posizione").value || null),
-      categoria: document.getElementById("new-tariffacampo-categoria").value,
+      posizione,
+      categoria,
       giorniSettimana,
       oraInizio,
       oraFine,
-      durataMinuti: durataRaw !== "" ? parseInt(durataRaw, 10) : null,
+      durataMinuti,
       prezzo: parseFloat(prezzoRaw),
       attivo: true
     });
@@ -1396,7 +1400,6 @@ requireAuth(async (profile) => {
 
   document.getElementById("centro-form").addEventListener("submit", onSaveDatiCentro);
   document.getElementById("impostazioni-form").addEventListener("submit", onSaveImpostazioni);
-  document.getElementById("tariffe-padel-form").addEventListener("submit", onSaveTariffePadel);
   document.getElementById("new-disciplina-form").addEventListener("submit", onCreateDisciplina);
   document.getElementById("cancel-edit-disciplina-btn").addEventListener("click", cancelEditDisciplina);
   document.getElementById("new-allievo-form").addEventListener("submit", onCreateAllievo);
@@ -1428,7 +1431,6 @@ requireAuth(async (profile) => {
 
   await loadImpostazioniForm();
   await loadDatiCentroForm();
-  await loadTariffePadelForm();
   await loadDisciplineList();
   await loadAllievi();
   await loadTipiUtenza();

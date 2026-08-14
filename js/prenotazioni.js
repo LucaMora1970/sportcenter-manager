@@ -29,7 +29,6 @@ const SLOT_FISSO_PRANZO = 12 * 60 + 15;
 const SLOT_FISSO_SERALE = 17 * 60 + 30; // 17:30, solo lun-ven, solo 90'
 const PX_PER_MIN = 1.1;
 const EDGE_PAD = 10;
-const FESTIVI = [];
 
 // Duplicato da js/prenota-padel.js e functions/index.js — vedi lì per il
 // perché del fuso orario esplicito invece di new Date() nudo.
@@ -59,13 +58,15 @@ function pendingScaduto(booking) {
   return (Date.now() - booking.createdAt.toMillis()) > PENDING_SCADUTO_MINUTI * 60000;
 }
 
+// Un giorno festivo (IMPOSTAZIONI.festivi, js/utils.js) accorcia l'orario
+// come sabato/domenica — stesso criterio del server.
 function chiusuraGiorno(dataIso) {
   const giorno = new Date(dataIso + "T00:00:00").getDay();
-  return (giorno === 0 || giorno === 6 || FESTIVI.includes(dataIso)) ? CLOSE_WEEKEND : CLOSE;
+  return (giorno === 0 || giorno === 6 || (IMPOSTAZIONI.festivi || []).includes(dataIso)) ? CLOSE_WEEKEND : CLOSE;
 }
 function feriale(dataIso) {
   const giorno = new Date(dataIso + "T00:00:00").getDay();
-  return giorno >= 1 && giorno <= 5 && !FESTIVI.includes(dataIso);
+  return giorno >= 1 && giorno <= 5 && !(IMPOSTAZIONI.festivi || []).includes(dataIso);
 }
 function px(min) { return (min - OPEN) * PX_PER_MIN + EDGE_PAD; }
 function orarioToMin(orario) {
@@ -152,9 +153,9 @@ const STATO_STILE = {
 let state = { data: null, duration: null, selected: null, bookingsMinuti: [] };
 
 // Giorni di chiusura totale (collection "chiusurePadel", gestiti più
-// sotto in questa stessa pagina) — diverso da FESTIVI/chiusuraGiorno,
-// che si limita ad accorciare l'orario: qui il campo non è prenotabile
-// da nessuno, nemmeno per blocchi/prenotazioni esenti.
+// sotto in questa stessa pagina) — diverso da IMPOSTAZIONI.festivi +
+// chiusuraGiorno, che si limita ad accorciare l'orario: qui il campo non
+// è prenotabile da nessuno, nemmeno per blocchi/prenotazioni esenti.
 let CHIUSURE_PADEL = new Set();
 async function caricaChiusurePadel() {
   const snap = await db.collection("chiusurePadel").get();
@@ -785,7 +786,7 @@ function fasciaOrariaFor(oraInizio) {
 // domenica, come richiesto — il sabato resta prezzo feriale.
 function domenicaOFestivo(dataIso) {
   const giorno = new Date(dataIso + "T00:00:00").getDay();
-  return giorno === 0 || FESTIVI.includes(dataIso);
+  return giorno === 0 || (IMPOSTAZIONI.festivi || []).includes(dataIso);
 }
 
 function quotaCampoPerPrenotazione(booking, quoteCampoList) {
@@ -1023,6 +1024,7 @@ requireAuth(async (profile) => {
   }
 
   await loadDatiCentro();
+  await loadImpostazioni();
   await caricaChiusurePadel();
 
   state.data = toISO(new Date());

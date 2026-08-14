@@ -111,25 +111,15 @@ function tokensService() {
   return new TokensService(config);
 }
 
-// Stessa logica di js/prenotazioni.js (fasciaTariffa), duplicata qui
-// perché il prezzo va SEMPRE ricalcolato lato server: fidarsi di un
-// prezzo mandato dal client sarebbe falsificabile.
-function fasciaTariffa(oraInizio, durataMinuti) {
-  const [h, m] = oraInizio.split(":").map(Number);
-  const inizioMin = h * 60 + m;
-  return durataMinuti === 60 ? "diurno60" : (inizioMin < BOUNDARY ? "diurno90" : "serale90");
-}
-
 // ---------- Anti-buco (duplicato da js/prenotazioni.js) ----------
-// Stesso motivo di fasciaTariffa: lo slot scelto va sempre riverificato
-// lato server, mai fidarsi di quello arrivato dal client. Se l'algoritmo
-// cambia in js/prenotazioni.js va aggiornato anche qui.
+// Lo slot scelto va sempre riverificato lato server, mai fidarsi di
+// quello arrivato dal client. Se l'algoritmo cambia in js/prenotazioni.js
+// va aggiornato anche qui.
 const OPEN = 8 * 60;
 const CLOSE = 23 * 60;
 const CLOSE_WEEKEND = 20 * 60 + 30;
 const SLOT_FISSO_PRANZO = 12 * 60 + 15;
 const SLOT_FISSO_SERALE = 17 * 60 + 30; // 17:30, solo lun-ven, solo 90'
-const FESTIVI = [];
 
 // Una prenotazione resta "PENDING_PAYMENT" tra la creazione e l'esito del
 // pagamento — se il webhook non arriva mai (pagamento abbandonato,
@@ -147,21 +137,21 @@ function orarioToMin(orario) {
   return h * 60 + m;
 }
 
-function chiusuraGiorno(dataIso) {
+function chiusuraGiorno(dataIso, festivi) {
   const giorno = new Date(dataIso + "T00:00:00").getDay();
-  return (giorno === 0 || giorno === 6 || FESTIVI.includes(dataIso)) ? CLOSE_WEEKEND : CLOSE;
+  return (giorno === 0 || giorno === 6 || (festivi || []).includes(dataIso)) ? CLOSE_WEEKEND : CLOSE;
 }
 
-function feriale(dataIso) {
+function feriale(dataIso, festivi) {
   const giorno = new Date(dataIso + "T00:00:00").getDay();
-  return giorno >= 1 && giorno <= 5 && !FESTIVI.includes(dataIso);
+  return giorno >= 1 && giorno <= 5 && !(festivi || []).includes(dataIso);
 }
 
 // Giorni di chiusura totale (collection "chiusurePadel", doc ID = data
-// ISO) — diverso da FESTIVI/chiusuraGiorno, che si limita ad accorciare
-// l'orario: qui il campo non è prenotabile da nessuno, nemmeno per
-// blocchi/prenotazioni esenti. Va sempre riverificato lato server, mai
-// fidarsi del solo filtro client.
+// ISO) — diverso da impostazioni/generale.festivi + chiusuraGiorno, che si
+// limita ad accorciare l'orario: qui il campo non è prenotabile da
+// nessuno, nemmeno per blocchi/prenotazioni esenti. Va sempre riverificato
+// lato server, mai fidarsi del solo filtro client.
 async function giornoChiuso(dataIso) {
   const doc = await db.collection("chiusurePadel").doc(dataIso).get();
   return doc.exists;
@@ -418,7 +408,12 @@ exports.creaPrenotazionePubblica = onCall(
 
     const court = courtId || COURT_ID;
     const startMin = orarioToMin(startTime);
-    const close = chiusuraGiorno(date);
+    // Giorni festivi (impostazioni/generale.festivi): contano come domenica
+    // ai fini della tariffa e accorciano l'orario di chiusura come sabato/
+    // domenica — un solo fetch, riusato per entrambi qui sotto.
+    const generaleSnap = await db.collection("impostazioni").doc("generale").get();
+    const festivi = generaleSnap.exists ? (generaleSnap.data().festivi || []) : [];
+    const close = chiusuraGiorno(date, festivi);
 
     // Pulizia best-effort delle "PENDING_PAYMENT" scadute (pagamento mai
     // concluso, es. abbandonato o webhook mai arrivato) — fuori dalla
@@ -441,9 +436,6 @@ exports.creaPrenotazionePubblica = onCall(
     // "soci", mai fidandosi delle categorie dichiarate dal client. Stessa
     // funzione di risoluzione categoria del prenotante già usata da
     // creaPrenotazioneCampo (definita più sotto in questo file, hoisted).
-    const generaleSnap = await db.collection("impostazioni").doc("generale").get();
-    const festivi = generaleSnap.exists ? (generaleSnap.data().festivi || []) : [];
-
     const prenotante = await risolviCategoriaPrenotante(request.auth, profiloId);
 
     const altriGiocatoriInput = [
@@ -518,7 +510,7 @@ exports.creaPrenotazionePubblica = onCall(
         .filter(b => b.status === "PENDING_PAYMENT" || b.status === "CONFIRMED" || b.status === "COMPLETED")
         .map(b => ({ start: orarioToMin(b.startTime), end: orarioToMin(b.endTime) }));
 
-      if (!validStarts(existingBookings, durationMinutes, close, feriale(date), eOggi(date)).includes(startMin)) {
+      if (!validStarts(existingBookings, durationMinutes, close, feriale(date, festivi), eOggi(date)).includes(startMin)) {
         throw new HttpsError("failed-precondition", "Questo slot non è più disponibile — scegline un altro.");
       }
 
@@ -649,7 +641,9 @@ exports.creaPrenotazioneOperatore = onCall(async (request) => {
 
   const court = courtId || COURT_ID;
   const startMin = orarioToMin(startTime);
-  const close = chiusuraGiorno(date);
+  const generaleSnap = await db.collection("impostazioni").doc("generale").get();
+  const festivi = generaleSnap.exists ? (generaleSnap.data().festivi || []) : [];
+  const close = chiusuraGiorno(date, festivi);
 
   // Pulizia best-effort delle scadute — fuori dalla transazione qui
   // sotto, è solo pulizia.
@@ -664,11 +658,16 @@ exports.creaPrenotazioneOperatore = onCall(async (request) => {
     throw new HttpsError("failed-precondition", "Questo slot non è più disponibile.");
   }
 
+  // Prezzo puramente teorico/di conteggio interno (mai incassato — il
+  // maestro è esente). "esterno" perché la vecchia tariffa fissa era
+  // uguale per tutti, mai scontata in questo flusso: è l'equivalente più
+  // fedele nel nuovo sistema a categorie di "Tariffe campi".
   let prezzo = 0;
   if (tipo === "STAFF_EXEMPT") {
-    const tariffeSnap = await db.collection("impostazioni").doc("tariffePadel").get();
-    const tariffe = tariffeSnap.exists ? tariffeSnap.data() : {};
-    prezzo = tariffe[fasciaTariffa(startTime, durationMinutes)] || 0;
+    prezzo = await quotaCategoria({
+      disciplina: "padel", posizione: null, categoria: "esterno",
+      dataIso: date, startTime, durataMinuti: durationMinutes, festivi
+    }) || 0;
   }
 
   const token = generaToken();
@@ -688,7 +687,7 @@ exports.creaPrenotazioneOperatore = onCall(async (request) => {
       .filter(b => b.status === "PENDING_PAYMENT" || b.status === "CONFIRMED" || b.status === "COMPLETED")
       .map(b => ({ start: orarioToMin(b.startTime), end: orarioToMin(b.endTime) }));
 
-    if (!validStarts(existingBookings, durationMinutes, close, feriale(date), eOggi(date)).includes(startMin)) {
+    if (!validStarts(existingBookings, durationMinutes, close, feriale(date, festivi), eOggi(date)).includes(startMin)) {
       throw new HttpsError("failed-precondition", "Questo slot non è più disponibile.");
     }
 

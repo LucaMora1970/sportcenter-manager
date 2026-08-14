@@ -82,12 +82,11 @@ function fasciaOrariaFor(oraInizio) {
 // Trova la quota campo dovuta per una voce diario, incrociando
 // disciplina, posizione del campo usato, data (periodo) e — solo per
 // il padel — durata effettiva della lezione e fascia oraria.
-// Nessun elenco festivi mantenuto ancora (stesso stub vuoto usato in
-// prenotazioni.js) — oggi distingue solo la domenica, come richiesto.
-const FESTIVI = [];
+// IMPOSTAZIONI.festivi (js/utils.js) distingue solo la domenica dai
+// festivi infrasettimanali, come richiesto — il sabato resta feriale.
 function domenicaOFestivo(dataIso) {
   const giorno = new Date(dataIso + "T00:00:00").getDay();
-  return giorno === 0 || FESTIVI.includes(dataIso);
+  return giorno === 0 || (IMPOSTAZIONI.festivi || []).includes(dataIso);
 }
 
 function quotaCampoPerEntry(entry, campiById, quoteCampoList) {

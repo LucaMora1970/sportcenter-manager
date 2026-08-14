@@ -57,13 +57,15 @@ const PADEL_BOUNDARY = 17 * 60;
 const PADEL_SLOT_FISSO_PRANZO = 12 * 60 + 15;
 const PADEL_SLOT_FISSO_SERALE = 17 * 60 + 30;
 
+// Un giorno festivo (IMPOSTAZIONI.festivi, js/utils.js) accorcia l'orario
+// come sabato/domenica — stesso criterio delle altre pagine di prenotazione.
 function padelChiusuraGiorno(dataIso) {
   const giorno = new Date(dataIso + "T00:00:00").getDay();
-  return (giorno === 0 || giorno === 6) ? PADEL_CLOSE_WEEKEND : PADEL_CLOSE;
+  return (giorno === 0 || giorno === 6 || (IMPOSTAZIONI.festivi || []).includes(dataIso)) ? PADEL_CLOSE_WEEKEND : PADEL_CLOSE;
 }
 function padelFeriale(dataIso) {
   const giorno = new Date(dataIso + "T00:00:00").getDay();
-  return giorno >= 1 && giorno <= 5;
+  return giorno >= 1 && giorno <= 5 && !(IMPOSTAZIONI.festivi || []).includes(dataIso);
 }
 function padelFreeIntervals(bookings, close) {
   const sorted = [...bookings].sort((a, b) => a.start - b.start);
