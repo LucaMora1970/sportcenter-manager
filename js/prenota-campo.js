@@ -178,7 +178,11 @@ function categoriaCorrente() {
   return p ? p.categoria : "esterno";
 }
 
-function quotaCategoriaClient(disciplina, posizione, categoria, dataIso) {
+function fasciaOrariaCampo(startTime) {
+  return orarioToMin(startTime) < PADEL_BOUNDARY ? "diurno" : "serale";
+}
+
+function quotaCategoriaClient(disciplina, posizione, categoria, dataIso, startTime) {
   const forfaitAttivo = FORFAIT_CAMPI.some(f =>
     f.disciplina === disciplina && f.posizione === posizione
     && dataIso >= f.periodoInizio && dataIso <= f.periodoFine
@@ -188,10 +192,16 @@ function quotaCategoriaClient(disciplina, posizione, categoria, dataIso) {
 
   const giorno = new Date(dataIso + "T00:00:00").getDay();
   const tipoGiorno = giorno === 0 ? "domenica_festivo" : "feriale";
+  const fasciaOraria = fasciaOrariaCampo(startTime);
   const candidati = TARIFFE_CAMPI
     .filter(t => t.disciplina === disciplina && t.posizione === posizione && t.categoria === categoria)
     .filter(t => !t.tipoGiorno || t.tipoGiorno === tipoGiorno)
-    .sort((a, b) => (b.tipoGiorno ? 1 : 0) - (a.tipoGiorno ? 1 : 0));
+    .filter(t => !t.fasciaOraria || t.fasciaOraria === fasciaOraria)
+    .sort((a, b) => {
+      const specificitaA = (a.tipoGiorno ? 1 : 0) + (a.fasciaOraria ? 1 : 0);
+      const specificitaB = (b.tipoGiorno ? 1 : 0) + (b.fasciaOraria ? 1 : 0);
+      return specificitaB - specificitaA;
+    });
   return candidati.length > 0 ? candidati[0].prezzo : null;
 }
 
@@ -380,7 +390,7 @@ function render() {
       const scontoAttivo = (TARIFFE_PADEL.scontoSocioCategorie || []).includes(categoria) && TARIFFE_PADEL.scontoSocioPercentuale > 0;
       prezzoLabel = p == null ? "—" : `CHF ${p.toFixed(2)}${scontoAttivo ? " · sconto socio applicabile" : ""}`;
     } else {
-      const prezzo = quotaCategoriaClient(gruppo.disciplina, gruppo.posizione, categoria, state.data);
+      const prezzo = quotaCategoriaClient(gruppo.disciplina, gruppo.posizione, categoria, state.data, s.inizio);
       prezzoLabel = prezzo == null ? "—" : (prezzo === 0 ? "Incluso" : `da CHF ${prezzo.toFixed(2)}`);
     }
     return `

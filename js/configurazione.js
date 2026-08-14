@@ -994,9 +994,12 @@ function tariffaCampoLabel(it) {
   return `${disciplinaLabel(it.disciplina)} · ${it.posizione ? posizioneLabel(it.posizione) : "Tutti i campi"} · ${CATEGORIA_LABEL[it.categoria] || it.categoria}`;
 }
 
+const FASCIA_ORARIA_CAMPO_LABEL = { diurno: "diurno (prima delle 17:00)", serale: "serale (dalle 17:00)" };
+
 function tariffaCampoMeta(it) {
   const parts = [];
   if (it.tipoGiorno) parts.push(TIPO_GIORNO_LABEL[it.tipoGiorno] || it.tipoGiorno);
+  if (it.fasciaOraria) parts.push(FASCIA_ORARIA_CAMPO_LABEL[it.fasciaOraria] || it.fasciaOraria);
   parts.push("CHF " + (it.prezzo || 0).toFixed(2) + " a slot");
   return parts.join(" · ");
 }
@@ -1022,6 +1025,7 @@ async function onCreateTariffaCampo(e) {
       posizione: document.getElementById("new-tariffacampo-posizione").value || null,
       categoria: document.getElementById("new-tariffacampo-categoria").value,
       tipoGiorno: document.getElementById("new-tariffacampo-giorno").value || null,
+      fasciaOraria: document.getElementById("new-tariffacampo-fascia").value || null,
       prezzo: parseFloat(prezzoRaw),
       attivo: true
     });

@@ -1463,7 +1463,13 @@ exports.dettagliGiocatori = onCall(async (request) => {
 // stagionale (0 se dentro il periodo e categoria inclusa), poi la tariffa
 // a slot con lo stesso criterio "il più specifico vince" già usato per la
 // quota campo dei collaboratori (quotaCampoPerPrenotazione, js/prenotazioni.js).
-async function quotaCategoria({ disciplina, posizione, categoria, dataIso }) {
+// Stessa soglia 17:00 già in uso ovunque nell'app (padel, quota campo
+// collaboratori) — non una nuova convenzione.
+function fasciaOrariaCampo(startTime) {
+  return orarioToMin(startTime) < BOUNDARY ? "diurno" : "serale";
+}
+
+async function quotaCategoria({ disciplina, posizione, categoria, dataIso, startTime }) {
   const forfaitSnap = await db.collection("forfaitCampi")
     .where("disciplina", "==", disciplina)
     .where("posizione", "==", posizione)
@@ -1475,14 +1481,24 @@ async function quotaCategoria({ disciplina, posizione, categoria, dataIso }) {
   if (forfaitAttivo) return 0;
 
   const tipoGiorno = domenicaOFestivo(dataIso) ? "domenica_festivo" : "feriale";
+  const fasciaOraria = fasciaOrariaCampo(startTime);
   const tariffeSnap = await db.collection("tariffeCampi")
     .where("disciplina", "==", disciplina)
     .where("posizione", "==", posizione)
     .where("categoria", "==", categoria)
     .get();
+  // Il più specifico vince: una riga che fissa sia tipo giorno sia fascia
+  // oraria batte una che ne fissa solo uno, che batte una "jolly" senza
+  // nessuno dei due — stesso criterio già in uso per la quota campo dei
+  // collaboratori.
   const candidates = tariffeSnap.docs.map(d => d.data())
     .filter(t => !t.tipoGiorno || t.tipoGiorno === tipoGiorno)
-    .sort((a, b) => (b.tipoGiorno ? 1 : 0) - (a.tipoGiorno ? 1 : 0));
+    .filter(t => !t.fasciaOraria || t.fasciaOraria === fasciaOraria)
+    .sort((a, b) => {
+      const specificitaA = (a.tipoGiorno ? 1 : 0) + (a.fasciaOraria ? 1 : 0);
+      const specificitaB = (b.tipoGiorno ? 1 : 0) + (b.fasciaOraria ? 1 : 0);
+      return specificitaB - specificitaA;
+    });
   return candidates.length > 0 ? candidates[0].prezzo : null;
 }
 
@@ -1601,13 +1617,13 @@ exports.creaPrenotazioneCampo = onCall(
       }
     }
 
-    const quota1 = await quotaCategoria({ disciplina, posizione, categoria: prenotante.categoria, dataIso: date });
+    const quota1 = await quotaCategoria({ disciplina, posizione, categoria: prenotante.categoria, dataIso: date, startTime });
     if (quota1 == null) throw new HttpsError("failed-precondition", "Tariffa non configurata per questo campo/categoria.");
     let prezzo = quota1;
     const prezzoDettaglio = [{ ruolo: "prenotante", categoria: prenotante.categoria, importo: quota1 }];
 
     if (disciplina === "tennis") {
-      const quota2 = await quotaCategoria({ disciplina, posizione, categoria: giocatore2Categoria, dataIso: date });
+      const quota2 = await quotaCategoria({ disciplina, posizione, categoria: giocatore2Categoria, dataIso: date, startTime });
       if (quota2 == null) throw new HttpsError("failed-precondition", "Tariffa non configurata per il secondo giocatore.");
       prezzo += quota2;
       prezzoDettaglio.push({ ruolo: "secondo giocatore", categoria: giocatore2Categoria, importo: quota2 });
