@@ -570,6 +570,7 @@ async function confermaGruppoSlot(corsoId, giorno, orario, container) {
       registraLog(i.id, corsoId, `${i.nome} ${i.cognome}`, "confermato",
         `Confermato su ${giornoLabel} ${orario}${i.campoAssegnato ? " Campo " + i.campoAssegnato : ""} (conferma gruppo)`)
     ));
+    addebitaIscrittiConCartaSalvata(daConfermare);
     await ricaricaIscrizioniCorso(corsoId);
     await ricaricaPanoramicaSeAperta(corsoId);
     await aggiornaContatoriDopoModifica(corsoId);
@@ -584,6 +585,18 @@ async function confermaGruppoSlot(corsoId, giorno, orario, container) {
   }
 }
 
+// Per ciascun iscritto appena confermato che aveva salvato la carta
+// all'iscrizione (tokenStato "ATTIVO"), avvia l'addebito automatico —
+// fire-and-forget: la riga si aggiorna da sola (via ricaricaIscrizioniCorso
+// richiamato altrove) quando il webhook risolve l'esito, non c'è da
+// aspettare qui la risposta prima di continuare.
+function addebitaIscrittiConCartaSalvata(iscritti) {
+  const fn = firebase.functions().httpsCallable("addebitaIscrizioneCorso");
+  iscritti.filter(i => i.tokenStato === "ATTIVO").forEach(i => {
+    fn({ iscrizioneId: i.id }).catch(err => console.error("addebitaIscrizioneCorso:", err));
+  });
+}
+
 // Se la Panoramica di questo corso è aperta, la ricarica — così conferme e
 // rifiuti fatti dalla vista Iscrizioni si riflettono subito nei conteggi.
 async function ricaricaPanoramicaSeAperta(corsoId) {
@@ -592,6 +605,29 @@ async function ricaricaPanoramicaSeAperta(corsoId) {
   const corso = corsiCache.find(c => c.id === corsoId);
   const snap = await db.collection("iscrizioniCorsi").where("corsoId", "==", corsoId).get();
   renderPanoramicaCorso(container, corso, snap.docs.map(d => ({ id: d.id, ...d.data() })));
+}
+
+// Etichetta pagamento (tokenizzazione carta, vedi avviaTokenizzazioneCorso/
+// addebitaIscrizioneCorso): prima dell'iscrizione confermata mostra solo
+// se la carta è stata salvata; dopo la conferma mostra l'esito
+// dell'addebito automatico. Nessuna etichetta se l'iscritto non ha mai
+// avviato il salvataggio carta — resta "da pagare" come sempre, senza
+// nuovo testo che confonda chi non usa questa funzione.
+function pagamentoBadgeHtml(i) {
+  if (i.stato === "in_attesa") {
+    if (i.tokenStato === "ATTIVO") return `<div class="entry-meta">💳 Carta salvata</div>`;
+    if (i.tokenStato === "PENDING") return `<div class="entry-meta">💳 Salvataggio carta in corso</div>`;
+    return "";
+  }
+  if (i.stato === "confermata") {
+    const label = {
+      IN_CORSO: "Addebito automatico in corso…",
+      PAGATO: "✓ Pagato (carta salvata)",
+      FALLITO_LINK_INVIATO: "⚠ Addebito fallito — link di pagamento inviato"
+    }[i.pagamentoStato];
+    return label ? `<div class="entry-meta">${label}</div>` : "";
+  }
+  return "";
 }
 
 function renderIscrizioniCorso(container, corso, iscrizioni) {
@@ -634,6 +670,7 @@ function renderIscrizioniCorso(container, corso, iscrizioni) {
           <div class="entry-meta">Disponibilità: ${disponibilitaLabel}</div>
           ${i.stato === "confermata" && i.giornoAssegnato ? `<div class="entry-meta">Assegnato: ${(GIORNI_SETTIMANA.find(x => x.id === i.giornoAssegnato) || {}).label || i.giornoAssegnato} ${i.orarioAssegnato}${i.campoAssegnato ? " · Campo " + escapeHtml(i.campoAssegnato) : ""}</div>` : ""}
           ${i.stato === "annullata" && i.motivoRifiuto ? `<div class="entry-meta">Motivo: ${escapeHtml(i.motivoRifiuto)}</div>` : ""}
+          ${pagamentoBadgeHtml(i)}
         </div>
         <div style="display:flex;flex-direction:column;gap:6px;">
           ${selectSlot}
@@ -680,6 +717,7 @@ function apriEmailCcn(emails, oggetto, corpo) {
 async function confermaIscrizione(iscrizioneId, corsoId, giorno, orario, nome, campo, email) {
   const corso = corsiCache.find(c => c.id === corsoId);
   const giornoLabel = (GIORNI_SETTIMANA.find(g => g.id === giorno) || {}).label || giorno;
+  const iscrizioneCache = iscrizioniInAttesaCache.find(i => i.id === iscrizioneId);
   try {
     await db.collection("iscrizioniCorsi").doc(iscrizioneId).update({
       stato: "confermata",
@@ -691,6 +729,7 @@ async function confermaIscrizione(iscrizioneId, corsoId, giorno, orario, nome, c
       gestitaDaNome: currentProfile.nome
     });
     await registraLog(iscrizioneId, corsoId, nome, "confermato", `Confermato su ${giornoLabel} ${orario}${campo ? " Campo " + campo : ""}`);
+    addebitaIscrittiConCartaSalvata([{ id: iscrizioneId, tokenStato: iscrizioneCache?.tokenStato }]);
     await ricaricaIscrizioniCorso(corsoId);
     await ricaricaPanoramicaSeAperta(corsoId);
     await aggiornaContatoriDopoModifica(corsoId);
@@ -708,6 +747,7 @@ async function confermaIscrizione(iscrizioneId, corsoId, giorno, orario, nome, c
 // richiesta") così lo staff ha una nota pronta per avvisare l'interessato.
 async function rifiutaIscrizione(iscrizioneId, corsoId, nome, email) {
   const corso = corsiCache.find(c => c.id === corsoId);
+  const iscrizioneCache = iscrizioniInAttesaCache.find(i => i.id === iscrizioneId);
   const motivo = prompt("Motivo del rifiuto (es. numero insufficiente di iscritti nella fascia richiesta) — verrà usato per avvisare l'interessato:", "Numero insufficiente di iscritti nella fascia richiesta");
   if (motivo === null) return;
 
@@ -719,6 +759,12 @@ async function rifiutaIscrizione(iscrizioneId, corsoId, nome, email) {
       gestitaDaNome: currentProfile.nome
     });
     await registraLog(iscrizioneId, corsoId, nome, "rifiutato", motivo);
+    // Corso che non parte (o iscritto scartato): la carta salvata va
+    // eliminata esplicitamente, non lasciata semplicemente inutilizzata.
+    if (iscrizioneCache?.tokenStato === "ATTIVO") {
+      firebase.functions().httpsCallable("eliminaTokenIscrizione")({ iscrizioneId })
+        .catch(err => console.error("eliminaTokenIscrizione:", err));
+    }
     await ricaricaIscrizioniCorso(corsoId);
     await ricaricaPanoramicaSeAperta(corsoId);
     await aggiornaContatoriDopoModifica(corsoId);

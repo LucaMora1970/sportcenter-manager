@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Salvataggio carta — Tennis Club Mendrisio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script>if(localStorage.getItem("sportos-tema")==="light")document.documentElement.setAttribute("data-theme","light");</script>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d1f30">
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <div>
+      <div class="topbar-kicker" id="centro-kicker">Tennis Club Mendrisio</div>
+      <h1>Salvataggio carta</h1>
+    </div>
+    <div></div>
+    <button type="button" class="topbar-link" id="theme-toggle-btn">Tema chiaro</button>
+  </div>
+
+  <main>
+
+    <div id="stato-caricamento" class="empty-state">
+      <div class="display">Verifica in corso…</div>
+      <p>Un istante, stiamo confermando il salvataggio.</p>
+    </div>
+
+    <div id="stato-non-trovato" class="empty-state hidden">
+      <div class="display">Link non valido</div>
+      <p>Il link non è valido o è scaduto — nessun problema, riceverai comunque un link di pagamento quando il corso sarà confermato.</p>
+    </div>
+
+    <div id="stato-attivo" class="empty-state hidden">
+      <div class="display">Carta salvata</div>
+      <p>Tutto pronto — se il corso sarà confermato, l'importo verrà addebitato in automatico senza bisogno di fare altro.</p>
+    </div>
+
+    <div id="stato-fallito" class="empty-state hidden">
+      <div class="display">Carta non salvata</div>
+      <p>Nessun problema: riceverai comunque un link di pagamento via email quando il corso sarà confermato.</p>
+    </div>
+
+    <button type="button" class="btn btn-ghost hidden" id="chiudi-btn" style="margin-top:14px;">Chiudi</button>
+
+  </main>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/iscrizione-corso-carta.js"></script>
+</body>
+</html>

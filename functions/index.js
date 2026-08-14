@@ -34,7 +34,7 @@ const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const { getAuth } = require("firebase-admin/auth");
 const {
-  Configuration, HttpBearerAuth, TransactionsService, LineItemType, TransactionState,
+  Configuration, HttpBearerAuth, TransactionsService, TokensService, LineItemType, TransactionState,
   TransactionEnvironmentSelectionStrategy
 } = require("postfinancecheckout");
 
@@ -98,6 +98,17 @@ function transactionsService() {
     POSTFINANCE_APP_KEY.value()
   );
   return new TransactionsService(config);
+}
+
+// Tokenizzazione carta (corsi a soglia minima): stessa configurazione di
+// transactionsService(), servizio diverso dell'SDK.
+function tokensService() {
+  const config = new Configuration();
+  config.httpBearerAuth = new HttpBearerAuth(
+    parseInt(POSTFINANCE_USER_ID.value(), 10),
+    POSTFINANCE_APP_KEY.value()
+  );
+  return new TokensService(config);
 }
 
 // Stessa logica di js/prenotazioni.js (fasciaTariffa), duplicata qui
@@ -779,7 +790,7 @@ exports.eliminaPrenotazioneOperatore = onCall(async (request) => {
 // Gestisce entrambi i flussi (interno e pubblico), distinguendoli dal
 // contenuto di metaData sulla transazione stessa.
 exports.webhookPostFinance = onRequest(
-  { secrets: [POSTFINANCE_SPACE_ID, POSTFINANCE_USER_ID, POSTFINANCE_APP_KEY] },
+  { secrets: [POSTFINANCE_SPACE_ID, POSTFINANCE_USER_ID, POSTFINANCE_APP_KEY, ...MAIL_SECRETS] },
   async (req, res) => {
     try {
       const transactionId = req.body?.entityId;
@@ -833,6 +844,46 @@ exports.webhookPostFinance = onRequest(
             scadenza: scadenzaDate,
             forfaitPagato: { inizio: oggi, fine: scadenzaIso }
           });
+        }
+      } else if (meta.tipoTransazione === "tokenizzazione_corso" && meta.iscrizioneId) {
+        // Salvataggio carta a costo zero (corsi a soglia minima): sul
+        // successo il token è pronto per un addebito differito; sul
+        // fallimento l'iscritto pagherà comunque più avanti via link,
+        // come chiunque non abbia salvato la carta — nessun blocco.
+        const nuovoStato = successo ? "ATTIVO" : "FALLITO";
+        await db.collection("iscrizioniCorsi").doc(meta.iscrizioneId).update({ tokenStato: nuovoStato });
+        if (meta.verificaToken) {
+          await db.collection("tokenizzazioniCorsi").doc(meta.verificaToken).update({ stato: nuovoStato });
+        }
+      } else if (meta.tipoTransazione === "pagamento_corso" && meta.iscrizioneId) {
+        if (successo) {
+          await db.collection("iscrizioniCorsi").doc(meta.iscrizioneId).update({ pagamentoStato: "PAGATO" });
+        } else if (meta.viaToken === "true") {
+          // Addebito automatico sulla carta salvata fallito (rifiutata,
+          // scaduta, 3-D Secure...): fallback automatico, come deciso —
+          // si genera un link di pagamento normale e si manda via email,
+          // invece di lasciare l'iscritto bloccato in attesa.
+          try {
+            const iscrizioneSnap = await db.collection("iscrizioniCorsi").doc(meta.iscrizioneId).get();
+            const iscrizione = iscrizioneSnap.data();
+            const importo = parseFloat(meta.importo || "0");
+            const paymentPageUrl = await creaLinkPagamentoCorso({
+              iscrizioneId: meta.iscrizioneId, corsoNome: iscrizione.corsoNome, importo, email: iscrizione.email
+            });
+            await iscrizioneSnap.ref.update({
+              pagamentoStato: "FALLITO_LINK_INVIATO", pagamentoLink: paymentPageUrl, pagamentoImporto: importo
+            });
+            if (iscrizione.email) {
+              await inviaEmail({
+                to: iscrizione.email,
+                subject: `Pagamento corso — ${iscrizione.corsoNome || ""}`,
+                html: `<p>Il corso "${iscrizione.corsoNome || ""}" è confermato, ma non siamo riusciti ad addebitare la carta salvata.</p>`
+                  + `<p>Completa il pagamento da qui: <a href="${paymentPageUrl}">${paymentPageUrl}</a></p>`
+              });
+            }
+          } catch (err) {
+            console.error("webhookPostFinance: fallback pagamento_corso fallito:", err);
+          }
         }
       } else if (meta.tipoTransazione === "voucher" && meta.token) {
         // Buono regalo acquistato dalla pagina pubblica — nessun documento
@@ -1693,6 +1744,238 @@ exports.richiediRinnovoAbbonamento = onCall(
       console.error("richiediRinnovoAbbonamento: errore PostFinance:", err);
       throw new HttpsError("internal", "Errore nella creazione del pagamento. Riprova.");
     }
+  }
+);
+
+// ---------- Tokenizzazione carta per corsi a soglia minima ----------
+//
+// Meccanismo generico "salva carta ora, addebita più avanti" — pensato
+// per essere riusabile anche da altri casi futuri di addebito differito,
+// non solo dai corsi. Due passaggi separati nell'SDK PostFinance:
+// - un Token (nessun importo) verificato tramite una transazione dedicata
+//   che il cliente completa sulla pagina di checkout ospitata, come le
+//   transazioni normali;
+// - quando si conosce l'importo, una transazione normale che referenzia
+//   il token invece dei dati carta, finalizzata senza che il cliente sia
+//   presente (postPaymentTransactionsIdProcessWithToken).
+// Come sempre in questo file: l'esito autorevole arriva dal webhook, mai
+// dalla sola risposta sincrona di una chiamata PostFinance.
+
+exports.avviaTokenizzazioneCorso = onCall(
+  { secrets: [POSTFINANCE_SPACE_ID, POSTFINANCE_USER_ID, POSTFINANCE_APP_KEY] },
+  async (request) => {
+    const { iscrizioneId } = request.data || {};
+    if (!iscrizioneId) throw new HttpsError("invalid-argument", "iscrizioneId mancante.");
+
+    const iscrizioneRef = db.collection("iscrizioniCorsi").doc(iscrizioneId);
+    const iscrizioneSnap = await iscrizioneRef.get();
+    if (!iscrizioneSnap.exists) throw new HttpsError("not-found", "Iscrizione non trovata.");
+    const iscrizione = iscrizioneSnap.data();
+    if (iscrizione.stato !== "in_attesa") {
+      throw new HttpsError("failed-precondition", "Questa iscrizione non è più in attesa.");
+    }
+
+    const spaceId = parseInt(POSTFINANCE_SPACE_ID.value(), 10);
+    const tService = tokensService();
+    const verificaToken = generaToken();
+
+    try {
+      const token = await tService.postPaymentTokens({
+        space: spaceId,
+        tokenCreate: {
+          externalId: iscrizioneId,
+          customerEmailAddress: iscrizione.email,
+          enabledForOneClickPayment: true
+        }
+      });
+
+      const transaction = await tService.postPaymentTokensIdCreateTransactionForTokenUpdate({
+        id: token.id,
+        space: spaceId
+      });
+
+      // La transazione di verifica non nasce con successUrl/failedUrl
+      // configurabili in un colpo solo (a differenza di una TransactionCreate
+      // normale): vanno impostate con un patch sulla transazione pending
+      // appena creata, prima di generarne la pagina di pagamento. Stessa
+      // occasione per mettere il metaData (non impostabile alla creazione,
+      // che qui non passa da una TransactionCreate) — è quello che il
+      // webhook userà per riconoscere questo tipo di transazione.
+      await transactionsService().patchPaymentTransactionsId({
+        id: transaction.id,
+        space: spaceId,
+        transactionPending: {
+          successUrl: `${APP_URL}iscrizione-corso-carta.html?t=${verificaToken}`,
+          failedUrl: `${APP_URL}iscrizione-corso-carta.html?t=${verificaToken}`,
+          metaData: { tipoTransazione: "tokenizzazione_corso", iscrizioneId, verificaToken }
+        }
+      });
+
+      const paymentPageUrl = await transactionsService().getPaymentTransactionsIdPaymentPageUrl({
+        id: transaction.id,
+        space: spaceId
+      });
+
+      await iscrizioneRef.update({
+        tokenId: token.id,
+        tokenStato: "PENDING",
+        tokenVerificaToken: verificaToken
+      });
+      // Documento pubblico separato (vedi firestore.rules): la pagina di
+      // ritorno senza login legge questo, mai "iscrizioniCorsi" (dati
+      // sensibili, mai leggibile dal pubblico).
+      await db.collection("tokenizzazioniCorsi").doc(verificaToken).set({
+        iscrizioneId, stato: "PENDING", createdAt: FieldValue.serverTimestamp()
+      });
+
+      return { paymentPageUrl };
+    } catch (err) {
+      console.error("avviaTokenizzazioneCorso: errore PostFinance:", err);
+      throw new HttpsError("internal", "Errore nel salvataggio della carta. Riprova.");
+    }
+  }
+);
+
+// Addebita l'iscritto sulla carta salvata quando lo staff conferma la sua
+// iscrizione (segno che il corso ha raggiunto la soglia minima). Se non
+// c'è un token attivo non fa nulla: l'iscritto resta "da pagare", da
+// gestire come oggi (manualmente, fuori da questo meccanismo).
+exports.addebitaIscrizioneCorso = onCall(
+  { secrets: [POSTFINANCE_SPACE_ID, POSTFINANCE_USER_ID, POSTFINANCE_APP_KEY] },
+  async (request) => {
+    if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+    const { permessi, isAdmin } = await permessiUtente(request.auth.uid);
+    if (!isAdmin && !permessi.includes("iscrizioni:gestisci")) {
+      throw new HttpsError("permission-denied", "Permesso mancante.");
+    }
+
+    const { iscrizioneId } = request.data || {};
+    if (!iscrizioneId) throw new HttpsError("invalid-argument", "iscrizioneId mancante.");
+
+    const iscrizioneRef = db.collection("iscrizioniCorsi").doc(iscrizioneId);
+    const iscrizioneSnap = await iscrizioneRef.get();
+    if (!iscrizioneSnap.exists) throw new HttpsError("not-found", "Iscrizione non trovata.");
+    const iscrizione = iscrizioneSnap.data();
+
+    if (iscrizione.tokenStato !== "ATTIVO") {
+      return { addebitato: false, motivo: "Nessuna carta salvata per questa iscrizione." };
+    }
+
+    const corsoSnap = await db.collection("corsi").doc(iscrizione.corsoId).get();
+    const corso = corsoSnap.exists ? corsoSnap.data() : {};
+    const importo = corso.prezzoRichiesto;
+    if (!importo || importo <= 0) {
+      return { addebitato: false, motivo: "Prezzo del corso non configurato." };
+    }
+
+    const spaceId = parseInt(POSTFINANCE_SPACE_ID.value(), 10);
+    const service = transactionsService();
+    try {
+      const transaction = await service.postPaymentTransactions({
+        space: spaceId,
+        transactionCreate: {
+          currency: "CHF",
+          merchantReference: iscrizioneId,
+          token: iscrizione.tokenId,
+          lineItems: [{
+            uniqueId: iscrizioneId,
+            name: `Corso ${iscrizione.corsoNome || ""}`,
+            quantity: 1,
+            amountIncludingTax: importo,
+            type: LineItemType.Product
+          }],
+          metaData: { tipoTransazione: "pagamento_corso", iscrizioneId, viaToken: "true", importo: String(importo) },
+          environmentSelectionStrategy: FORZA_AMBIENTE_TEST
+            ? TransactionEnvironmentSelectionStrategy.ForceTestEnvironment
+            : TransactionEnvironmentSelectionStrategy.UseConfiguration
+        }
+      });
+
+      await service.postPaymentTransactionsIdProcessWithToken({ id: transaction.id, space: spaceId });
+      await iscrizioneRef.update({ pagamentoStato: "IN_CORSO", pagamentoImporto: importo });
+      return { addebitato: true };
+    } catch (err) {
+      console.error("addebitaIscrizioneCorso: errore PostFinance:", err);
+      // Non blocca la conferma già avvenuta: l'iscrizione resta "da
+      // pagare", gestibile manualmente o con un nuovo tentativo.
+      return { addebitato: false, motivo: "Errore nell'addebito. Riprova o invia un link di pagamento." };
+    }
+  }
+);
+
+// Genera una transazione Checkout normale (redirect, come richiediPagamentoDiario)
+// per l'importo indicato — usata sia come fallback automatico dal webhook
+// (addebito su token fallito) sia riutilizzabile in futuro per un invio
+// manuale. Ritorna il link, non lo invia: l'invio è responsabilità di chi
+// chiama (qui, il webhook stesso via inviaEmail).
+async function creaLinkPagamentoCorso({ iscrizioneId, corsoNome, importo, email }) {
+  const spaceId = parseInt(POSTFINANCE_SPACE_ID.value(), 10);
+  const service = transactionsService();
+  const token = generaToken();
+
+  const transaction = await service.postPaymentTransactions({
+    space: spaceId,
+    transactionCreate: {
+      currency: "CHF",
+      merchantReference: `${iscrizioneId}-link`,
+      successUrl: `${APP_URL}pagamento-conferma.html?t=${token}`,
+      failedUrl: `${APP_URL}pagamento-conferma.html?t=${token}`,
+      customerEmailAddress: email || undefined,
+      lineItems: [{
+        uniqueId: iscrizioneId,
+        name: `Corso ${corsoNome || ""}`,
+        quantity: 1,
+        amountIncludingTax: importo,
+        type: LineItemType.Product
+      }],
+      metaData: { tipoTransazione: "pagamento_corso", iscrizioneId, importo: String(importo) },
+      environmentSelectionStrategy: FORZA_AMBIENTE_TEST
+        ? TransactionEnvironmentSelectionStrategy.ForceTestEnvironment
+        : TransactionEnvironmentSelectionStrategy.UseConfiguration
+    }
+  });
+  const paymentPageUrl = await service.getPaymentTransactionsIdPaymentPageUrl({ id: transaction.id, space: spaceId });
+
+  await db.collection("paymentRequests").doc(token).set({
+    tipo: "corso", riferimentoId: iscrizioneId, importo,
+    descrizione: `Corso ${corsoNome || ""}`,
+    stato: "PENDING", createdByUid: null, createdByNome: null,
+    createdAt: FieldValue.serverTimestamp()
+  });
+
+  return paymentPageUrl;
+}
+
+// Elimina esplicitamente il token salvato (non lo lascia semplicemente
+// inutilizzato) quando un'iscrizione con carta salvata viene rifiutata —
+// es. corso che non raggiunge la soglia minima e non parte.
+exports.eliminaTokenIscrizione = onCall(
+  { secrets: [POSTFINANCE_SPACE_ID, POSTFINANCE_USER_ID, POSTFINANCE_APP_KEY] },
+  async (request) => {
+    if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+    const { permessi, isAdmin } = await permessiUtente(request.auth.uid);
+    if (!isAdmin && !permessi.includes("iscrizioni:gestisci")) {
+      throw new HttpsError("permission-denied", "Permesso mancante.");
+    }
+
+    const { iscrizioneId } = request.data || {};
+    if (!iscrizioneId) throw new HttpsError("invalid-argument", "iscrizioneId mancante.");
+
+    const iscrizioneRef = db.collection("iscrizioniCorsi").doc(iscrizioneId);
+    const iscrizioneSnap = await iscrizioneRef.get();
+    if (!iscrizioneSnap.exists) throw new HttpsError("not-found", "Iscrizione non trovata.");
+    const iscrizione = iscrizioneSnap.data();
+
+    if (iscrizione.tokenStato !== "ATTIVO") return { eliminato: false };
+
+    const spaceId = parseInt(POSTFINANCE_SPACE_ID.value(), 10);
+    try {
+      await tokensService().deletePaymentTokensId({ id: iscrizione.tokenId, space: spaceId });
+    } catch (err) {
+      console.error("eliminaTokenIscrizione: errore PostFinance:", err);
+    }
+    await iscrizioneRef.update({ tokenStato: "ELIMINATO" });
+    return { eliminato: true };
   }
 );
 

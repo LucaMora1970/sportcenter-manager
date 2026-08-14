@@ -171,7 +171,7 @@ async function onSubmitIscrizione(e) {
 
     const nrOreRaw = document.getElementById("isc-nrore").value;
 
-    await db.collection("iscrizioniCorsi").add({
+    const iscrizioneRef = await db.collection("iscrizioniCorsi").add({
       corsoId: corsoSelezionato.id,
       corsoNome: corsoSelezionato.nome,
       nome: document.getElementById("isc-nome").value.trim(),
@@ -197,11 +197,43 @@ async function onSubmitIscrizione(e) {
     document.getElementById("step-form").classList.add("hidden");
     document.getElementById("step-fatto").classList.remove("hidden");
     document.getElementById("step-fatto").scrollIntoView({ behavior: "smooth", block: "start" });
+
+    // Il salvataggio carta ha senso solo per corsi con una soglia minima
+    // di iscritti configurata — è il caso a cui serve l'addebito
+    // automatico differito, unico scenario in cui non si conosce ancora
+    // se/quando il corso partirà davvero.
+    if (corsoSelezionato.minIscrittiConferma) {
+      document.getElementById("step-carta").classList.remove("hidden");
+      document.getElementById("salva-carta-btn").addEventListener("click", () => avviaSalvataggioCarta(iscrizioneRef.id));
+    }
   } catch (err) {
     showError(errorEl, "Errore nell'invio: " + err.message);
   } finally {
     btn.disabled = false;
     btn.textContent = "Invia iscrizione";
+  }
+}
+
+// Salvataggio carta facoltativo (a costo zero): reindirizza alla pagina
+// di checkout ospitata di PostFinance, di ritorno su
+// iscrizione-corso-carta.html — nessun addebito qui, solo verifica carta.
+async function avviaSalvataggioCarta(iscrizioneId) {
+  const btn = document.getElementById("salva-carta-btn");
+  const errorEl = document.getElementById("salva-carta-error");
+  errorEl.textContent = "";
+  btn.disabled = true;
+  btn.textContent = "Attendere…";
+  mostraCaricamento("Preparazione del salvataggio carta…");
+
+  try {
+    const fn = firebase.functions().httpsCallable("avviaTokenizzazioneCorso");
+    const result = await fn({ iscrizioneId });
+    window.location.href = result.data.paymentPageUrl;
+  } catch (err) {
+    nascondiCaricamento();
+    showError(errorEl, "Errore: " + (err.message || err));
+    btn.disabled = false;
+    btn.textContent = "Salva carta ora (facoltativo)";
   }
 }
 

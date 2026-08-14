@@ -130,6 +130,12 @@
         <div class="display">Iscrizione inviata</div>
         <p>Grazie! Il nostro team valuterà la disponibilità e ti contatterà via email per la conferma del corso.</p>
       </div>
+
+      <div id="step-carta" class="hidden" style="margin-top:18px;">
+        <p style="color:var(--chalk-grey);font-size:0.85rem;">Vuoi salvare la carta ora, cosicché — se il corso parte — l'importo venga addebitato in automatico senza doverci pensare? È facoltativo: se preferisci, riceverai comunque un link di pagamento quando il corso sarà confermato.</p>
+        <button type="button" class="btn btn-primary" id="salva-carta-btn" style="width:auto;padding:10px 16px;">Salva carta ora (facoltativo)</button>
+        <div class="error-msg" id="salva-carta-error"></div>
+      </div>
     </div>
 
   </main>
@@ -139,6 +145,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
 <script src="js/firebase-config.js"></script>
 <script src="js/utils.js"></script>
 <script src="js/iscrizione-corso.js"></script>

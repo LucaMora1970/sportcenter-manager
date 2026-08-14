@@ -381,6 +381,19 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Esito del salvataggio carta (corsi a soglia minima): stesso pattern
+    // di paymentRequests — l'ID del documento È il token, conoscerlo (dal
+    // redirect di PostFinance) è l'autorizzazione a leggere quell'esito.
+    // Separata da "iscrizioniCorsi" apposta: quella contiene dati
+    // sensibili (indirizzo, contatti) e non è mai leggibile dal pubblico,
+    // qui invece la pagina di ritorno senza login deve poter sapere se la
+    // carta è stata salvata.
+    match /tokenizzazioniCorsi/{token} {
+      allow get: if true;
+      allow list: if hasPermission("iscrizioni:gestisci");
+      allow write: if false;
+    }
+
     // ============================================================
     // Prenotazione campi tennis/squash con tariffe a categoria e
     // riconoscimento del dispositivo (nessun account tradizionale):
