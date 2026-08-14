@@ -13,6 +13,36 @@
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0d1f30">
+<style>
+  details.config-section {
+    border-bottom: 1px solid var(--court-blue-700);
+  }
+  details.config-section:first-of-type {
+    border-top: 1px solid var(--court-blue-700);
+  }
+  details.config-section > summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 16px 2px;
+  }
+  details.config-section > summary::-webkit-details-marker { display: none; }
+  details.config-section > summary h2 { margin: 0; }
+  details.config-section > summary::after {
+    content: "+";
+    flex: 0 0 auto;
+    font-size: 1.3rem;
+    line-height: 1;
+    color: var(--chalk-grey);
+  }
+  details.config-section[open] > summary::after { content: "\2212"; }
+  details.config-section > .config-section-body {
+    padding: 0 2px 22px;
+  }
+</style>
 </head>
 <body>
 <div class="app">
@@ -37,8 +67,9 @@
 
       <div class="error-msg" id="config-list-error"></div>
 
-      <!-- Dati del centro -->
-      <div class="section-title"><h2>Dati del centro</h2></div>
+      <details class="config-section">
+      <summary><h2>Dati del centro</h2></summary>
+      <div class="config-section-body">
       <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Usati sul biglietto delle prenotazioni padel e sui documenti stampati (liste, panoramiche, riepiloghi).</p>
       <form id="centro-form">
         <div class="field">
@@ -76,11 +107,12 @@
         <div class="error-msg" id="centro-error"></div>
         <button type="submit" class="btn btn-ghost" id="salva-centro-btn">Salva</button>
       </form>
+      </div>
+      </details>
 
-      <hr class="court-divider">
-
-      <!-- Link pubblici -->
-      <div class="section-title"><h2>Link pubblici</h2></div>
+      <details class="config-section">
+      <summary><h2>Link pubblici</h2></summary>
+      <div class="config-section-body">
       <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Tutti i link attivi dell'app, sempre aggiornati al dominio corrente — utile per non doverli ricordare o rigenerare a mano.</p>
 
       <div class="field">
@@ -159,11 +191,12 @@
           <button type="button" class="btn btn-ghost" id="copia-link-chi-in-campo-btn" style="width:auto;padding:10px 16px;">Copia</button>
         </div>
       </div>
+      </div>
+      </details>
 
-      <hr class="court-divider">
-
-      <!-- Impostazioni generali -->
-      <div class="section-title"><h2>Impostazioni generali</h2></div>
+      <details class="config-section">
+      <summary><h2>Impostazioni generali</h2></summary>
+      <div class="config-section-body">
       <form id="impostazioni-form">
         <div class="field">
           <label for="minuti-eliminazione-diario">Minuti entro cui un collaboratore può eliminare una propria voce diario</label>
@@ -173,44 +206,12 @@
         <div class="error-msg" id="impostazioni-error"></div>
         <button type="submit" class="btn btn-ghost" id="salva-impostazioni-btn">Salva</button>
       </form>
+      </div>
+      </details>
 
-      <hr class="court-divider">
-
-      <!-- Tariffe padel -->
-      <div class="section-title"><h2>Tariffe padel</h2></div>
-      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Prezzo mostrato e registrato a chi prenota dal tabellone. I maestri (utenti "Soggetto a quota campo" in Team) sono esenti — la tariffa teorica resta comunque registrata per il conteggio a fattura.</p>
-      <form id="tariffe-padel-form">
-        <div class="field">
-          <label for="tariffa-diurno-60">Diurno (fino alle 17:00) — 60' (CHF)</label>
-          <input type="number" id="tariffa-diurno-60" min="0" step="0.5" required placeholder="es. 56">
-        </div>
-        <div class="field">
-          <label for="tariffa-diurno-90">Diurno (fino alle 17:00) — 90' (CHF)</label>
-          <input type="number" id="tariffa-diurno-90" min="0" step="0.5" required placeholder="es. 64">
-        </div>
-        <div class="field">
-          <label for="tariffa-serale-90">Serale (dalle 17:00) — 90' (CHF)</label>
-          <input type="number" id="tariffa-serale-90" min="0" step="0.5" required placeholder="es. 90">
-        </div>
-
-        <p style="color:var(--chalk-grey);font-size:0.82rem;margin:14px 0 8px;">Sconto socio (tariffa fissa, sconto cumulativo se anche i compagni di gioco sono riconosciuti in una categoria agevolata — fino a 4 giocatori):</p>
-        <div class="field">
-          <label for="tariffa-sconto-socio">Percentuale di sconto per giocatore riconosciuto (%)</label>
-          <input type="number" id="tariffa-sconto-socio" min="0" max="100" step="1" placeholder="es. 10">
-        </div>
-        <div class="field">
-          <label>Categorie agevolate</label>
-          <div id="tariffa-sconto-categorie-checks"></div>
-        </div>
-
-        <div class="error-msg" id="tariffe-padel-error"></div>
-        <button type="submit" class="btn btn-ghost" id="salva-tariffe-padel-btn">Salva</button>
-      </form>
-
-      <hr class="court-divider">
-
-      <!-- Discipline -->
-      <div class="section-title"><h2>Discipline</h2></div>
+      <details class="config-section">
+      <summary><h2>Discipline</h2></summary>
+      <div class="config-section-body">
       <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Voci selezionabili come disciplina nel diario. Tennis, Padel e Squash usano i campi; le altre (es. Preparatore atletico, Mental Coach) possono restare senza campo assegnato.</p>
       <div id="discipline-list">
         <div class="empty-state"><div class="display">Caricamento…</div></div>
@@ -234,11 +235,12 @@
         <button type="submit" class="btn btn-ghost" id="create-disciplina-btn">+ Aggiungi disciplina</button>
         <button type="button" class="btn btn-ghost hidden" id="cancel-edit-disciplina-btn" style="margin-top:10px;">Annulla modifica</button>
       </form>
+      </div>
+      </details>
 
-      <hr class="court-divider">
-
-      <!-- Allievi -->
-      <div class="section-title"><h2>Allievi</h2></div>
+      <details class="config-section">
+      <summary><h2>Allievi</h2></summary>
+      <div class="config-section-body">
       <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Anagrafica nomi per la fatturazione (es. sparring). Chiunque inserisca il diario può aggiungerne di nuovi al volo; qui puoi rinominarli o disattivarli.</p>
       <div id="allievi-list">
         <div class="empty-state"><div class="display">Caricamento…</div></div>
@@ -262,11 +264,12 @@
         <button type="submit" class="btn btn-ghost" id="create-allievo-btn">+ Aggiungi allievo</button>
         <button type="button" class="btn btn-ghost hidden" id="cancel-edit-allievo-btn" style="margin-top:10px;">Annulla modifica</button>
       </form>
+      </div>
+      </details>
 
-      <hr class="court-divider">
-
-      <!-- Tipi utenza -->
-      <div class="section-title"><h2>Tipi utenza</h2></div>
+      <details class="config-section">
+      <summary><h2>Tipi utenza</h2></summary>
+      <div class="config-section-body">
       <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Categorie cliente usate per le tariffe (es. Socio, Non socio, Junior).</p>
       <div id="tipiutenza-list">
         <div class="empty-state"><div class="display">Caricamento…</div></div>
@@ -280,11 +283,12 @@
         <button type="submit" class="btn btn-ghost" id="create-tipoutenza-btn">+ Aggiungi tipo utenza</button>
         <button type="button" class="btn btn-ghost hidden" id="cancel-edit-tipoutenza-btn" style="margin-top:10px;">Annulla modifica</button>
       </form>
+      </div>
+      </details>
 
-      <hr class="court-divider">
-
-      <!-- Campi -->
-      <div class="section-title"><h2>Campi</h2></div>
+      <details class="config-section">
+      <summary><h2>Campi</h2></summary>
+      <div class="config-section-body">
       <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Numero campi disponibili per disciplina.</p>
       <div id="campi-list">
         <div class="empty-state"><div class="display">Caricamento…</div></div>
@@ -308,11 +312,12 @@
         <button type="submit" class="btn btn-ghost" id="create-campo-btn">+ Aggiungi campo</button>
         <button type="button" class="btn btn-ghost hidden" id="cancel-edit-campo-btn" style="margin-top:10px;">Annulla modifica</button>
       </form>
+      </div>
+      </details>
 
-      <hr class="court-divider">
-
-      <!-- Tipi gruppo Padel -->
-      <div class="section-title"><h2>Tipi gruppo Padel</h2></div>
+      <details class="config-section">
+      <summary><h2>Tipi gruppo Padel</h2></summary>
+      <div class="config-section-body">
       <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Composizione lezione/partita (es. Singola, Doppia, Tripla, Quadrupla).</p>
       <div id="tipigruppopadel-list">
         <div class="empty-state"><div class="display">Caricamento…</div></div>
@@ -325,11 +330,12 @@
         <div class="error-msg" id="new-tipogruppopadel-error"></div>
         <button type="submit" class="btn btn-ghost">+ Aggiungi tipo gruppo</button>
       </form>
+      </div>
+      </details>
 
-      <hr class="court-divider">
-
-      <!-- Tipi attività -->
-      <div class="section-title"><h2>Tipi attività</h2></div>
+      <details class="config-section">
+      <summary><h2>Tipi attività</h2></summary>
+      <div class="config-section-body">
       <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Voci selezionabili nel diario, con tariffe opzionali per tipo utenza e periodo.</p>
       <div id="tipiattivita-list">
         <div class="empty-state"><div class="display">Caricamento…</div></div>
@@ -387,11 +393,12 @@
         <button type="submit" class="btn btn-primary" id="create-tipoattivita-btn">Crea tipo attività</button>
         <button type="button" class="btn btn-ghost hidden" id="cancel-edit-tipoattivita-btn" style="margin-top:10px;">Annulla modifica</button>
       </form>
+      </div>
+      </details>
 
-      <hr class="court-divider">
-
-      <!-- Quote campo -->
-      <div class="section-title"><h2>Quote campo</h2></div>
+      <details class="config-section">
+      <summary><h2>Quote campo</h2></summary>
+      <div class="config-section-body">
       <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Importo dovuto dal collaboratore al circolo per l'uso del campo, in base a disciplina, posizione e periodo (per il padel anche durata lezione e fascia oraria).</p>
       <div id="quotecampo-list">
         <div class="empty-state"><div class="display">Caricamento…</div></div>
@@ -448,11 +455,12 @@
         <div class="error-msg" id="new-quotacampo-error"></div>
         <button type="submit" class="btn btn-ghost">+ Aggiungi quota campo</button>
       </form>
+      </div>
+      </details>
 
-      <hr class="court-divider">
-
-      <!-- Soci -->
-      <div class="section-title"><h2>Soci (prenotazione campi)</h2></div>
+      <details class="config-section">
+      <summary><h2>Soci (prenotazione campi)</h2></summary>
+      <div class="config-section-body">
       <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Anagrafica per riconoscere chi prenota tennis/squash e applicare la tariffa giusta — mai visibile lato pubblico. Incolla una riga per persona: <code>nome;cognome;email;categoria;telefono;tessera</code> (categoria: socio, junior, studente, azienda).</p>
       <form id="import-soci-form">
         <div class="field">
@@ -463,11 +471,46 @@
         <div class="success-msg" id="import-soci-success"></div>
         <button type="submit" class="btn btn-ghost" id="import-soci-btn">Importa</button>
       </form>
+      </div>
+      </details>
 
-      <hr class="court-divider">
+      <details class="config-section">
+      <summary><h2>Tariffe padel</h2></summary>
+      <div class="config-section-body">
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Prezzo mostrato e registrato a chi prenota dal tabellone. I maestri (utenti "Soggetto a quota campo" in Team) sono esenti — la tariffa teorica resta comunque registrata per il conteggio a fattura.</p>
+      <form id="tariffe-padel-form">
+        <div class="field">
+          <label for="tariffa-diurno-60">Diurno (fino alle 17:00) — 60' (CHF)</label>
+          <input type="number" id="tariffa-diurno-60" min="0" step="0.5" required placeholder="es. 56">
+        </div>
+        <div class="field">
+          <label for="tariffa-diurno-90">Diurno (fino alle 17:00) — 90' (CHF)</label>
+          <input type="number" id="tariffa-diurno-90" min="0" step="0.5" required placeholder="es. 64">
+        </div>
+        <div class="field">
+          <label for="tariffa-serale-90">Serale (dalle 17:00) — 90' (CHF)</label>
+          <input type="number" id="tariffa-serale-90" min="0" step="0.5" required placeholder="es. 90">
+        </div>
 
-      <!-- Tariffe campi (tennis/squash) -->
-      <div class="section-title"><h2>Tariffe campi (tennis/squash)</h2></div>
+        <p style="color:var(--chalk-grey);font-size:0.82rem;margin:14px 0 8px;">Sconto socio (tariffa fissa, sconto cumulativo se anche i compagni di gioco sono riconosciuti in una categoria agevolata — fino a 4 giocatori):</p>
+        <div class="field">
+          <label for="tariffa-sconto-socio">Percentuale di sconto per giocatore riconosciuto (%)</label>
+          <input type="number" id="tariffa-sconto-socio" min="0" max="100" step="1" placeholder="es. 10">
+        </div>
+        <div class="field">
+          <label>Categorie agevolate</label>
+          <div id="tariffa-sconto-categorie-checks"></div>
+        </div>
+
+        <div class="error-msg" id="tariffe-padel-error"></div>
+        <button type="submit" class="btn btn-ghost" id="salva-tariffe-padel-btn">Salva</button>
+      </form>
+      </div>
+      </details>
+
+      <details class="config-section">
+      <summary><h2>Tariffe campi (tennis/squash)</h2></summary>
+      <div class="config-section-body">
       <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Prezzo a slot per disciplina, posizione e categoria di chi gioca. Nel tennis il prezzo dello slot è la somma delle tariffe dei due giocatori.</p>
       <div id="tariffecampi-list">
         <div class="empty-state"><div class="display">Caricamento…</div></div>
@@ -507,11 +550,12 @@
         <div class="error-msg" id="new-tariffacampo-error"></div>
         <button type="submit" class="btn btn-ghost">+ Aggiungi tariffa</button>
       </form>
+      </div>
+      </details>
 
-      <hr class="court-divider">
-
-      <!-- Forfait stagionale -->
-      <div class="section-title"><h2>Forfait stagionale</h2></div>
+      <details class="config-section">
+      <summary><h2>Forfait stagionale</h2></summary>
+      <div class="config-section-body">
       <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Periodo in cui le categorie selezionate giocano incluse (0 CHF), invece della tariffa a slot. I campi esterni tipicamente hanno un periodo più lungo degli interni.</p>
       <div id="forfaitcampi-list">
         <div class="empty-state"><div class="display">Caricamento…</div></div>
@@ -547,11 +591,12 @@
         <div class="error-msg" id="new-forfaitcampo-error"></div>
         <button type="submit" class="btn btn-ghost">+ Aggiungi forfait</button>
       </form>
+      </div>
+      </details>
 
-      <hr class="court-divider">
-
-      <!-- Chiusure centro -->
-      <div class="section-title"><h2>Chiusure centro</h2></div>
+      <details class="config-section">
+      <summary><h2>Chiusure centro</h2></summary>
+      <div class="config-section-body">
       <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Giornate in cui il centro (o solo alcune discipline) non è prenotabile.</p>
       <div id="chiusurecentro-list">
         <div class="empty-state"><div class="display">Caricamento…</div></div>
@@ -574,11 +619,12 @@
         <div class="error-msg" id="new-chiusuracentro-error"></div>
         <button type="submit" class="btn btn-ghost">+ Aggiungi chiusura</button>
       </form>
+      </div>
+      </details>
 
-      <hr class="court-divider">
-
-      <!-- Impostazioni prenotazioni campi -->
-      <div class="section-title"><h2>Impostazioni prenotazioni campi</h2></div>
+      <details class="config-section">
+      <summary><h2>Impostazioni prenotazioni campi</h2></summary>
+      <div class="config-section-body">
       <form id="prenotazionicampi-form">
         <div class="row2">
           <div class="field">
@@ -606,11 +652,12 @@
         <div class="error-msg" id="prenotazionicampi-error"></div>
         <button type="submit" class="btn btn-ghost" id="salva-prenotazionicampi-btn">Salva</button>
       </form>
+      </div>
+      </details>
 
-      <hr class="court-divider">
-
-      <!-- Articoli (Cassa/Bar) -->
-      <div class="section-title"><h2>Articoli (Cassa)</h2></div>
+      <details class="config-section">
+      <summary><h2>Articoli (Cassa)</h2></summary>
+      <div class="config-section-body">
       <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Catalogo articoli in vendita alla Cassa (palline, noleggi, ore campo, tornei...), con prezzo di default modificabile al momento della vendita.</p>
       <div id="articoli-list">
         <div class="empty-state"><div class="display">Caricamento…</div></div>
@@ -630,6 +677,8 @@
         <button type="submit" class="btn btn-ghost" id="create-articolo-btn">+ Aggiungi articolo</button>
         <button type="button" class="btn btn-ghost hidden" id="cancel-edit-articolo-btn" style="margin-top:10px;">Annulla modifica</button>
       </form>
+      </div>
+      </details>
 
     </div>
 

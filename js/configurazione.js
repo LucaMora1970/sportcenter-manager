@@ -1221,7 +1221,7 @@ requireAuth(async (profile) => {
   populateSelect(document.getElementById("new-quotacampo-disciplina"), DISCIPLINE);
   populateSelect(document.getElementById("new-quotacampo-posizione"), POSIZIONI_CAMPO, "— tutti —");
   populateSelect(document.getElementById("new-tariffacampo-posizione"), POSIZIONI_CAMPO, "— tutti —");
-  populateSelect(document.getElementById("new-tariffacampo-categoria"), CATEGORIE_TARIFFA);
+  populateSelect(document.getElementById("new-tariffacampo-categoria"), CATEGORIE_TARIFFA.map(c => ({ id: c.id, label: c.nome })));
   populateSelect(document.getElementById("new-forfaitcampo-posizione"), POSIZIONI_CAMPO, "— tutti —");
 
   document.getElementById("forfaitcampo-categorie-checks").innerHTML = CATEGORIE_TARIFFA
