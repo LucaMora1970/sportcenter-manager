@@ -125,9 +125,22 @@ async function caricaERenderizza() {
   listEl.innerHTML = html;
 }
 
+// Si arriva qui sia da prenota-padel.html sia da prenota-campo.html:
+// invece di scegliere una destinazione fissa, torna semplicemente alla
+// pagina di provenienza (browser back) — l'href statico nell'HTML resta
+// solo come fallback per chi apre questa pagina direttamente (link
+// condiviso, nessuna cronologia da cui tornare indietro).
+function wireIndietro() {
+  const link = document.getElementById("indietro-link");
+  if (document.referrer && new URL(document.referrer).origin === location.origin) {
+    link.addEventListener("click", (e) => { e.preventDefault(); history.back(); });
+  }
+}
+
 (async function init() {
   await loadDatiCentro();
   document.getElementById("centro-kicker").textContent = DATI_CENTRO.nome;
+  wireIndietro();
 
   const campiSnap = await db.collection("campi").where("attivo", "==", true).get();
   campiSnap.docs.forEach(d => {
