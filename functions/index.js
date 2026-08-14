@@ -444,18 +444,20 @@ exports.creaPrenotazionePubblica = onCall(
       { nome: giocatore4Nome, socioId: giocatore4SocioId }
     ].filter(g => g.nome || g.socioId);
 
+    // I nominativi dei compagni servono solo per il tabellone/record (chi
+    // gioca), non per il prezzo: la tariffa padel è per l'intero campo, non
+    // per giocatore — un solo calcolo qui sotto, in base alla categoria di
+    // chi prenota, indipendente da quanti (e chi) giocano con lui.
     const altriGiocatoriRisolti = [];
     for (const g of altriGiocatoriInput) {
-      let categoria = "esterno";
       let nomeRisolto = g.nome || null;
       if (g.socioId) {
         const gSnap = await db.collection("soci").doc(g.socioId).get();
         if (gSnap.exists && gSnap.data().attivo !== false) {
-          categoria = gSnap.data().categoria;
           nomeRisolto = `${gSnap.data().nome} ${gSnap.data().cognome}`;
         }
       }
-      altriGiocatoriRisolti.push({ nome: nomeRisolto, categoria });
+      altriGiocatoriRisolti.push({ nome: nomeRisolto });
     }
 
     const quotaPrenotante = await quotaCategoria({
@@ -465,20 +467,8 @@ exports.creaPrenotazionePubblica = onCall(
     if (quotaPrenotante == null) {
       throw new HttpsError("failed-precondition", "Tariffa non configurata per questo slot/categoria.");
     }
-    let prezzo = quotaPrenotante;
-    const prezzoDettaglio = [{ ruolo: "prenotante", categoria: prenotante.categoria, importo: quotaPrenotante }];
-
-    for (const g of altriGiocatoriRisolti) {
-      const quotaG = await quotaCategoria({
-        disciplina: "padel", posizione: null, categoria: g.categoria,
-        dataIso: date, startTime, durataMinuti: durationMinutes, festivi
-      });
-      if (quotaG == null) {
-        throw new HttpsError("failed-precondition", "Tariffa non configurata per uno dei giocatori.");
-      }
-      prezzo += quotaG;
-      prezzoDettaglio.push({ ruolo: "compagno di gioco", categoria: g.categoria, importo: quotaG });
-    }
+    const prezzo = quotaPrenotante;
+    const prezzoDettaglio = [{ ruolo: "campo", categoria: prenotante.categoria, importo: quotaPrenotante }];
 
     let creditoDaScalare = 0;
     if (creditCode) {
@@ -1639,14 +1629,20 @@ exports.creaPrenotazioneCampo = onCall(
 
     const generaleSnap = await db.collection("impostazioni").doc("generale").get();
     const festivi = generaleSnap.exists ? (generaleSnap.data().festivi || []) : [];
+    // Durata reale dello slot (fissa per disciplina, nota da slotFissiDisciplina
+    // qui sopra): va sempre passata a quotaCategoria, anche se molte righe
+    // tariffa non specificano una durata (in tal caso il match è comunque
+    // libero) — altrimenti le righe che la specificano (es. 60' per il
+    // tennis) non troverebbero mai corrispondenza.
+    const durataMinuti = orarioToMin(endTime) - orarioToMin(startTime);
 
-    const quota1 = await quotaCategoria({ disciplina, posizione, categoria: prenotante.categoria, dataIso: date, startTime, festivi });
+    const quota1 = await quotaCategoria({ disciplina, posizione, categoria: prenotante.categoria, dataIso: date, startTime, durataMinuti, festivi });
     if (quota1 == null) throw new HttpsError("failed-precondition", "Tariffa non configurata per questo campo/categoria.");
     let prezzo = quota1;
     const prezzoDettaglio = [{ ruolo: "prenotante", categoria: prenotante.categoria, importo: quota1 }];
 
     if (disciplina === "tennis") {
-      const quota2 = await quotaCategoria({ disciplina, posizione, categoria: giocatore2Categoria, dataIso: date, startTime, festivi });
+      const quota2 = await quotaCategoria({ disciplina, posizione, categoria: giocatore2Categoria, dataIso: date, startTime, durataMinuti, festivi });
       if (quota2 == null) throw new HttpsError("failed-precondition", "Tariffa non configurata per il secondo giocatore.");
       prezzo += quota2;
       prezzoDettaglio.push({ ruolo: "secondo giocatore", categoria: giocatore2Categoria, importo: quota2 });

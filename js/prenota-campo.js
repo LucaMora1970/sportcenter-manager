@@ -395,7 +395,7 @@ function render() {
 
   const categoria = categoriaCorrente();
   el.innerHTML = durataHtml + liberi.map((s, i) => {
-    const durataMinuti = gruppo.disciplina === "padel" ? state.durataPadel : undefined;
+    const durataMinuti = gruppo.disciplina === "padel" ? state.durataPadel : orarioToMin(s.fine) - orarioToMin(s.inizio);
     const prezzo = quotaCategoriaClient(gruppo.disciplina, gruppo.posizione, categoria, state.data, s.inizio, durataMinuti);
     const prezzoLabel = prezzo == null ? "—" : (prezzo === 0 ? "Incluso" : `da CHF ${prezzo.toFixed(2)}`);
     return `
@@ -404,7 +404,7 @@ function render() {
           <span class="st">${s.inizio}–${s.fine}</span>
           <span class="sc">${escapeHtml(disciplinaLabel(gruppo.disciplina))} · Campo ${escapeHtml(s.campo.numero)}</span>
         </div>
-        <span class="sp">${prezzoLabel}${gruppo.disciplina === "tennis" || gruppo.disciplina === "padel" ? " · a testa" : ""}</span>
+        <span class="sp">${prezzoLabel}${gruppo.disciplina === "tennis" ? " · a testa" : ""}</span>
         <button type="button" class="btn btn-ghost apri-prenota-btn" style="width:auto;padding:8px 14px;font-size:0.76rem;" data-idx="${i}">Prenota</button>
       </div>
       <div class="prenota-panel-slot hidden" data-idx="${i}"></div>
@@ -451,7 +451,7 @@ function apriPannelloPrenota(slot, idx) {
 
   const etichetta = slot.campo.disciplina === "tennis" ? "Nome del secondo giocatore" : "Nome giocatore";
   const introPadel = nCampi > 0 && slot.campo.disciplina === "padel"
-    ? `<p style="color:var(--chalk-grey);font-size:0.78rem;margin:0 0 10px;">Chi gioca con te? Il prezzo è la somma della quota di ciascun giocatore in base alla propria categoria.</p>` : "";
+    ? `<p style="color:var(--chalk-grey);font-size:0.78rem;margin:0 0 10px;">Chi gioca con te? (facoltativo — il prezzo è per il campo, non cambia in base al numero di giocatori).</p>` : "";
 
   panel.innerHTML = `
     <div class="prenota-panel">
