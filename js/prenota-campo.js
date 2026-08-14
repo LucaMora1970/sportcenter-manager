@@ -164,7 +164,7 @@ let IMPOSTAZIONI_PC = { settimaneVisibili: 4 };
 let PROFILI = []; // sociDevices.profili
 let profiloScelto = null; // socioId scelto, o null = esterno/primo profilo
 
-const state = { gruppoKey: null, data: null, bookingsPerCourt: {}, apertoPerCourtSlot: null, durataPadel: 90 };
+const state = { gruppoKey: null, data: null, bookingsPerCourt: {}, apertoPerCourtSlot: null, durataPadel: 90, tennisPosizione: "interno" };
 let bookingsUnsub = null;
 
 function disciplinaLabel(d) { return { tennis: "Tennis", squash: "Squash", padel: "Padel" }[d] || d; }
@@ -249,19 +249,48 @@ function costruisciGruppi() {
   GRUPPI.sort((a, b) => rangoGruppo(a) - rangoGruppo(b));
 }
 
+// Una scheda per disciplina, non per gruppo: Tennis Interno/Esterno
+// restano due GRUPPI distinti internamente (li usano slotsLiberi,
+// quotaCategoriaClient, ecc.), ma in cima si mostra un solo bottone
+// "Tennis" — quale dei due è attivo lo sceglie il selettore
+// Interno/Esterno sotto (renderPosizioneTennis). GRUPPI è già ordinato da
+// rangoGruppo (tennis-interno, tennis-esterno, padel, squash): prendendo
+// la prima occorrenza per disciplina si ottiene Tennis, Padel, Squash
+// senza bisogno di un ordinamento separato.
+function disciplineUniche() {
+  const viste = new Set();
+  const tabs = [];
+  GRUPPI.forEach(g => {
+    if (viste.has(g.disciplina)) return;
+    viste.add(g.disciplina);
+    tabs.push(g.disciplina);
+  });
+  return tabs;
+}
+
 function renderGruppoPills() {
   const el = document.getElementById("gruppo-pills");
-  el.innerHTML = GRUPPI.map(g => `
-    <button type="button" data-key="${g.key}" aria-pressed="${g.key === state.gruppoKey}">${escapeHtml(g.label)}</button>
+  const disciplinaAttiva = gruppoAttivo()?.disciplina;
+  el.innerHTML = disciplineUniche().map(d => `
+    <button type="button" data-disciplina="${d}" aria-pressed="${d === disciplinaAttiva}">${escapeHtml(disciplinaLabel(d))}</button>
   `).join("");
   el.querySelectorAll("button").forEach(btn => {
-    btn.addEventListener("click", () => selezionaGruppo(btn.dataset.key));
+    btn.addEventListener("click", () => selezionaDisciplina(btn.dataset.disciplina));
   });
+}
+
+function selezionaDisciplina(disciplina) {
+  const key = disciplina === "tennis"
+    ? `tennis__${state.tennisPosizione}`
+    : (GRUPPI.find(g => g.disciplina === disciplina) || {}).key;
+  if (!key) return;
+  selezionaGruppo(key);
 }
 
 function selezionaGruppo(key) {
   state.gruppoKey = key;
-  document.querySelectorAll("#gruppo-pills button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.key === key)));
+  const disciplinaAttiva = gruppoAttivo()?.disciplina;
+  document.querySelectorAll("#gruppo-pills button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.disciplina === disciplinaAttiva)));
   ascoltaPrenotazioniGiorno();
 }
 
@@ -372,6 +401,24 @@ function renderDurataPadel() {
   `;
 }
 
+function renderPosizioneTennis() {
+  return `
+    <div class="gruppo-pills" id="posizione-tennis-pills" style="margin-bottom:10px;">
+      <button type="button" data-pos="interno" aria-pressed="${state.tennisPosizione === "interno"}">Interno</button>
+      <button type="button" data-pos="esterno" aria-pressed="${state.tennisPosizione === "esterno"}">Esterno</button>
+    </div>
+  `;
+}
+
+function wirePosizioneTennis() {
+  document.querySelectorAll("#posizione-tennis-pills button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      state.tennisPosizione = btn.dataset.pos;
+      selezionaGruppo(`tennis__${state.tennisPosizione}`);
+    });
+  });
+}
+
 function render() {
   const el = document.getElementById("slot-list");
   const gruppo = gruppoAttivo();
@@ -379,22 +426,25 @@ function render() {
 
   const chiuso = CHIUSURE_CENTRO.some(c => c.id === state.data && (!(c.discipline || []).length || c.discipline.includes(gruppo.disciplina)))
     || (gruppo.disciplina === "padel" && CHIUSURE_PADEL.has(state.data));
-  const durataHtml = gruppo.disciplina === "padel" ? renderDurataPadel() : "";
+  const subToggleHtml = gruppo.disciplina === "padel" ? renderDurataPadel()
+    : gruppo.disciplina === "tennis" ? renderPosizioneTennis() : "";
   if (chiuso) {
-    el.innerHTML = durataHtml + `<div class="empty-state"><div class="display">Centro chiuso</div><p>Non prenotabile in questa data.</p></div>`;
+    el.innerHTML = subToggleHtml + `<div class="empty-state"><div class="display">Centro chiuso</div><p>Non prenotabile in questa data.</p></div>`;
     wireDurataPadel();
+    wirePosizioneTennis();
     return;
   }
 
   const liberi = slotsLiberi(gruppo);
   if (liberi.length === 0) {
-    el.innerHTML = durataHtml + `<div class="empty-state"><div class="display">Nessun orario libero</div><p>Prova un altro giorno.</p></div>`;
+    el.innerHTML = subToggleHtml + `<div class="empty-state"><div class="display">Nessun orario libero</div><p>Prova un altro giorno.</p></div>`;
     wireDurataPadel();
+    wirePosizioneTennis();
     return;
   }
 
   const categoria = categoriaCorrente();
-  el.innerHTML = durataHtml + liberi.map((s, i) => {
+  el.innerHTML = subToggleHtml + liberi.map((s, i) => {
     const durataMinuti = gruppo.disciplina === "padel" ? state.durataPadel : orarioToMin(s.fine) - orarioToMin(s.inizio);
     const prezzo = quotaCategoriaClient(gruppo.disciplina, gruppo.posizione, categoria, state.data, s.inizio, durataMinuti);
     const prezzoLabel = prezzo == null ? "—" : (prezzo === 0 ? "Incluso" : `da CHF ${prezzo.toFixed(2)}`);
@@ -415,6 +465,7 @@ function render() {
     btn.addEventListener("click", () => apriPannelloPrenota(liberi[i], i));
   });
   wireDurataPadel();
+  wirePosizioneTennis();
 }
 
 function wireDurataPadel() {
@@ -429,10 +480,9 @@ function wireDurataPadel() {
 // ---------- Pannello di conferma prenotazione ----------
 //
 // Numero di campi "altro giocatore" mostrati, per disciplina: 1 per il
-// tennis, 3 per il padel (fino a 4 giocatori totali), nessuno per lo
-// squash — sempre, indipendentemente dalla categoria di chi prenota: il
-// prezzo è la somma delle quote dirette di ciascun giocatore, non più uno
-// sconto da attivare.
+// tennis (il prezzo è per giocatore, si gioca sempre in due), 3 per il
+// padel (fino a 4 nominativi, solo per il tabellone — il prezzo è per il
+// campo, non cambia in base a chi/quanti giocano), nessuno per lo squash.
 function numeroCampiGiocatore(disciplina) {
   if (disciplina === "tennis") return 1;
   if (disciplina === "padel") return 3;
