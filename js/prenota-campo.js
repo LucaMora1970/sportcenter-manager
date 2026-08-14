@@ -538,7 +538,7 @@ async function caricaProfiliDispositivo() {
   const selectBox = document.getElementById("profilo-select-box");
 
   if (!user) {
-    boxTesto.textContent = "Prenoti come esterno.";
+    boxTesto.textContent = "Stai prenotando come utente esterno";
     PROFILI = [];
     profiloScelto = null;
     selectBox.classList.add("hidden");
@@ -553,7 +553,7 @@ async function caricaProfiliDispositivo() {
   }
 
   if (PROFILI.length === 0) {
-    boxTesto.textContent = "Prenoti come esterno.";
+    boxTesto.textContent = "Stai prenotando come utente esterno";
     profiloScelto = null;
     selectBox.classList.add("hidden");
     return;
