@@ -19,11 +19,10 @@
 // non c'è login staff, ma un riconoscimento via Firebase Auth diverso).
 // ============================================================
 
-const SLOT_TENNIS = [
-  ["08:15", "09:15"], ["09:15", "10:15"], ["10:15", "11:15"], ["11:15", "12:15"], ["12:15", "13:15"],
-  ["13:30", "14:30"], ["14:30", "15:30"], ["15:30", "16:30"], ["16:30", "17:30"],
-  ["17:30", "18:30"], ["18:30", "19:30"], ["19:30", "20:30"], ["20:30", "21:30"], ["21:30", "22:30"]
-];
+// SLOT_TENNIS non va ridichiarato qui: è già una const globale di
+// js/utils.js (caricato prima su questa pagina) — ridichiararla con lo
+// stesso nome come "const" causerebbe un SyntaxError che blocca l'intero
+// script (script normali, non moduli: condividono lo stesso scope).
 
 function addMinuti(orario, minuti) {
   const [h, m] = orario.split(":").map(Number);
