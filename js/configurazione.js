@@ -123,6 +123,11 @@ async function loadTariffePadelForm() {
   document.getElementById("tariffa-diurno-60").value = t.diurno60 != null ? t.diurno60 : "";
   document.getElementById("tariffa-diurno-90").value = t.diurno90 != null ? t.diurno90 : "";
   document.getElementById("tariffa-serale-90").value = t.serale90 != null ? t.serale90 : "";
+  document.getElementById("tariffa-sconto-socio").value = t.scontoSocioPercentuale != null ? t.scontoSocioPercentuale : "";
+  const categorieScelte = t.scontoSocioCategorie || [];
+  document.querySelectorAll("#tariffa-sconto-categorie-checks input").forEach(chk => {
+    chk.checked = categorieScelte.includes(chk.value);
+  });
 }
 
 async function onSaveTariffePadel(e) {
@@ -135,10 +140,17 @@ async function onSaveTariffePadel(e) {
   const diurno60 = parseFloat(document.getElementById("tariffa-diurno-60").value);
   const diurno90 = parseFloat(document.getElementById("tariffa-diurno-90").value);
   const serale90 = parseFloat(document.getElementById("tariffa-serale-90").value);
+  const scontoRaw = document.getElementById("tariffa-sconto-socio").value;
+  const scontoSocioPercentuale = scontoRaw === "" ? 0 : parseFloat(scontoRaw);
+  const scontoSocioCategorie = Array.from(document.querySelectorAll("#tariffa-sconto-categorie-checks input:checked")).map(c => c.value);
 
   try {
     if ([diurno60, diurno90, serale90].some(v => isNaN(v) || v < 0)) throw new Error("Inserisci tre importi validi.");
-    await db.collection("impostazioni").doc("tariffePadel").set({ diurno60, diurno90, serale90 }, { merge: true });
+    if (isNaN(scontoSocioPercentuale) || scontoSocioPercentuale < 0) throw new Error("Percentuale sconto non valida.");
+    await db.collection("impostazioni").doc("tariffePadel").set(
+      { diurno60, diurno90, serale90, scontoSocioPercentuale, scontoSocioCategorie },
+      { merge: true }
+    );
   } catch (err) {
     showError(errorEl, "Errore: " + err.message);
   } finally {
@@ -1194,6 +1206,9 @@ requireAuth(async (profile) => {
   initLinkCopyBox("link-prenota-padel", "copia-link-prenota-padel-btn", "prenota-padel.html");
   initLinkCopyBox("link-tabellone", "copia-link-tabellone-btn", "prenotazioni.html");
   initLinkCopyBox("link-iscrizione-corsi", "copia-link-iscrizione-corsi-btn", "iscrizione-corso.html");
+  initLinkCopyBox("link-prenota-campo", "copia-link-prenota-campo-btn", "prenota-campo.html");
+  initLinkCopyBox("link-attiva-socio", "copia-link-attiva-socio-btn", "attiva-socio.html");
+  initLinkCopyBox("link-chi-in-campo", "copia-link-chi-in-campo-btn", "chi-in-campo.html");
 
   await seedDisciplineIfEmpty();
   await loadDiscipline();
@@ -1210,6 +1225,10 @@ requireAuth(async (profile) => {
   document.getElementById("forfaitcampo-categorie-checks").innerHTML = CATEGORIE_TARIFFA
     .filter(c => c.id !== "esterno")
     .map(c => `<div class="checkbox-row"><input type="checkbox" id="fc-cat-${c.id}" value="${c.id}"><label for="fc-cat-${c.id}">${c.nome}</label></div>`)
+    .join("");
+  document.getElementById("tariffa-sconto-categorie-checks").innerHTML = CATEGORIE_TARIFFA
+    .filter(c => c.id !== "esterno")
+    .map(c => `<div class="checkbox-row"><input type="checkbox" id="ts-cat-${c.id}" value="${c.id}"><label for="ts-cat-${c.id}">${c.nome}</label></div>`)
     .join("");
   document.getElementById("chiusuracentro-discipline-checks").innerHTML = DISCIPLINE_CHIUDIBILI
     .map(d => `<div class="checkbox-row"><input type="checkbox" id="cc-disc-${d.id}" value="${d.id}"><label for="cc-disc-${d.id}">${d.nome}</label></div>`)

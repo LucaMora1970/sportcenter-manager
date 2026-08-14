@@ -402,7 +402,10 @@ async function confermaPrenotazionePubblica({ bookingId, courtId, date, startTim
 exports.creaPrenotazionePubblica = onCall(
   { secrets: [POSTFINANCE_SPACE_ID, POSTFINANCE_USER_ID, POSTFINANCE_APP_KEY] },
   async (request) => {
-    const { courtId, date, startTime, endTime, durationMinutes, creditCode } = request.data || {};
+    const {
+      courtId, date, startTime, endTime, durationMinutes, creditCode, profiloId,
+      giocatore2Nome, giocatore2SocioId, giocatore3Nome, giocatore3SocioId, giocatore4Nome, giocatore4SocioId
+    } = request.data || {};
     if (!date || !startTime || !endTime || !durationMinutes) {
       throw new HttpsError("invalid-argument", "Dati prenotazione incompleti.");
     }
@@ -432,10 +435,48 @@ exports.creaPrenotazionePubblica = onCall(
     const tariffeSnap = await db.collection("impostazioni").doc("tariffePadel").get();
     const tariffe = tariffeSnap.exists ? tariffeSnap.data() : {};
     const fascia = fasciaTariffa(startTime, durationMinutes);
-    const prezzo = tariffe[fascia];
-    if (prezzo == null) {
+    const prezzoBase = tariffe[fascia];
+    if (prezzoBase == null) {
       throw new HttpsError("failed-precondition", "Tariffa non configurata per questo slot.");
     }
+
+    // Sconto socio cumulativo: la tariffa del padel resta sempre fissa,
+    // ma se chi prenota (e/o fino a 3 compagni di gioco, facoltativi) è
+    // riconosciuto in una delle categorie agevolate configurate, si
+    // applica uno sconto percentuale per ciascuno — mai fidandosi delle
+    // categorie dichiarate dal client, ogni nominativo si riverifica qui
+    // contro "soci". Stessa funzione di risoluzione categoria del
+    // prenotante già usata da creaPrenotazioneCampo (definita più sotto
+    // in questo file, hoisted).
+    const scontoPercentuale = tariffe.scontoSocioPercentuale || 0;
+    const scontoCategorie = tariffe.scontoSocioCategorie || [];
+    const prenotante = await risolviCategoriaPrenotante(request.auth, profiloId);
+
+    const altriGiocatoriInput = [
+      { nome: giocatore2Nome, socioId: giocatore2SocioId },
+      { nome: giocatore3Nome, socioId: giocatore3SocioId },
+      { nome: giocatore4Nome, socioId: giocatore4SocioId }
+    ].filter(g => g.nome || g.socioId);
+
+    const altriGiocatoriRisolti = [];
+    for (const g of altriGiocatoriInput) {
+      let categoria = "esterno";
+      let nomeRisolto = g.nome || null;
+      if (g.socioId) {
+        const gSnap = await db.collection("soci").doc(g.socioId).get();
+        if (gSnap.exists && gSnap.data().attivo !== false) {
+          categoria = gSnap.data().categoria;
+          nomeRisolto = `${gSnap.data().nome} ${gSnap.data().cognome}`;
+        }
+      }
+      altriGiocatoriRisolti.push({ nome: nomeRisolto, categoria });
+    }
+
+    let giocatoriAgevolati = scontoCategorie.includes(prenotante.categoria) ? 1 : 0;
+    giocatoriAgevolati += altriGiocatoriRisolti.filter(g => scontoCategorie.includes(g.categoria)).length;
+
+    const scontoTotalePct = Math.min(100, giocatoriAgevolati * scontoPercentuale);
+    const prezzo = Math.round(prezzoBase * (1 - scontoTotalePct / 100) * 100) / 100;
 
     let creditoDaScalare = 0;
     if (creditCode) {
@@ -475,14 +516,26 @@ exports.creaPrenotazionePubblica = onCall(
         courtId: court, date, startTime, endTime,
         status: "PENDING_PAYMENT",
         type: "CUSTOMER",
+        authUid: prenotante.authUid || null,
         createdAt: FieldValue.serverTimestamp()
       });
+      // Nomi/sconto separati da "bookings" (pubblica) per lo stesso motivo
+      // già spiegato per creaPrenotazioneCampo: mai esporre nominativi a
+      // chi legge il tabellone senza essere un dispositivo riconosciuto.
+      if (prenotante.nome || altriGiocatoriRisolti.length > 0 || giocatoriAgevolati > 0) {
+        tx.set(db.collection("bookingDettagli").doc(bookingRef.id), {
+          prenotanteNome: prenotante.nome || null,
+          altriGiocatori: altriGiocatoriRisolti.map(g => g.nome).filter(Boolean),
+          prezzoDettaglio: [{ ruolo: "prenotazione", prezzoBase, scontoPercentuale: scontoTotalePct, prezzo }]
+        });
+      }
     });
 
     if (daPagare === 0) {
       await confermaPrenotazionePubblica({
         bookingId: bookingRef.id, courtId: court, date, startTime, endTime, prezzo, token,
-        paymentId: null, creditCode: creditCode || null, creditoScalato: creditoDaScalare
+        paymentId: null, creditCode: creditCode || null, creditoScalato: creditoDaScalare,
+        disciplina: "padel", campoLabel: `Campo ${court}`
       });
       return { pagamentoNecessario: false, token };
     }
@@ -815,10 +868,13 @@ exports.webhookPostFinance = onRequest(
           if (bookingSnap.exists && bookingSnap.data().status === "PENDING_PAYMENT") {
             const courtId = bookingSnap.data().courtId;
             const campoSnap = await db.collection("campi").doc(courtId).get();
-            const disciplina = campoSnap.exists ? campoSnap.data().disciplina : null;
+            // Nessun doc "campi" per questo courtId = flusso padel (unico
+            // caso in cui creaPrenotazionePubblica viene usata oggi), non
+            // un errore.
+            const disciplina = campoSnap.exists ? campoSnap.data().disciplina : "padel";
             const campoLabel = campoSnap.exists
               ? `Campo ${campoSnap.data().numero}${campoSnap.data().posizione ? ` (${campoSnap.data().posizione})` : ""}`
-              : null;
+              : `Campo ${courtId}`;
             await confermaPrenotazionePubblica({
               bookingId: meta.bookingId,
               courtId,
@@ -1341,7 +1397,13 @@ exports.dettagliGiocatori = onCall(async (request) => {
     const snap = await db.collection("bookingDettagli").doc(id).get();
     if (!snap.exists) return;
     const d = snap.data();
-    dettagli[id] = { nome1: d.prenotanteNome || null, nome2: d.giocatore2Nome || null };
+    // Forme diverse a seconda della disciplina: tennis ha un solo secondo
+    // giocatore (giocatore2Nome), il padel fino a 3 (altriGiocatori) —
+    // qui si uniformano in un solo elenco "altri".
+    const altri = d.altriGiocatori && d.altriGiocatori.length > 0
+      ? d.altriGiocatori
+      : (d.giocatore2Nome ? [d.giocatore2Nome] : []);
+    dettagli[id] = { nome1: d.prenotanteNome || null, altri };
   }));
   return { dettagli };
 });

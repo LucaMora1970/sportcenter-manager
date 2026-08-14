@@ -99,7 +99,7 @@ async function caricaERenderizza() {
   function nomeRiga(b) {
     const d = dettagli[b.id];
     if (!d || !d.nome1) return "Occupato";
-    return d.nome2 ? `${d.nome1} vs ${d.nome2}` : d.nome1;
+    return (d.altri && d.altri.length > 0) ? `${d.nome1} vs ${d.altri.join(", ")}` : d.nome1;
   }
 
   function riga(b, dim) {

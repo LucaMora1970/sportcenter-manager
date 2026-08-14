@@ -46,6 +46,84 @@ function slotFissiDisciplina(disciplina) {
   return [];
 }
 
+// ---------- Padel: griglia continua con anti-buco (duplicata da
+// js/prenota-padel.js/functions/index.js — unico campo "1", non modellato
+// in "campi") — a differenza di tennis/squash qui gli slot non sono fissi:
+// vanno calcolati per la durata scelta (60'/90'), stesso identico
+// algoritmo del tabellone padel dedicato.
+const PADEL_OPEN = 8 * 60;
+const PADEL_CLOSE = 23 * 60;
+const PADEL_CLOSE_WEEKEND = 20 * 60 + 30;
+const PADEL_BOUNDARY = 17 * 60;
+const PADEL_SLOT_FISSO_PRANZO = 12 * 60 + 15;
+const PADEL_SLOT_FISSO_SERALE = 17 * 60 + 30;
+
+function padelChiusuraGiorno(dataIso) {
+  const giorno = new Date(dataIso + "T00:00:00").getDay();
+  return (giorno === 0 || giorno === 6) ? PADEL_CLOSE_WEEKEND : PADEL_CLOSE;
+}
+function padelFeriale(dataIso) {
+  const giorno = new Date(dataIso + "T00:00:00").getDay();
+  return giorno >= 1 && giorno <= 5;
+}
+function padelFreeIntervals(bookings, close) {
+  const sorted = [...bookings].sort((a, b) => a.start - b.start);
+  const free = [];
+  let cursor = PADEL_OPEN;
+  sorted.forEach(b => {
+    if (b.start > cursor) free.push([cursor, b.start]);
+    cursor = Math.max(cursor, b.end);
+  });
+  if (cursor < close) free.push([cursor, close]);
+  return free;
+}
+function padelGapPrimaOk(t, a) {
+  const gap = t - a;
+  return gap === 0 || gap >= 60;
+}
+function padelSlotsInInterval(a, b, duration, feriale, oggi) {
+  const starts = [];
+  if (duration === 90) {
+    for (let t = a; t < PADEL_BOUNDARY && t + 90 <= b; t += 30) {
+      const remain = b - (t + 90);
+      if ((remain === 0 || remain >= 60) && padelGapPrimaOk(t, a)) starts.push(t);
+    }
+    const primoChain = Math.max(a, PADEL_BOUNDARY);
+    if (padelGapPrimaOk(primoChain, a)) {
+      const passo = oggi ? 15 : 90;
+      for (let t = primoChain; t + 90 <= b; t += passo) starts.push(t);
+    }
+    if (PADEL_SLOT_FISSO_PRANZO >= a && PADEL_SLOT_FISSO_PRANZO + 90 <= b && padelGapPrimaOk(PADEL_SLOT_FISSO_PRANZO, a)) {
+      const remain = b - (PADEL_SLOT_FISSO_PRANZO + 90);
+      if (remain === 0 || remain >= 60) starts.push(PADEL_SLOT_FISSO_PRANZO);
+    }
+    if (feriale && PADEL_SLOT_FISSO_SERALE >= a && PADEL_SLOT_FISSO_SERALE + 90 <= b && padelGapPrimaOk(PADEL_SLOT_FISSO_SERALE, a)) {
+      const remain = b - (PADEL_SLOT_FISSO_SERALE + 90);
+      if (remain === 0 || remain >= 60) starts.push(PADEL_SLOT_FISSO_SERALE);
+    }
+  } else {
+    const limit = Math.min(b, PADEL_BOUNDARY + 30);
+    for (let t = a; t + 60 <= limit; t += 30) {
+      const remain = limit - (t + 60);
+      if ((remain === 0 || remain >= 60) && padelGapPrimaOk(t, a)) starts.push(t);
+    }
+    if (PADEL_SLOT_FISSO_PRANZO >= a && PADEL_SLOT_FISSO_PRANZO + 60 <= limit && padelGapPrimaOk(PADEL_SLOT_FISSO_PRANZO, a)) {
+      const remain = limit - (PADEL_SLOT_FISSO_PRANZO + 60);
+      if (remain === 0 || remain >= 60) starts.push(PADEL_SLOT_FISSO_PRANZO);
+    }
+  }
+  return starts;
+}
+function padelValidStarts(bookings, duration, close, feriale, oggi) {
+  const free = padelFreeIntervals(bookings, close);
+  let starts = [];
+  free.forEach(([a, b]) => { starts = starts.concat(padelSlotsInInterval(a, b, duration, feriale, oggi)); });
+  return [...new Set(starts)].sort((x, y) => x - y);
+}
+function minutiToOrario(min) {
+  return `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+}
+
 function orarioToMin(orario) {
   const [h, m] = orario.split(":").map(Number);
   return h * 60 + m;
@@ -78,16 +156,21 @@ function toISO(date) { return `${date.getFullYear()}-${pad2(date.getMonth() + 1)
 let CAMPI = []; // [{id, numero, disciplina, posizione}]
 let GRUPPI = []; // [{key, disciplina, posizione, label, campi:[...]}]
 let CHIUSURE_CENTRO = []; // [{id, discipline}]
+let CHIUSURE_PADEL = new Set(); // date ISO, solo per il padel (chiusurePadel)
 let TARIFFE_CAMPI = [];
 let FORFAIT_CAMPI = [];
+let TARIFFE_PADEL = { diurno60: null, diurno90: null, serale90: null, scontoSocioPercentuale: 0, scontoSocioCategorie: [] };
 let IMPOSTAZIONI_PC = { settimaneVisibili: 4 };
 let PROFILI = []; // sociDevices.profili
 let profiloScelto = null; // socioId scelto, o null = esterno/primo profilo
 
-const state = { gruppoKey: null, data: null, bookingsPerCourt: {}, apertoPerCourtSlot: null };
+const state = { gruppoKey: null, data: null, bookingsPerCourt: {}, apertoPerCourtSlot: null, durataPadel: 90 };
 let bookingsUnsub = null;
 
-function disciplinaLabel(d) { return { tennis: "Tennis", squash: "Squash" }[d] || d; }
+function disciplinaLabel(d) { return { tennis: "Tennis", squash: "Squash", padel: "Padel" }[d] || d; }
+function padelFasciaTariffa(startMin, duration) {
+  return duration === 60 ? "diurno60" : (startMin < PADEL_BOUNDARY ? "diurno90" : "serale90");
+}
 function posizioneLabel(p) { return { interno: "Interno", esterno: "Esterno" }[p] || p; }
 
 function categoriaCorrente() {
@@ -129,6 +212,10 @@ function costruisciGruppi() {
     map.get(key).campi.push(c);
   });
   GRUPPI = [...map.values()].sort((a, b) => a.label.localeCompare(b.label));
+  // Il padel ha oggi un solo campo, non modellato nella collection "campi"
+  // (courtId fisso "1", come in prenota-padel.js/functions/index.js) —
+  // voce sintetica per includerlo nello stesso ingresso unico.
+  GRUPPI.push({ key: "padel__", disciplina: "padel", posizione: null, label: "Padel", campi: [{ id: "1", numero: "1", disciplina: "padel" }] });
 }
 
 function renderGruppoPills() {
@@ -164,7 +251,9 @@ function buildDayStrip() {
 
   el.innerHTML = giorni.map(d => {
     const iso = toISO(d);
-    const chiuso = CHIUSURE_CENTRO.some(c => c.id === iso && (!(c.discipline || []).length || c.discipline.includes(gruppoAttivo()?.disciplina)));
+    const disc = gruppoAttivo()?.disciplina;
+    const chiuso = CHIUSURE_CENTRO.some(c => c.id === iso && (!(c.discipline || []).length || c.discipline.includes(disc)))
+      || (disc === "padel" && CHIUSURE_PADEL.has(iso));
     return `
       <button type="button" class="day-btn${chiuso ? " chiuso" : ""}" role="tab" data-data="${iso}" aria-pressed="${iso === state.data}">
         <span class="d">${GIORNI_BREVI[d.getDay()]}</span>
@@ -217,9 +306,20 @@ function ascoltaPrenotazioniGiorno() {
 // ---------- Render elenco (Opzione C) ----------
 
 function slotsLiberi(gruppo) {
-  const fissi = slotFissiDisciplina(gruppo.disciplina);
   const ora = oraLocaleZurigo();
   const oggi = state.data === ora.dataIso;
+
+  if (gruppo.disciplina === "padel") {
+    const campo = gruppo.campi[0];
+    const bookings = (state.bookingsPerCourt[campo.id] || [])
+      .map(b => ({ start: orarioToMin(b.startTime), end: orarioToMin(b.endTime) }));
+    const close = padelChiusuraGiorno(state.data);
+    const starts = padelValidStarts(bookings, state.durataPadel, close, padelFeriale(state.data), oggi)
+      .filter(s => !(oggi && s <= ora.minuti));
+    return starts.map(s => ({ campo, inizio: minutiToOrario(s), fine: minutiToOrario(s + state.durataPadel) }));
+  }
+
+  const fissi = slotFissiDisciplina(gruppo.disciplina);
   const risultati = [];
   gruppo.campi.forEach(campo => {
     const occupati = state.bookingsPerCourt[campo.id] || [];
@@ -232,27 +332,47 @@ function slotsLiberi(gruppo) {
   return risultati.sort((a, b) => a.inizio.localeCompare(b.inizio) || a.campo.numero.localeCompare(b.campo.numero));
 }
 
+function renderDurataPadel() {
+  return `
+    <div class="gruppo-pills" id="durata-padel-pills" style="margin-bottom:10px;">
+      <button type="button" data-dur="60" aria-pressed="${state.durataPadel === 60}">60'</button>
+      <button type="button" data-dur="90" aria-pressed="${state.durataPadel === 90}">90'</button>
+    </div>
+  `;
+}
+
 function render() {
   const el = document.getElementById("slot-list");
   const gruppo = gruppoAttivo();
   if (!gruppo) { el.innerHTML = ""; return; }
 
-  const chiuso = CHIUSURE_CENTRO.some(c => c.id === state.data && (!(c.discipline || []).length || c.discipline.includes(gruppo.disciplina)));
+  const chiuso = CHIUSURE_CENTRO.some(c => c.id === state.data && (!(c.discipline || []).length || c.discipline.includes(gruppo.disciplina)))
+    || (gruppo.disciplina === "padel" && CHIUSURE_PADEL.has(state.data));
+  const durataHtml = gruppo.disciplina === "padel" ? renderDurataPadel() : "";
   if (chiuso) {
-    el.innerHTML = `<div class="empty-state"><div class="display">Centro chiuso</div><p>Non prenotabile in questa data.</p></div>`;
+    el.innerHTML = durataHtml + `<div class="empty-state"><div class="display">Centro chiuso</div><p>Non prenotabile in questa data.</p></div>`;
+    wireDurataPadel();
     return;
   }
 
   const liberi = slotsLiberi(gruppo);
   if (liberi.length === 0) {
-    el.innerHTML = `<div class="empty-state"><div class="display">Nessun orario libero</div><p>Prova un altro giorno.</p></div>`;
+    el.innerHTML = durataHtml + `<div class="empty-state"><div class="display">Nessun orario libero</div><p>Prova un altro giorno.</p></div>`;
+    wireDurataPadel();
     return;
   }
 
   const categoria = categoriaCorrente();
-  el.innerHTML = liberi.map((s, i) => {
-    const prezzo = quotaCategoriaClient(gruppo.disciplina, gruppo.posizione, categoria, state.data);
-    const prezzoLabel = prezzo == null ? "—" : (prezzo === 0 ? "Incluso" : `da CHF ${prezzo.toFixed(2)}`);
+  el.innerHTML = durataHtml + liberi.map((s, i) => {
+    let prezzoLabel;
+    if (gruppo.disciplina === "padel") {
+      const p = TARIFFE_PADEL[padelFasciaTariffa(orarioToMin(s.inizio), state.durataPadel)];
+      const scontoAttivo = (TARIFFE_PADEL.scontoSocioCategorie || []).includes(categoria) && TARIFFE_PADEL.scontoSocioPercentuale > 0;
+      prezzoLabel = p == null ? "—" : `CHF ${p.toFixed(2)}${scontoAttivo ? " · sconto socio applicabile" : ""}`;
+    } else {
+      const prezzo = quotaCategoriaClient(gruppo.disciplina, gruppo.posizione, categoria, state.data);
+      prezzoLabel = prezzo == null ? "—" : (prezzo === 0 ? "Incluso" : `da CHF ${prezzo.toFixed(2)}`);
+    }
     return `
       <div class="slot-row">
         <div class="si">
@@ -269,41 +389,72 @@ function render() {
   el.querySelectorAll(".apri-prenota-btn").forEach((btn, i) => {
     btn.addEventListener("click", () => apriPannelloPrenota(liberi[i], i));
   });
+  wireDurataPadel();
+}
+
+function wireDurataPadel() {
+  document.querySelectorAll("#durata-padel-pills button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      state.durataPadel = parseInt(btn.dataset.dur, 10);
+      render();
+    });
+  });
 }
 
 // ---------- Pannello di conferma prenotazione ----------
+//
+// Numero di campi "altro giocatore" mostrati, per disciplina: 1 per il
+// tennis (sempre, il prezzo dipende da chi gioca), fino a 3 per il padel
+// ma SOLO se chi prenota è già riconosciuto in una categoria agevolata
+// (altrimenti lo sconto cumulativo non si applicherebbe comunque),
+// nessuno per lo squash.
+function numeroCampiGiocatore(disciplina) {
+  if (disciplina === "tennis") return 1;
+  if (disciplina === "padel") {
+    const categoria = categoriaCorrente();
+    const qualifica = (TARIFFE_PADEL.scontoSocioCategorie || []).includes(categoria) && TARIFFE_PADEL.scontoSocioPercentuale > 0;
+    return qualifica ? 3 : 0;
+  }
+  return 0;
+}
 
-let giocatore2Risolto = null; // {socioId, nomeVisualizzato, categoria} o null
+let giocatoriRisolti = []; // [{socioId, nomeVisualizzato, categoria} | null, ...]
 let ricercaGiocatoreTimeout = null;
 
 function apriPannelloPrenota(slot, idx) {
   document.querySelectorAll(".prenota-panel-slot").forEach(p => { p.innerHTML = ""; p.classList.add("hidden"); });
   const panel = document.querySelector(`.prenota-panel-slot[data-idx="${idx}"]`);
-  giocatore2Risolto = null;
 
-  const isTennis = slot.campo.disciplina === "tennis";
+  const nCampi = numeroCampiGiocatore(slot.campo.disciplina);
+  giocatoriRisolti = new Array(nCampi).fill(null);
+
+  const etichetta = slot.campo.disciplina === "tennis" ? "Nome del secondo giocatore" : "Nome giocatore";
+  const introPadel = nCampi > 0 && slot.campo.disciplina === "padel"
+    ? `<p style="color:var(--chalk-grey);font-size:0.78rem;margin:0 0 10px;">Chi gioca con te? Per ogni compagno riconosciuto come socio si aggiunge lo sconto.</p>` : "";
+
   panel.innerHTML = `
     <div class="prenota-panel">
-      ${isTennis ? `
+      ${introPadel}
+      ${Array.from({ length: nCampi }).map((_, n) => `
         <div class="field">
-          <label for="g2-nome-${idx}">Nome del secondo giocatore</label>
-          <input type="text" id="g2-nome-${idx}" placeholder="es. Mario Rossi">
+          <label for="g-nome-${idx}-${n}">${etichetta}${nCampi > 1 ? " " + (n + 2) : ""}</label>
+          <input type="text" id="g-nome-${idx}-${n}" placeholder="es. Mario Rossi">
         </div>
-        <div class="g2-esito" id="g2-esito-${idx}"></div>
-      ` : ""}
+        <div class="g2-esito" id="g-esito-${idx}-${n}"></div>
+      `).join("")}
       <div class="error-msg" id="conferma-error-${idx}"></div>
       <button type="button" class="btn btn-primary conferma-prenota-btn" data-idx="${idx}" style="margin-top:10px;">Conferma prenotazione</button>
     </div>
   `;
   panel.classList.remove("hidden");
 
-  if (isTennis) {
-    const input = document.getElementById(`g2-nome-${idx}`);
+  for (let n = 0; n < nCampi; n++) {
+    const input = document.getElementById(`g-nome-${idx}-${n}`);
     input.addEventListener("input", () => {
       clearTimeout(ricercaGiocatoreTimeout);
-      const esitoEl = document.getElementById(`g2-esito-${idx}`);
+      const esitoEl = document.getElementById(`g-esito-${idx}-${n}`);
       const nome = input.value.trim();
-      giocatore2Risolto = null;
+      giocatoriRisolti[n] = null;
       if (nome.length < 2) { esitoEl.textContent = ""; return; }
       esitoEl.textContent = "Ricerca…";
       esitoEl.className = "g2-esito";
@@ -312,7 +463,7 @@ function apriPannelloPrenota(slot, idx) {
           const fn = firebase.functions().httpsCallable("cercaGiocatore");
           const { data } = await fn({ nome });
           if (data.trovato) {
-            giocatore2Risolto = data;
+            giocatoriRisolti[n] = data;
             esitoEl.textContent = `Riconosciuto: ${data.nomeVisualizzato} (${data.categoria})`;
             esitoEl.className = "g2-esito ok";
           } else {
@@ -334,19 +485,38 @@ async function confermaPrenota(slot, idx) {
   btn.disabled = true;
   mostraCaricamento("Prenotazione in corso — non chiudere questa pagina…");
 
-  const isTennis = slot.campo.disciplina === "tennis";
-  const g2NomeInput = isTennis ? document.getElementById(`g2-nome-${idx}`).value.trim() : null;
+  const nCampi = numeroCampiGiocatore(slot.campo.disciplina);
+  const nomiInput = Array.from({ length: nCampi }, (_, n) => document.getElementById(`g-nome-${idx}-${n}`).value.trim());
+  const nomeRisolto = n => giocatoriRisolti[n] ? giocatoriRisolti[n].nomeVisualizzato : (nomiInput[n] || null);
+  const socioIdRisolto = n => giocatoriRisolti[n] ? giocatoriRisolti[n].socioId : null;
 
   try {
-    const fn = firebase.functions().httpsCallable("creaPrenotazioneCampo");
-    const result = await fn({
-      courtId: slot.campo.id,
-      date: state.data,
-      startTime: slot.inizio,
-      giocatore2Nome: isTennis ? (giocatore2Risolto ? giocatore2Risolto.nomeVisualizzato : g2NomeInput) : null,
-      giocatore2SocioId: isTennis && giocatore2Risolto ? giocatore2Risolto.socioId : null,
-      profiloId: profiloScelto
-    });
+    let fn, payload;
+    if (slot.campo.disciplina === "padel") {
+      fn = firebase.functions().httpsCallable("creaPrenotazionePubblica");
+      payload = {
+        courtId: slot.campo.id,
+        date: state.data,
+        startTime: slot.inizio,
+        endTime: slot.fine,
+        durationMinutes: state.durataPadel,
+        profiloId: profiloScelto,
+        giocatore2Nome: nCampi > 0 ? nomeRisolto(0) : null, giocatore2SocioId: nCampi > 0 ? socioIdRisolto(0) : null,
+        giocatore3Nome: nCampi > 1 ? nomeRisolto(1) : null, giocatore3SocioId: nCampi > 1 ? socioIdRisolto(1) : null,
+        giocatore4Nome: nCampi > 2 ? nomeRisolto(2) : null, giocatore4SocioId: nCampi > 2 ? socioIdRisolto(2) : null
+      };
+    } else {
+      fn = firebase.functions().httpsCallable("creaPrenotazioneCampo");
+      payload = {
+        courtId: slot.campo.id,
+        date: state.data,
+        startTime: slot.inizio,
+        giocatore2Nome: nCampi > 0 ? nomeRisolto(0) : null,
+        giocatore2SocioId: nCampi > 0 ? socioIdRisolto(0) : null,
+        profiloId: profiloScelto
+      };
+    }
+    const result = await fn(payload);
 
     if (result.data.pagamentoNecessario) {
       window.location.href = result.data.paymentPageUrl;
@@ -416,12 +586,14 @@ async function caricaProfiliDispositivo() {
     history.replaceState(null, "", location.pathname);
   }
 
-  const [campiSnap, chiusureSnap, tariffeSnap, forfaitSnap, impostazioniSnap] = await Promise.all([
+  const [campiSnap, chiusureSnap, tariffeSnap, forfaitSnap, impostazioniSnap, tariffePadelSnap, chiusurePadelSnap] = await Promise.all([
     db.collection("campi").where("attivo", "==", true).get(),
     db.collection("chiusureCentro").get(),
     db.collection("tariffeCampi").get(),
     db.collection("forfaitCampi").get(),
-    db.collection("impostazioni").doc("prenotazioniCampi").get()
+    db.collection("impostazioni").doc("prenotazioniCampi").get(),
+    db.collection("impostazioni").doc("tariffePadel").get(),
+    db.collection("chiusurePadel").get()
   ]);
 
   CAMPI = campiSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(c => c.disciplina === "tennis" || c.disciplina === "squash");
@@ -429,6 +601,8 @@ async function caricaProfiliDispositivo() {
   TARIFFE_CAMPI = tariffeSnap.docs.map(d => d.data());
   FORFAIT_CAMPI = forfaitSnap.docs.map(d => d.data());
   if (impostazioniSnap.exists) IMPOSTAZIONI_PC = { ...IMPOSTAZIONI_PC, ...impostazioniSnap.data() };
+  if (tariffePadelSnap.exists) TARIFFE_PADEL = { ...TARIFFE_PADEL, ...tariffePadelSnap.data() };
+  CHIUSURE_PADEL = new Set(chiusurePadelSnap.docs.map(d => d.id));
 
   costruisciGruppi();
   renderGruppoPills();
