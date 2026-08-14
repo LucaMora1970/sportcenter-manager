@@ -235,6 +235,19 @@ function aggiungiAlCalendario(data) {
   ticketData = data;
   renderBiglietto(data, token);
 
+  // Il link "torna alla prenotazione" deve puntare alla pagina giusta:
+  // il padel ha ancora la sua pagina dedicata, tennis/squash usano
+  // l'ingresso unico — data.disciplina (assente = vecchi biglietti,
+  // solo padel esisteva) decide quale.
+  const tornaLink = document.getElementById("torna-prenotazione-link");
+  if (data.disciplina && data.disciplina !== "padel") {
+    tornaLink.href = "prenota-campo.html";
+    tornaLink.textContent = "← Torna alla prenotazione";
+  } else {
+    tornaLink.href = "prenota-padel.html";
+    tornaLink.textContent = "← Torna a Prenotazione Padel";
+  }
+
   document.getElementById("salva-btn").addEventListener("click", salvaBigliettoPng);
   document.getElementById("calendario-btn").addEventListener("click", () => aggiungiAlCalendario(ticketData));
   document.getElementById("ricevuta-btn").addEventListener("click", () => stampaRicevutaBiglietto(ticketData));
