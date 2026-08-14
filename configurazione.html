@@ -203,6 +203,11 @@
           <input type="number" id="minuti-eliminazione-diario" min="0" step="1" required placeholder="es. 15">
         </div>
         <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Oltre questo tempo, solo chi ha il permesso "Diario: modificare/cancellare le voci di tutti" (es. admin, supervisore) può eliminare la voce.</p>
+        <div class="field">
+          <label for="impostazioni-festivi">Giorni festivi (una data per riga, formato AAAA-MM-GG)</label>
+          <textarea id="impostazioni-festivi" rows="6" placeholder="2026-01-01&#10;2026-04-18&#10;2026-08-01"></textarea>
+        </div>
+        <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Usati per le tariffe campi: un giorno festivo viene trattato come una domenica ai fini del prezzo, indipendentemente dal giorno della settimana in cui cade.</p>
         <div class="error-msg" id="impostazioni-error"></div>
         <button type="submit" class="btn btn-ghost" id="salva-impostazioni-btn">Salva</button>
       </form>
@@ -513,6 +518,7 @@
       <details class="config-section">
       <summary><h2>Tariffe padel</h2></summary>
       <div class="config-section-body">
+      <p style="color:#a85a2e;font-size:0.82rem;margin:-6px 0 14px;background:rgba(168,90,46,0.1);padding:10px 12px;border-radius:8px;">Questa sezione non determina più il prezzo delle prenotazioni padel: da qui in avanti i prezzi si impostano in "Tariffe campi", scegliendo Padel come disciplina e indicando la durata (60'/90'). I valori qui sotto restano visibili solo come riferimento storico.</p>
       <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Prezzo mostrato e registrato a chi prenota dal tabellone. I maestri (utenti "Soggetto a quota campo" in Team) sono esenti — la tariffa teorica resta comunque registrata per il conteggio a fattura.</p>
       <form id="tariffe-padel-form">
         <div class="field">
@@ -558,9 +564,10 @@
             <select id="new-tariffacampo-disciplina" required>
               <option value="tennis">Tennis</option>
               <option value="squash">Squash</option>
+              <option value="padel">Padel</option>
             </select>
           </div>
-          <div class="field">
+          <div class="field" id="tariffacampo-posizione-field">
             <label for="new-tariffacampo-posizione">Posizione campo</label>
             <select id="new-tariffacampo-posizione"></select>
           </div>
@@ -583,14 +590,20 @@
             <input type="time" id="new-tariffacampo-orafine" required>
           </div>
         </div>
-        <div class="field">
-          <label for="new-tariffacampo-prezzo">Prezzo a slot (CHF)</label>
-          <input type="number" id="new-tariffacampo-prezzo" min="0" step="0.5" required placeholder="es. 20">
+        <div class="row2">
+          <div class="field">
+            <label for="new-tariffacampo-durata">Durata (minuti) — vuoto = qualunque</label>
+            <input type="number" id="new-tariffacampo-durata" min="0" step="1" placeholder="es. 60">
+          </div>
+          <div class="field">
+            <label for="new-tariffacampo-prezzo">Prezzo a slot (CHF)</label>
+            <input type="number" id="new-tariffacampo-prezzo" min="0" step="0.5" required placeholder="es. 20">
+          </div>
         </div>
         <div class="error-msg" id="new-tariffacampo-error"></div>
         <button type="submit" class="btn btn-ghost">+ Aggiungi tariffa</button>
       </form>
-      <p style="color:var(--chalk-grey);font-size:0.78rem;margin:8px 0 0;">Puoi definire quante fasce vuoi (es. mattina/pomeriggio/sera) ripetendo l'aggiunta con orari diversi — in caso di sovrapposizione vince la fascia più stretta.</p>
+      <p style="color:var(--chalk-grey);font-size:0.78rem;margin:8px 0 0;">Puoi definire quante fasce vuoi (es. mattina/pomeriggio/sera) ripetendo l'aggiunta con orari diversi — in caso di sovrapposizione vince la fascia più stretta. Per il padel imposta la durata (60 o 90) per avere prezzi diversi in base alla durata scelta dal cliente.</p>
       </div>
       </details>
 

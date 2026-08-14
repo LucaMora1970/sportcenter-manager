@@ -435,24 +435,15 @@ exports.creaPrenotazionePubblica = onCall(
       throw new HttpsError("failed-precondition", "Questo slot non è più disponibile — scegline un altro.");
     }
 
-    const tariffeSnap = await db.collection("impostazioni").doc("tariffePadel").get();
-    const tariffe = tariffeSnap.exists ? tariffeSnap.data() : {};
-    const fascia = fasciaTariffa(startTime, durationMinutes);
-    const prezzoBase = tariffe[fascia];
-    if (prezzoBase == null) {
-      throw new HttpsError("failed-precondition", "Tariffa non configurata per questo slot.");
-    }
+    // Prezzo: come per creaPrenotazioneCampo (tennis/squash), somma delle
+    // quote dirette per categoria di ciascun giocatore — niente più tariffa
+    // fissa + sconto percentuale. Ogni nominativo si riverifica qui contro
+    // "soci", mai fidandosi delle categorie dichiarate dal client. Stessa
+    // funzione di risoluzione categoria del prenotante già usata da
+    // creaPrenotazioneCampo (definita più sotto in questo file, hoisted).
+    const generaleSnap = await db.collection("impostazioni").doc("generale").get();
+    const festivi = generaleSnap.exists ? (generaleSnap.data().festivi || []) : [];
 
-    // Sconto socio cumulativo: la tariffa del padel resta sempre fissa,
-    // ma se chi prenota (e/o fino a 3 compagni di gioco, facoltativi) è
-    // riconosciuto in una delle categorie agevolate configurate, si
-    // applica uno sconto percentuale per ciascuno — mai fidandosi delle
-    // categorie dichiarate dal client, ogni nominativo si riverifica qui
-    // contro "soci". Stessa funzione di risoluzione categoria del
-    // prenotante già usata da creaPrenotazioneCampo (definita più sotto
-    // in questo file, hoisted).
-    const scontoPercentuale = tariffe.scontoSocioPercentuale || 0;
-    const scontoCategorie = tariffe.scontoSocioCategorie || [];
     const prenotante = await risolviCategoriaPrenotante(request.auth, profiloId);
 
     const altriGiocatoriInput = [
@@ -475,11 +466,27 @@ exports.creaPrenotazionePubblica = onCall(
       altriGiocatoriRisolti.push({ nome: nomeRisolto, categoria });
     }
 
-    let giocatoriAgevolati = scontoCategorie.includes(prenotante.categoria) ? 1 : 0;
-    giocatoriAgevolati += altriGiocatoriRisolti.filter(g => scontoCategorie.includes(g.categoria)).length;
+    const quotaPrenotante = await quotaCategoria({
+      disciplina: "padel", posizione: null, categoria: prenotante.categoria,
+      dataIso: date, startTime, durataMinuti: durationMinutes, festivi
+    });
+    if (quotaPrenotante == null) {
+      throw new HttpsError("failed-precondition", "Tariffa non configurata per questo slot/categoria.");
+    }
+    let prezzo = quotaPrenotante;
+    const prezzoDettaglio = [{ ruolo: "prenotante", categoria: prenotante.categoria, importo: quotaPrenotante }];
 
-    const scontoTotalePct = Math.min(100, giocatoriAgevolati * scontoPercentuale);
-    const prezzo = Math.round(prezzoBase * (1 - scontoTotalePct / 100) * 100) / 100;
+    for (const g of altriGiocatoriRisolti) {
+      const quotaG = await quotaCategoria({
+        disciplina: "padel", posizione: null, categoria: g.categoria,
+        dataIso: date, startTime, durataMinuti: durationMinutes, festivi
+      });
+      if (quotaG == null) {
+        throw new HttpsError("failed-precondition", "Tariffa non configurata per uno dei giocatori.");
+      }
+      prezzo += quotaG;
+      prezzoDettaglio.push({ ruolo: "compagno di gioco", categoria: g.categoria, importo: quotaG });
+    }
 
     let creditoDaScalare = 0;
     if (creditCode) {
@@ -525,11 +532,11 @@ exports.creaPrenotazionePubblica = onCall(
       // Nomi/sconto separati da "bookings" (pubblica) per lo stesso motivo
       // già spiegato per creaPrenotazioneCampo: mai esporre nominativi a
       // chi legge il tabellone senza essere un dispositivo riconosciuto.
-      if (prenotante.nome || altriGiocatoriRisolti.length > 0 || giocatoriAgevolati > 0) {
+      if (prenotante.nome || altriGiocatoriRisolti.length > 0) {
         tx.set(db.collection("bookingDettagli").doc(bookingRef.id), {
           prenotanteNome: prenotante.nome || null,
           altriGiocatori: altriGiocatoriRisolti.map(g => g.nome).filter(Boolean),
-          prezzoDettaglio: [{ ruolo: "prenotazione", prezzoBase, scontoPercentuale: scontoTotalePct, prezzo }]
+          prezzoDettaglio
         });
       }
     });
@@ -1461,18 +1468,25 @@ exports.dettagliGiocatori = onCall(async (request) => {
 // serve la direzione inversa (da Date a codice), non condivisibile col
 // client (runtime separati), duplicata per lo stesso motivo di sempre.
 const GIORNO_JS_DAY_INV = ["dom", "lun", "mar", "mer", "gio", "ven", "sab"];
-function giornoSettimanaCodice(dataIso) {
+// Un giorno festivo (elenco in impostazioni/generale.festivi, caricato dal
+// chiamante) conta come domenica ai fini della tariffa, a prescindere dal
+// giorno reale della settimana in cui cade.
+function giornoSettimanaCodice(dataIso, festivi) {
+  if ((festivi || []).includes(dataIso)) return "dom";
   return GIORNO_JS_DAY_INV[new Date(dataIso + "T00:00:00").getDay()];
 }
 
-// Calcola la quota di una categoria per un campo/data/orario: prima il
-// forfait stagionale (0 se dentro il periodo e categoria inclusa), poi la
-// tariffa a fascia — l'amministratore definisce liberamente in
+// Calcola la quota di una categoria per un campo/data/orario/durata: prima
+// il forfait stagionale (0 se dentro il periodo e categoria inclusa), poi
+// la tariffa a fascia — l'amministratore definisce liberamente in
 // Configurazione quante fasce vuole (dalle-alle-prezzo), ciascuna
-// applicabile a giorni della settimana specifici o a tutti. Se più fasce
+// applicabile a giorni della settimana specifici o a tutti, e
+// facoltativamente a una durata specifica (necessario per il padel, che a
+// differenza di tennis/squash ha durata scelta dal cliente). Se più fasce
 // si sovrappongono per errore di configurazione, vince quella più
-// specifica (banda oraria più stretta, poi meno giorni selezionati).
-async function quotaCategoria({ disciplina, posizione, categoria, dataIso, startTime }) {
+// specifica (durata fissata, poi banda oraria più stretta, poi meno
+// giorni selezionati).
+async function quotaCategoria({ disciplina, posizione, categoria, dataIso, startTime, durataMinuti, festivi }) {
   const forfaitSnap = await db.collection("forfaitCampi")
     .where("disciplina", "==", disciplina)
     .where("posizione", "==", posizione)
@@ -1483,7 +1497,7 @@ async function quotaCategoria({ disciplina, posizione, categoria, dataIso, start
   });
   if (forfaitAttivo) return 0;
 
-  const giorno = giornoSettimanaCodice(dataIso);
+  const giorno = giornoSettimanaCodice(dataIso, festivi);
   const startMin = orarioToMin(startTime);
   const tariffeSnap = await db.collection("tariffeCampi")
     .where("disciplina", "==", disciplina)
@@ -1494,7 +1508,11 @@ async function quotaCategoria({ disciplina, posizione, categoria, dataIso, start
     .filter(t => t.oraInizio != null && t.oraFine != null)
     .filter(t => !(t.giorniSettimana || []).length || t.giorniSettimana.includes(giorno))
     .filter(t => startMin >= orarioToMin(t.oraInizio) && startMin < orarioToMin(t.oraFine))
+    .filter(t => t.durataMinuti == null || t.durataMinuti === durataMinuti)
     .sort((a, b) => {
+      const specDurataA = a.durataMinuti != null ? 1 : 0;
+      const specDurataB = b.durataMinuti != null ? 1 : 0;
+      if (specDurataA !== specDurataB) return specDurataB - specDurataA;
       const durataA = orarioToMin(a.oraFine) - orarioToMin(a.oraInizio);
       const durataB = orarioToMin(b.oraFine) - orarioToMin(b.oraInizio);
       if (durataA !== durataB) return durataA - durataB;
@@ -1620,13 +1638,16 @@ exports.creaPrenotazioneCampo = onCall(
       }
     }
 
-    const quota1 = await quotaCategoria({ disciplina, posizione, categoria: prenotante.categoria, dataIso: date, startTime });
+    const generaleSnap = await db.collection("impostazioni").doc("generale").get();
+    const festivi = generaleSnap.exists ? (generaleSnap.data().festivi || []) : [];
+
+    const quota1 = await quotaCategoria({ disciplina, posizione, categoria: prenotante.categoria, dataIso: date, startTime, festivi });
     if (quota1 == null) throw new HttpsError("failed-precondition", "Tariffa non configurata per questo campo/categoria.");
     let prezzo = quota1;
     const prezzoDettaglio = [{ ruolo: "prenotante", categoria: prenotante.categoria, importo: quota1 }];
 
     if (disciplina === "tennis") {
-      const quota2 = await quotaCategoria({ disciplina, posizione, categoria: giocatore2Categoria, dataIso: date, startTime });
+      const quota2 = await quotaCategoria({ disciplina, posizione, categoria: giocatore2Categoria, dataIso: date, startTime, festivi });
       if (quota2 == null) throw new HttpsError("failed-precondition", "Tariffa non configurata per il secondo giocatore.");
       prezzo += quota2;
       prezzoDettaglio.push({ ruolo: "secondo giocatore", categoria: giocatore2Categoria, importo: quota2 });

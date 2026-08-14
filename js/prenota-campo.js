@@ -158,7 +158,6 @@ let CHIUSURE_CENTRO = []; // [{id, discipline}]
 let CHIUSURE_PADEL = new Set(); // date ISO, solo per il padel (chiusurePadel)
 let TARIFFE_CAMPI = [];
 let FORFAIT_CAMPI = [];
-let TARIFFE_PADEL = { diurno60: null, diurno90: null, serale90: null, scontoSocioPercentuale: 0, scontoSocioCategorie: [] };
 let IMPOSTAZIONI_PC = { settimaneVisibili: 4 };
 let PROFILI = []; // sociDevices.profili
 let profiloScelto = null; // socioId scelto, o null = esterno/primo profilo
@@ -167,9 +166,6 @@ const state = { gruppoKey: null, data: null, bookingsPerCourt: {}, apertoPerCour
 let bookingsUnsub = null;
 
 function disciplinaLabel(d) { return { tennis: "Tennis", squash: "Squash", padel: "Padel" }[d] || d; }
-function padelFasciaTariffa(startMin, duration) {
-  return duration === 60 ? "diurno60" : (startMin < PADEL_BOUNDARY ? "diurno90" : "serale90");
-}
 function posizioneLabel(p) { return { interno: "Interno", esterno: "Esterno" }[p] || p; }
 
 function categoriaCorrente() {
@@ -180,12 +176,15 @@ function categoriaCorrente() {
 
 // GIORNI_SETTIMANA/GIORNO_JS_DAY vengono da js/utils.js (già caricato) —
 // qui serve la direzione inversa (da Date a codice "lun".."dom").
+// Un giorno festivo (IMPOSTAZIONI.festivi, js/utils.js) conta come
+// domenica ai fini della tariffa — stesso criterio del server.
 function giornoSettimanaCodice(dataIso) {
+  if ((IMPOSTAZIONI.festivi || []).includes(dataIso)) return "dom";
   const jsDay = new Date(dataIso + "T00:00:00").getDay();
   return Object.keys(GIORNO_JS_DAY).find(id => GIORNO_JS_DAY[id] === jsDay);
 }
 
-function quotaCategoriaClient(disciplina, posizione, categoria, dataIso, startTime) {
+function quotaCategoriaClient(disciplina, posizione, categoria, dataIso, startTime, durataMinuti) {
   const forfaitAttivo = FORFAIT_CAMPI.some(f =>
     f.disciplina === disciplina && f.posizione === posizione
     && dataIso >= f.periodoInizio && dataIso <= f.periodoFine
@@ -200,7 +199,11 @@ function quotaCategoriaClient(disciplina, posizione, categoria, dataIso, startTi
     .filter(t => t.oraInizio != null && t.oraFine != null)
     .filter(t => !(t.giorniSettimana || []).length || t.giorniSettimana.includes(giorno))
     .filter(t => startMin >= orarioToMin(t.oraInizio) && startMin < orarioToMin(t.oraFine))
+    .filter(t => t.durataMinuti == null || t.durataMinuti === durataMinuti)
     .sort((a, b) => {
+      const specDurataA = a.durataMinuti != null ? 1 : 0;
+      const specDurataB = b.durataMinuti != null ? 1 : 0;
+      if (specDurataA !== specDurataB) return specDurataB - specDurataA;
       const durataA = orarioToMin(a.oraFine) - orarioToMin(a.oraInizio);
       const durataB = orarioToMin(b.oraFine) - orarioToMin(b.oraInizio);
       if (durataA !== durataB) return durataA - durataB;
@@ -390,22 +393,16 @@ function render() {
 
   const categoria = categoriaCorrente();
   el.innerHTML = durataHtml + liberi.map((s, i) => {
-    let prezzoLabel;
-    if (gruppo.disciplina === "padel") {
-      const p = TARIFFE_PADEL[padelFasciaTariffa(orarioToMin(s.inizio), state.durataPadel)];
-      const scontoAttivo = (TARIFFE_PADEL.scontoSocioCategorie || []).includes(categoria) && TARIFFE_PADEL.scontoSocioPercentuale > 0;
-      prezzoLabel = p == null ? "—" : `CHF ${p.toFixed(2)}${scontoAttivo ? " · sconto socio applicabile" : ""}`;
-    } else {
-      const prezzo = quotaCategoriaClient(gruppo.disciplina, gruppo.posizione, categoria, state.data, s.inizio);
-      prezzoLabel = prezzo == null ? "—" : (prezzo === 0 ? "Incluso" : `da CHF ${prezzo.toFixed(2)}`);
-    }
+    const durataMinuti = gruppo.disciplina === "padel" ? state.durataPadel : undefined;
+    const prezzo = quotaCategoriaClient(gruppo.disciplina, gruppo.posizione, categoria, state.data, s.inizio, durataMinuti);
+    const prezzoLabel = prezzo == null ? "—" : (prezzo === 0 ? "Incluso" : `da CHF ${prezzo.toFixed(2)}`);
     return `
       <div class="slot-row">
         <div class="si">
           <span class="st">${s.inizio}–${s.fine}</span>
           <span class="sc">${escapeHtml(disciplinaLabel(gruppo.disciplina))} · Campo ${escapeHtml(s.campo.numero)}</span>
         </div>
-        <span class="sp">${prezzoLabel}${gruppo.disciplina === "tennis" ? " · a testa" : ""}</span>
+        <span class="sp">${prezzoLabel}${gruppo.disciplina === "tennis" || gruppo.disciplina === "padel" ? " · a testa" : ""}</span>
         <button type="button" class="btn btn-ghost apri-prenota-btn" style="width:auto;padding:8px 14px;font-size:0.76rem;" data-idx="${i}">Prenota</button>
       </div>
       <div class="prenota-panel-slot hidden" data-idx="${i}"></div>
@@ -430,17 +427,13 @@ function wireDurataPadel() {
 // ---------- Pannello di conferma prenotazione ----------
 //
 // Numero di campi "altro giocatore" mostrati, per disciplina: 1 per il
-// tennis (sempre, il prezzo dipende da chi gioca), fino a 3 per il padel
-// ma SOLO se chi prenota è già riconosciuto in una categoria agevolata
-// (altrimenti lo sconto cumulativo non si applicherebbe comunque),
-// nessuno per lo squash.
+// tennis, 3 per il padel (fino a 4 giocatori totali), nessuno per lo
+// squash — sempre, indipendentemente dalla categoria di chi prenota: il
+// prezzo è la somma delle quote dirette di ciascun giocatore, non più uno
+// sconto da attivare.
 function numeroCampiGiocatore(disciplina) {
   if (disciplina === "tennis") return 1;
-  if (disciplina === "padel") {
-    const categoria = categoriaCorrente();
-    const qualifica = (TARIFFE_PADEL.scontoSocioCategorie || []).includes(categoria) && TARIFFE_PADEL.scontoSocioPercentuale > 0;
-    return qualifica ? 3 : 0;
-  }
+  if (disciplina === "padel") return 3;
   return 0;
 }
 
@@ -456,7 +449,7 @@ function apriPannelloPrenota(slot, idx) {
 
   const etichetta = slot.campo.disciplina === "tennis" ? "Nome del secondo giocatore" : "Nome giocatore";
   const introPadel = nCampi > 0 && slot.campo.disciplina === "padel"
-    ? `<p style="color:var(--chalk-grey);font-size:0.78rem;margin:0 0 10px;">Chi gioca con te? Per ogni compagno riconosciuto come socio si aggiunge lo sconto.</p>` : "";
+    ? `<p style="color:var(--chalk-grey);font-size:0.78rem;margin:0 0 10px;">Chi gioca con te? Il prezzo è la somma della quota di ciascun giocatore in base alla propria categoria.</p>` : "";
 
   panel.innerHTML = `
     <div class="prenota-panel">
@@ -604,6 +597,7 @@ async function caricaProfiliDispositivo() {
 
 (async function init() {
   await loadDatiCentro();
+  await loadImpostazioni();
   document.getElementById("centro-kicker").textContent = DATI_CENTRO.nome;
 
   const esitoPagamento = new URLSearchParams(location.search).get("pagamento");
@@ -612,13 +606,12 @@ async function caricaProfiliDispositivo() {
     history.replaceState(null, "", location.pathname);
   }
 
-  const [campiSnap, chiusureSnap, tariffeSnap, forfaitSnap, impostazioniSnap, tariffePadelSnap, chiusurePadelSnap] = await Promise.all([
+  const [campiSnap, chiusureSnap, tariffeSnap, forfaitSnap, impostazioniSnap, chiusurePadelSnap] = await Promise.all([
     db.collection("campi").where("attivo", "==", true).get(),
     db.collection("chiusureCentro").get(),
     db.collection("tariffeCampi").get(),
     db.collection("forfaitCampi").get(),
     db.collection("impostazioni").doc("prenotazioniCampi").get(),
-    db.collection("impostazioni").doc("tariffePadel").get(),
     db.collection("chiusurePadel").get()
   ]);
 
@@ -627,7 +620,6 @@ async function caricaProfiliDispositivo() {
   TARIFFE_CAMPI = tariffeSnap.docs.map(d => d.data());
   FORFAIT_CAMPI = forfaitSnap.docs.map(d => d.data());
   if (impostazioniSnap.exists) IMPOSTAZIONI_PC = { ...IMPOSTAZIONI_PC, ...impostazioniSnap.data() };
-  if (tariffePadelSnap.exists) TARIFFE_PADEL = { ...TARIFFE_PADEL, ...tariffePadelSnap.data() };
   CHIUSURE_PADEL = new Set(chiusurePadelSnap.docs.map(d => d.id));
 
   costruisciGruppi();

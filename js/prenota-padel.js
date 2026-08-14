@@ -87,21 +87,66 @@ function feriale(dataIso) {
   return giorno >= 1 && giorno <= 5 && !FESTIVI.includes(dataIso);
 }
 
-let TARIFFE_PADEL = { diurno60: null, diurno90: null, serale90: null };
-async function loadTariffePadel() {
+// Prezzo: stesso motore "Tariffe campi" di prenota-campo.js (non più la
+// vecchia tariffa fissa + sconto in impostazioni/tariffePadel). Questa
+// pagina non ha alcun riconoscimento dispositivo, quindi la categoria è
+// sempre fissa "esterno" — l'anteprima resta così onesta rispetto a
+// quanto la funzione addebiterà davvero.
+let TARIFFE_CAMPI = [];
+let FORFAIT_CAMPI = [];
+async function loadTariffeCampi() {
   try {
-    const doc = await db.collection("impostazioni").doc("tariffePadel").get();
-    if (doc.exists) TARIFFE_PADEL = { ...TARIFFE_PADEL, ...doc.data() };
+    const [tariffeSnap, forfaitSnap] = await Promise.all([
+      db.collection("tariffeCampi").get(),
+      db.collection("forfaitCampi").get()
+    ]);
+    TARIFFE_CAMPI = tariffeSnap.docs.map(d => d.data());
+    FORFAIT_CAMPI = forfaitSnap.docs.map(d => d.data());
   } catch (err) {
-    console.warn("loadTariffePadel: lettura fallita:", err.message);
+    console.warn("loadTariffeCampi: lettura fallita:", err.message);
   }
 }
 
-function fasciaTariffa(startMin, duration) {
-  return duration === 60 ? "diurno60" : (startMin < BOUNDARY ? "diurno90" : "serale90");
+// Un giorno festivo (IMPOSTAZIONI.festivi, js/utils.js) conta come
+// domenica ai fini della tariffa — stesso criterio del server.
+function giornoSettimanaCodice(dataIso) {
+  if ((IMPOSTAZIONI.festivi || []).includes(dataIso)) return "dom";
+  const jsDay = new Date(dataIso + "T00:00:00").getDay();
+  return Object.keys(GIORNO_JS_DAY).find(id => GIORNO_JS_DAY[id] === jsDay);
 }
-function prezzoSlot(startMin, duration) {
-  return TARIFFE_PADEL[fasciaTariffa(startMin, duration)];
+
+function quotaCategoriaClient(disciplina, posizione, categoria, dataIso, startTime, durataMinuti) {
+  const forfaitAttivo = FORFAIT_CAMPI.some(f =>
+    f.disciplina === disciplina && f.posizione === posizione
+    && dataIso >= f.periodoInizio && dataIso <= f.periodoFine
+    && (f.categorie || []).includes(categoria)
+  );
+  if (forfaitAttivo) return 0;
+
+  const giorno = giornoSettimanaCodice(dataIso);
+  const startMin = orarioToMin(startTime);
+  const candidati = TARIFFE_CAMPI
+    .filter(t => t.disciplina === disciplina && t.posizione === posizione && t.categoria === categoria)
+    .filter(t => t.oraInizio != null && t.oraFine != null)
+    .filter(t => !(t.giorniSettimana || []).length || t.giorniSettimana.includes(giorno))
+    .filter(t => startMin >= orarioToMin(t.oraInizio) && startMin < orarioToMin(t.oraFine))
+    .filter(t => t.durataMinuti == null || t.durataMinuti === durataMinuti)
+    .sort((a, b) => {
+      const specDurataA = a.durataMinuti != null ? 1 : 0;
+      const specDurataB = b.durataMinuti != null ? 1 : 0;
+      if (specDurataA !== specDurataB) return specDurataB - specDurataA;
+      const durataA = orarioToMin(a.oraFine) - orarioToMin(a.oraInizio);
+      const durataB = orarioToMin(b.oraFine) - orarioToMin(b.oraInizio);
+      if (durataA !== durataB) return durataA - durataB;
+      const giorniA = (a.giorniSettimana || []).length || 7;
+      const giorniB = (b.giorniSettimana || []).length || 7;
+      return giorniA - giorniB;
+    });
+  return candidati.length > 0 ? candidati[0].prezzo : null;
+}
+
+function prezzoSlot(dataIso, startMin, duration) {
+  return quotaCategoriaClient("padel", null, "esterno", dataIso, minutiToOrario(startMin), duration);
 }
 
 let state = { data: null, duration: null, selected: null, bookings: [] };
@@ -369,7 +414,7 @@ function render() {
   if (state.selected) {
     document.getElementById("summaryTitle").textContent = `${label(state.selected.start)}–${label(state.selected.end)}`;
     bar.classList.add("show");
-    const prezzo = prezzoSlot(state.selected.start, state.duration);
+    const prezzo = prezzoSlot(state.data, state.selected.start, state.duration);
     priceEl.textContent = prezzo != null ? `CHF ${prezzo.toFixed(2)}` : "Tariffa non configurata";
   } else {
     bar.classList.remove("show");
@@ -388,7 +433,8 @@ function render() {
     history.replaceState(null, "", location.pathname);
   }
 
-  await loadTariffePadel();
+  await loadImpostazioni();
+  await loadTariffeCampi();
   await caricaChiusurePadel();
 
   state.data = toISO(new Date());

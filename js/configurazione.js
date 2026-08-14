@@ -93,6 +93,7 @@ async function onSaveDatiCentro(e) {
 async function loadImpostazioniForm() {
   await loadImpostazioni();
   document.getElementById("minuti-eliminazione-diario").value = IMPOSTAZIONI.minutiEliminazioneDiario;
+  document.getElementById("impostazioni-festivi").value = (IMPOSTAZIONI.festivi || []).join("\n");
 }
 
 async function onSaveImpostazioni(e) {
@@ -103,11 +104,15 @@ async function onSaveImpostazioni(e) {
   btn.disabled = true;
 
   const minuti = parseInt(document.getElementById("minuti-eliminazione-diario").value, 10);
+  const festivi = document.getElementById("impostazioni-festivi").value
+    .split("\n").map(r => r.trim()).filter(Boolean);
 
   try {
     if (isNaN(minuti) || minuti < 0) throw new Error("Inserisci un numero di minuti valido.");
-    await db.collection("impostazioni").doc("generale").set({ minutiEliminazioneDiario: minuti }, { merge: true });
+    if (festivi.some(d => !/^\d{4}-\d{2}-\d{2}$/.test(d))) throw new Error("Ogni data festiva deve essere nel formato AAAA-MM-GG.");
+    await db.collection("impostazioni").doc("generale").set({ minutiEliminazioneDiario: minuti, festivi }, { merge: true });
     IMPOSTAZIONI.minutiEliminazioneDiario = minuti;
+    IMPOSTAZIONI.festivi = festivi;
   } catch (err) {
     showError(errorEl, "Errore: " + err.message);
   } finally {
@@ -1107,7 +1112,8 @@ async function onImportSoci(e) {
 // ---------- Tariffe campi ----------
 
 function tariffaCampoLabel(it) {
-  return `${disciplinaLabel(it.disciplina)} · ${it.posizione ? posizioneLabel(it.posizione) : "Tutti i campi"} · ${CATEGORIA_LABEL[it.categoria] || it.categoria}`;
+  const posizioneLbl = it.disciplina === "padel" ? "" : ` · ${it.posizione ? posizioneLabel(it.posizione) : "Tutti i campi"}`;
+  return `${disciplinaLabel(it.disciplina)}${posizioneLbl} · ${CATEGORIA_LABEL[it.categoria] || it.categoria}`;
 }
 
 function tariffaCampoMeta(it) {
@@ -1117,6 +1123,7 @@ function tariffaCampoMeta(it) {
     : "Tutti i giorni";
   parts.push(giorniLabel);
   if (it.oraInizio && it.oraFine) parts.push(`${it.oraInizio}–${it.oraFine}`);
+  if (it.durataMinuti) parts.push(`${it.durataMinuti}'`);
   parts.push("CHF " + (it.prezzo || 0).toFixed(2) + " a slot");
   return parts.join(" · ");
 }
@@ -1127,6 +1134,11 @@ async function loadTariffeCampi() {
   renderSimpleList("tariffecampi-list", tariffe, tariffaCampoLabel, tariffaCampoMeta, "tariffeCampi", loadTariffeCampi);
 }
 
+function syncTariffaCampoPadelFields() {
+  const isPadel = document.getElementById("new-tariffacampo-disciplina").value === "padel";
+  document.getElementById("tariffacampo-posizione-field").classList.toggle("hidden", isPadel);
+}
+
 async function onCreateTariffaCampo(e) {
   e.preventDefault();
   const btn = e.target.querySelector("button[type=submit]");
@@ -1135,20 +1147,23 @@ async function onCreateTariffaCampo(e) {
   btn.disabled = true;
 
   const prezzoRaw = document.getElementById("new-tariffacampo-prezzo").value;
+  const durataRaw = document.getElementById("new-tariffacampo-durata").value;
   const oraInizio = document.getElementById("new-tariffacampo-orainizio").value;
   const oraFine = document.getElementById("new-tariffacampo-orafine").value;
+  const disciplina = document.getElementById("new-tariffacampo-disciplina").value;
   const giorniSettimana = Array.from(document.querySelectorAll("#tariffacampo-giorni-checks input:checked")).map(c => c.value);
   try {
     if (!prezzoRaw) throw new Error("Inserisci un prezzo.");
     if (!oraInizio || !oraFine) throw new Error("Inserisci l'orario di inizio e fine fascia.");
     if (oraInizio >= oraFine) throw new Error("L'orario di fine deve essere successivo a quello di inizio.");
     await db.collection("tariffeCampi").add({
-      disciplina: document.getElementById("new-tariffacampo-disciplina").value,
-      posizione: document.getElementById("new-tariffacampo-posizione").value || null,
+      disciplina,
+      posizione: disciplina === "padel" ? null : (document.getElementById("new-tariffacampo-posizione").value || null),
       categoria: document.getElementById("new-tariffacampo-categoria").value,
       giorniSettimana,
       oraInizio,
       oraFine,
+      durataMinuti: durataRaw !== "" ? parseInt(durataRaw, 10) : null,
       prezzo: parseFloat(prezzoRaw),
       attivo: true
     });
@@ -1405,6 +1420,8 @@ requireAuth(async (profile) => {
   document.getElementById("new-categoriasocio-form").addEventListener("submit", onCreateCategoriaSocio);
   document.getElementById("cancel-edit-categoriasocio-btn").addEventListener("click", cancelEditCategoriaSocio);
   document.getElementById("new-tariffacampo-form").addEventListener("submit", onCreateTariffaCampo);
+  document.getElementById("new-tariffacampo-disciplina").addEventListener("change", syncTariffaCampoPadelFields);
+  syncTariffaCampoPadelFields();
   document.getElementById("new-forfaitcampo-form").addEventListener("submit", onCreateForfaitCampo);
   document.getElementById("new-chiusuracentro-form").addEventListener("submit", onCreateChiusuraCentro);
   document.getElementById("prenotazionicampi-form").addEventListener("submit", onSavePrenotazioniCampi);
