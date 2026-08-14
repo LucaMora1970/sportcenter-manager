@@ -1256,7 +1256,12 @@ exports.importaSoci = onCall(async (request) => {
     throw new HttpsError("invalid-argument", "Nessuna riga da importare.");
   }
 
-  const CATEGORIE_VALIDE = ["socio", "junior", "studente", "azienda"];
+  // Le categorie sono configurabili (collection "categorieSocio", vedi
+  // Configurazione) invece di un elenco fisso — "azienda" resta l'unico
+  // valore speciale non di tesseramento accettato qui ("esterno"/"maestro"
+  // non hanno senso per un socio importato).
+  const categorieSnap = await db.collection("categorieSocio").where("attivo", "==", true).get();
+  const CATEGORIE_VALIDE = [...categorieSnap.docs.map(d => d.id), "azienda"];
   let importate = 0;
   let scartate = 0;
   for (const riga of righe) {

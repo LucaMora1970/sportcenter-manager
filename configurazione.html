@@ -461,7 +461,7 @@
       <details class="config-section">
       <summary><h2>Soci (prenotazione campi)</h2></summary>
       <div class="config-section-body">
-      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Anagrafica per riconoscere chi prenota tennis/squash e applicare la tariffa giusta — mai visibile lato pubblico. Incolla una riga per persona: <code>nome;cognome;email;categoria;telefono;tessera</code> (categoria: socio, junior, studente, azienda).</p>
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Anagrafica per riconoscere chi prenota tennis/squash e applicare la tariffa giusta — mai visibile lato pubblico. Incolla una riga per persona: <code>nome;cognome;email;categoria;telefono;tessera</code> (categoria: uno degli ID definiti in "Categorie socio" qui sotto, oppure <code>azienda</code>).</p>
       <form id="import-soci-form">
         <div class="field">
           <label for="import-soci-testo">Righe da importare</label>
@@ -470,6 +470,42 @@
         <div class="error-msg" id="import-soci-error"></div>
         <div class="success-msg" id="import-soci-success"></div>
         <button type="submit" class="btn btn-ghost" id="import-soci-btn">Importa</button>
+      </form>
+      </div>
+      </details>
+
+      <details class="config-section">
+      <summary><h2>Categorie socio</h2></summary>
+      <div class="config-section-body">
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Sotto-categorie di tesseramento (es. Attivi, Famiglia, Studenti, Età AVS, Sostenitori, fasce Junior) con la relativa quota forfait annuale — usate ovunque nell'app al posto di un generico "Socio": tariffe campi, forfait stagionale, sconto padel, priorità di prenotazione. Personalizzabili liberamente.</p>
+      <div id="categoriesocio-list">
+        <div class="empty-state"><div class="display">Caricamento…</div></div>
+      </div>
+      <form id="new-categoriasocio-form">
+        <div class="row2">
+          <div class="field">
+            <label for="new-categoriasocio-id">ID categoria</label>
+            <input type="text" id="new-categoriasocio-id" required placeholder="es. attivi">
+          </div>
+          <div class="field">
+            <label for="new-categoriasocio-nome">Nome</label>
+            <input type="text" id="new-categoriasocio-nome" required placeholder="es. Attivi">
+          </div>
+        </div>
+        <p style="color:var(--chalk-grey);font-size:0.78rem;margin:-6px 0 14px;">L'ID è quello da usare anche nella colonna "categoria" quando si incolla l'elenco soci da importare.</p>
+        <div class="row2">
+          <div class="field">
+            <label for="new-categoriasocio-costo">Quota forfait annuale (CHF)</label>
+            <input type="number" id="new-categoriasocio-costo" min="0" step="0.5" placeholder="es. 350">
+          </div>
+          <div class="field">
+            <label for="new-categoriasocio-ordine">Ordine (numero più basso = più in alto nell'elenco)</label>
+            <input type="number" id="new-categoriasocio-ordine" step="1" placeholder="es. 3">
+          </div>
+        </div>
+        <div class="error-msg" id="new-categoriasocio-error"></div>
+        <button type="submit" class="btn btn-ghost" id="create-categoriasocio-btn">+ Aggiungi categoria</button>
+        <button type="button" class="btn btn-ghost hidden" id="cancel-edit-categoriasocio-btn" style="margin-top:10px;">Annulla modifica</button>
       </form>
       </div>
       </details>
@@ -644,19 +680,8 @@
             <input type="number" id="pc-settimane-visibili" min="1" step="1" placeholder="es. 4">
           </div>
         </div>
-        <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Giorni di anticipo con cui ciascuna categoria può prenotare (priorità ai soci):</p>
-        <div class="row2">
-          <div class="field"><label for="pc-anticipo-socio">Socio</label><input type="number" id="pc-anticipo-socio" min="0" step="1"></div>
-          <div class="field"><label for="pc-anticipo-junior">Junior</label><input type="number" id="pc-anticipo-junior" min="0" step="1"></div>
-        </div>
-        <div class="row2">
-          <div class="field"><label for="pc-anticipo-studente">Studente</label><input type="number" id="pc-anticipo-studente" min="0" step="1"></div>
-          <div class="field"><label for="pc-anticipo-azienda">Azienda partner</label><input type="number" id="pc-anticipo-azienda" min="0" step="1"></div>
-        </div>
-        <div class="row2">
-          <div class="field"><label for="pc-anticipo-maestro">Maestro</label><input type="number" id="pc-anticipo-maestro" min="0" step="1"></div>
-          <div class="field"><label for="pc-anticipo-esterno">Esterno</label><input type="number" id="pc-anticipo-esterno" min="0" step="1"></div>
-        </div>
+        <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Giorni di anticipo con cui ciascuna categoria può prenotare (priorità ai soci) — un campo per ciascuna voce definita in "Categorie socio":</p>
+        <div id="pc-anticipo-container" style="display:flex;flex-wrap:wrap;gap:12px;"></div>
         <div class="error-msg" id="prenotazionicampi-error"></div>
         <button type="submit" class="btn btn-ghost" id="salva-prenotazionicampi-btn">Salva</button>
       </form>

@@ -942,14 +942,130 @@ async function onCreateArticolo(e) {
 
 // ---------- Prenotazione campi: soci, tariffe, forfait, chiusure ----------
 
-const CATEGORIE_TARIFFA = [
-  { id: "socio", nome: "Socio" },
-  { id: "junior", nome: "Junior (scuola)" },
-  { id: "studente", nome: "Studente" },
-  { id: "azienda", nome: "Azienda partner" },
-  { id: "esterno", nome: "Esterno" }
+// Le sotto-categorie di tesseramento (Attivi, Famiglia, Studenti, Età AVS,
+// Sostenitori, fasce Junior...) sono configurabili in "Categorie socio",
+// non più un elenco fisso — "azienda" ed "esterno" restano gli unici due
+// valori non di tesseramento, sempre presenti.
+let categorieSocioCache = []; // [{id, nome, costoForfait, ordine, attivo}]
+let editingCategoriaSocioId = null;
+
+function categorieComplete() {
+  return [...categorieSocioCache, { id: "azienda", nome: "Azienda partner" }, { id: "esterno", nome: "Esterno" }];
+}
+
+let CATEGORIA_LABEL = { azienda: "Azienda partner", esterno: "Esterno" };
+function aggiornaCategoriaLabel() {
+  CATEGORIA_LABEL = Object.fromEntries(categorieComplete().map(c => [c.id, c.nome]));
+}
+
+const DEFAULT_CATEGORIE_SOCIO_SEED = [
+  { id: "attivi", nome: "Attivi", ordine: 0 },
+  { id: "famiglia", nome: "Famiglia", ordine: 1 },
+  { id: "studenti", nome: "Studenti", ordine: 2 },
+  { id: "eta-avs", nome: "Età AVS", ordine: 3 },
+  { id: "sostenitori", nome: "Sostenitori", ordine: 4 },
+  { id: "junior-fino-12", nome: "Junior fino a 12 anni", ordine: 5 },
+  { id: "junior-13-15", nome: "Junior da 13 a 15 anni", ordine: 6 },
+  { id: "junior-16-18", nome: "Junior da 16 a 18 anni", ordine: 7 }
 ];
-const CATEGORIA_LABEL = Object.fromEntries(CATEGORIE_TARIFFA.map(c => [c.id, c.nome]));
+
+// Come seedDisciplineIfEmpty(): crea le voci di default solo alla prima
+// attivazione (collection ancora vuota), mai in seguito — non deve
+// resuscitare una categoria che lo staff ha volutamente eliminato.
+async function seedCategorieSocioIfEmpty() {
+  const snap = await db.collection("categorieSocio").limit(1).get();
+  if (!snap.empty) return;
+
+  const batch = db.batch();
+  DEFAULT_CATEGORIE_SOCIO_SEED.forEach(c => {
+    batch.set(db.collection("categorieSocio").doc(c.id), { nome: c.nome, costoForfait: null, ordine: c.ordine, attivo: true });
+  });
+  await batch.commit();
+}
+
+async function loadCategorieSocio() {
+  const snap = await db.collection("categorieSocio").get();
+  categorieSocioCache = sortByOrdine(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+  aggiornaCategoriaLabel();
+  renderSimpleList(
+    "categoriesocio-list",
+    categorieSocioCache,
+    it => it.nome,
+    it => it.costoForfait != null ? `Quota forfait: CHF ${Number(it.costoForfait).toFixed(2)}` : "Quota forfait non ancora impostata",
+    "categorieSocio",
+    loadCategorieSocio,
+    startEditCategoriaSocio
+  );
+}
+
+function startEditCategoriaSocio(item) {
+  editingCategoriaSocioId = item.id;
+  document.getElementById("new-categoriasocio-id").value = item.id;
+  document.getElementById("new-categoriasocio-id").disabled = true;
+  document.getElementById("new-categoriasocio-nome").value = item.nome || "";
+  document.getElementById("new-categoriasocio-costo").value = item.costoForfait != null ? item.costoForfait : "";
+  document.getElementById("new-categoriasocio-ordine").value = item.ordine != null ? item.ordine : "";
+  document.getElementById("create-categoriasocio-btn").textContent = "Salva modifiche";
+  document.getElementById("cancel-edit-categoriasocio-btn").classList.remove("hidden");
+  document.getElementById("new-categoriasocio-form").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function cancelEditCategoriaSocio() {
+  editingCategoriaSocioId = null;
+  document.getElementById("new-categoriasocio-form").reset();
+  document.getElementById("new-categoriasocio-id").disabled = false;
+  document.getElementById("create-categoriasocio-btn").textContent = "+ Aggiungi categoria";
+  document.getElementById("cancel-edit-categoriasocio-btn").classList.add("hidden");
+}
+
+async function onCreateCategoriaSocio(e) {
+  e.preventDefault();
+  const btn = document.getElementById("create-categoriasocio-btn");
+  const errorEl = document.getElementById("new-categoriasocio-error");
+  errorEl.textContent = "";
+  btn.disabled = true;
+
+  const id = document.getElementById("new-categoriasocio-id").value.trim();
+  const nome = document.getElementById("new-categoriasocio-nome").value.trim();
+  const costoRaw = document.getElementById("new-categoriasocio-costo").value;
+  const costoForfait = costoRaw !== "" ? parseFloat(costoRaw) : null;
+  const ordineRaw = document.getElementById("new-categoriasocio-ordine").value;
+  const ordine = ordineRaw !== "" ? parseInt(ordineRaw, 10) : 99;
+
+  try {
+    if (!nome) throw new Error("Inserisci un nome.");
+    if (editingCategoriaSocioId) {
+      await db.collection("categorieSocio").doc(editingCategoriaSocioId).update({ nome, costoForfait, ordine });
+    } else {
+      if (!id) throw new Error("Inserisci un ID categoria (es. attivi) — usato anche nell'import soci.");
+      await db.collection("categorieSocio").doc(id).set({ nome, costoForfait, ordine, attivo: true });
+    }
+    cancelEditCategoriaSocio();
+    await loadCategorieSocio();
+    await sincronizzaSelectCategorie();
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// Ripopola tutti i punti che elencano le categorie (select Tariffe campi,
+// checkbox Forfait stagionale, checkbox sconto padel, form giorni di
+// anticipo) — richiamata dopo ogni modifica a "Categorie socio" così
+// restano sempre aggiornati senza dover ricaricare la pagina.
+function sincronizzaSelectCategorie() {
+  populateSelect(document.getElementById("new-tariffacampo-categoria"), categorieComplete().map(c => ({ id: c.id, label: c.nome })));
+  document.getElementById("forfaitcampo-categorie-checks").innerHTML = categorieComplete()
+    .filter(c => c.id !== "esterno")
+    .map(c => `<div class="checkbox-row"><input type="checkbox" id="fc-cat-${c.id}" value="${c.id}"><label for="fc-cat-${c.id}">${escapeHtml(c.nome)}</label></div>`)
+    .join("");
+  document.getElementById("tariffa-sconto-categorie-checks").innerHTML = categorieComplete()
+    .filter(c => c.id !== "esterno")
+    .map(c => `<div class="checkbox-row"><input type="checkbox" id="ts-cat-${c.id}" value="${c.id}"><label for="ts-cat-${c.id}">${escapeHtml(c.nome)}</label></div>`)
+    .join("");
+  renderCampiAnticipoPrenotazione();
+}
 
 // Solo le discipline che usano davvero un tabellone campi (non ha senso
 // chiudere "Preparatore atletico" ecc.).
@@ -1154,16 +1270,37 @@ async function onCreateChiusuraCentro(e) {
 
 // ---------- Impostazioni prenotazioni campi ----------
 
+// Le categorie sono configurabili (vedi "Categorie socio"), quindi i
+// campi "giorni di anticipo" non possono più essere fissi in HTML —
+// vengono generati per ciascuna voce di categorieComplete() più
+// "maestro" (l'unico valore che non è né tesseramento né azienda/esterno).
+// prenotazioniCampiAnticipoCache tiene i valori salvati così il form
+// resta corretto anche quando si rigenera (es. dopo aver aggiunto una
+// categoria in "Categorie socio").
+let prenotazioniCampiAnticipoCache = {};
+
+function idPerAnticipo() {
+  return [...categorieComplete().map(c => c.id), "maestro"];
+}
+
+function renderCampiAnticipoPrenotazione() {
+  const container = document.getElementById("pc-anticipo-container");
+  if (!container) return;
+  container.innerHTML = idPerAnticipo().map(id => `
+    <div class="field" style="flex:0 0 160px;">
+      <label for="pc-anticipo-${id}">${escapeHtml(CATEGORIA_LABEL[id] || (id === "maestro" ? "Maestro" : id))}</label>
+      <input type="number" id="pc-anticipo-${id}" min="0" step="1" value="${prenotazioniCampiAnticipoCache[id] ?? ""}">
+    </div>
+  `).join("");
+}
+
 async function loadPrenotazioniCampiForm() {
   const doc = await db.collection("impostazioni").doc("prenotazioniCampi").get();
   const dati = doc.exists ? doc.data() : {};
   document.getElementById("pc-max-attive").value = dati.maxPrenotazioniAttivePerUtente ?? "";
   document.getElementById("pc-settimane-visibili").value = dati.settimaneVisibili ?? "";
-  const anticipo = dati.giorniAnticipoPrenotazione || {};
-  ["socio", "junior", "studente", "azienda", "maestro", "esterno"].forEach(cat => {
-    const el = document.getElementById(`pc-anticipo-${cat}`);
-    if (el) el.value = anticipo[cat] ?? "";
-  });
+  prenotazioniCampiAnticipoCache = dati.giorniAnticipoPrenotazione || {};
+  renderCampiAnticipoPrenotazione();
 }
 
 async function onSavePrenotazioniCampi(e) {
@@ -1180,10 +1317,11 @@ async function onSavePrenotazioniCampi(e) {
 
   try {
     const giorniAnticipoPrenotazione = {};
-    ["socio", "junior", "studente", "azienda", "maestro", "esterno"].forEach(cat => {
-      const v = numOrNull(`pc-anticipo-${cat}`);
-      if (v != null) giorniAnticipoPrenotazione[cat] = v;
+    idPerAnticipo().forEach(id => {
+      const v = numOrNull(`pc-anticipo-${id}`);
+      if (v != null) giorniAnticipoPrenotazione[id] = v;
     });
+    prenotazioniCampiAnticipoCache = giorniAnticipoPrenotazione;
     await db.collection("impostazioni").doc("prenotazioniCampi").set({
       maxPrenotazioniAttivePerUtente: numOrNull("pc-max-attive"),
       settimaneVisibili: numOrNull("pc-settimane-visibili"),
@@ -1225,17 +1363,8 @@ requireAuth(async (profile) => {
   populateSelect(document.getElementById("new-quotacampo-disciplina"), DISCIPLINE);
   populateSelect(document.getElementById("new-quotacampo-posizione"), POSIZIONI_CAMPO, "— tutti —");
   populateSelect(document.getElementById("new-tariffacampo-posizione"), POSIZIONI_CAMPO, "— tutti —");
-  populateSelect(document.getElementById("new-tariffacampo-categoria"), CATEGORIE_TARIFFA.map(c => ({ id: c.id, label: c.nome })));
   populateSelect(document.getElementById("new-forfaitcampo-posizione"), POSIZIONI_CAMPO, "— tutti —");
 
-  document.getElementById("forfaitcampo-categorie-checks").innerHTML = CATEGORIE_TARIFFA
-    .filter(c => c.id !== "esterno")
-    .map(c => `<div class="checkbox-row"><input type="checkbox" id="fc-cat-${c.id}" value="${c.id}"><label for="fc-cat-${c.id}">${c.nome}</label></div>`)
-    .join("");
-  document.getElementById("tariffa-sconto-categorie-checks").innerHTML = CATEGORIE_TARIFFA
-    .filter(c => c.id !== "esterno")
-    .map(c => `<div class="checkbox-row"><input type="checkbox" id="ts-cat-${c.id}" value="${c.id}"><label for="ts-cat-${c.id}">${c.nome}</label></div>`)
-    .join("");
   document.getElementById("chiusuracentro-discipline-checks").innerHTML = DISCIPLINE_CHIUDIBILI
     .map(d => `<div class="checkbox-row"><input type="checkbox" id="cc-disc-${d.id}" value="${d.id}"><label for="cc-disc-${d.id}">${d.nome}</label></div>`)
     .join("");
@@ -1263,6 +1392,8 @@ requireAuth(async (profile) => {
   document.getElementById("cancel-edit-articolo-btn").addEventListener("click", cancelEditArticolo);
 
   document.getElementById("import-soci-form").addEventListener("submit", onImportSoci);
+  document.getElementById("new-categoriasocio-form").addEventListener("submit", onCreateCategoriaSocio);
+  document.getElementById("cancel-edit-categoriasocio-btn").addEventListener("click", cancelEditCategoriaSocio);
   document.getElementById("new-tariffacampo-form").addEventListener("submit", onCreateTariffaCampo);
   document.getElementById("new-forfaitcampo-form").addEventListener("submit", onCreateForfaitCampo);
   document.getElementById("new-chiusuracentro-form").addEventListener("submit", onCreateChiusuraCentro);
@@ -1278,6 +1409,9 @@ requireAuth(async (profile) => {
   await loadTipiGruppoPadel();
   await loadTipiAttivita();
   await loadQuoteCampo();
+  await seedCategorieSocioIfEmpty();
+  await loadCategorieSocio();
+  sincronizzaSelectCategorie();
   await loadTariffeCampi();
   await loadForfaitCampi();
   await loadChiusureCentro();
