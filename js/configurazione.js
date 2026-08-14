@@ -669,7 +669,7 @@ function renderTipiAttivitaList() {
     <div class="entry-card" data-id="${it.id}">
       <div class="entry-main">
         <div class="entry-tipo">${escapeHtml(it.nome)}</div>
-        <div class="entry-meta">${escapeHtml(disciplinaLabel(it.disciplina))} · ordine ${it.ordine != null ? it.ordine : "—"}${it.durataMinuti ? " · " + it.durataMinuti + "'" : ""} · ${(it.prezzi || []).length} tariffe${it.soggettoQuotaCampo ? " · quota campo" : ""}${it.retribuitoCollaboratore ? " · compenso" : ""}${it.richiedeAllievo ? " · richiede allievo" : ""}</div>
+        <div class="entry-meta">${escapeHtml(disciplinaLabel(it.disciplina))} · ordine ${it.ordine != null ? it.ordine : "—"}${it.durataMinuti ? " · " + it.durataMinuti + "'" : ""} · ${(it.prezzi || []).length} tariffe${it.soggettoQuotaCampo ? " · quota campo" : ""}${it.retribuitoCollaboratore ? " · compenso" : ""}${it.richiedeAllievo ? " · richiede allievo" : ""}${it.richiedeCampo === false ? " · niente campo" : ""}</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;">
         <button class="btn btn-ghost edit-tipoattivita-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${it.id}">Modifica</button>
@@ -726,6 +726,7 @@ function startEditTipoAttivita(tipo) {
   document.getElementById("new-tipoattivita-quotacampo").checked = !!tipo.soggettoQuotaCampo;
   document.getElementById("new-tipoattivita-retribuito").checked = !!tipo.retribuitoCollaboratore;
   document.getElementById("new-tipoattivita-richiedeallievo").checked = !!tipo.richiedeAllievo;
+  document.getElementById("new-tipoattivita-richiedecampo").checked = tipo.richiedeCampo !== false;
 
   document.getElementById("prezzi-rows-container").innerHTML = "";
   (tipo.prezzi || []).forEach(p => addPrezzoRow(p));
@@ -763,6 +764,7 @@ async function onCreateTipoAttivita(e) {
   const soggettoQuotaCampo = document.getElementById("new-tipoattivita-quotacampo").checked;
   const retribuitoCollaboratore = document.getElementById("new-tipoattivita-retribuito").checked;
   const richiedeAllievo = document.getElementById("new-tipoattivita-richiedeallievo").checked;
+  const richiedeCampo = document.getElementById("new-tipoattivita-richiedecampo").checked;
 
   const prezzi = [];
   document.querySelectorAll(".prezzo-row").forEach(row => {
@@ -782,9 +784,9 @@ async function onCreateTipoAttivita(e) {
   try {
     if (!nome) throw new Error("Inserisci un nome.");
     if (editingTipoAttivitaId) {
-      await db.collection("tipiAttivita").doc(editingTipoAttivitaId).update({ nome, disciplina, ordine, durataMinuti, soggettoQuotaCampo, retribuitoCollaboratore, richiedeAllievo, prezzi });
+      await db.collection("tipiAttivita").doc(editingTipoAttivitaId).update({ nome, disciplina, ordine, durataMinuti, soggettoQuotaCampo, retribuitoCollaboratore, richiedeAllievo, richiedeCampo, prezzi });
     } else {
-      await db.collection("tipiAttivita").add({ nome, disciplina, ordine, durataMinuti, soggettoQuotaCampo, retribuitoCollaboratore, richiedeAllievo, attivo: true, prezzi });
+      await db.collection("tipiAttivita").add({ nome, disciplina, ordine, durataMinuti, soggettoQuotaCampo, retribuitoCollaboratore, richiedeAllievo, richiedeCampo, attivo: true, prezzi });
     }
     cancelEditTipoAttivita();
     await loadTipiAttivita();

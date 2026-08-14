@@ -54,7 +54,7 @@ function rowHtml(rowId) {
         </div>
       </div>
       <div class="row2">
-        <div class="field" style="flex:0 0 100px;">
+        <div class="field row-campo-field" style="flex:0 0 100px;">
           <label>Campo</label>
           <select class="row-campo"></select>
         </div>
@@ -127,8 +127,10 @@ function populateRowDependents(rowEl) {
     campiPerDisciplina.map(c => ({ id: c.numero, label: "Campo " + c.numero })),
     campoUnico ? undefined : "—"
   );
-  const richiedeCampo = ["tennis", "squash", "padel"].includes(disciplina);
-  campoSelect.required = richiedeCampo && campiPerDisciplina.length > 0;
+  // Obbligatorio/mostrato dipende anche dal tipo attività scelto (vedi
+  // syncCampoField): un'attività come "Amministrazione" può non svolgersi
+  // su un campo anche se la disciplina è tennis/squash/padel.
+  syncCampoField(rowEl);
 
   const gruppoField = rowEl.querySelector(".row-gruppo-field");
   const gruppoSelect = rowEl.querySelector(".row-gruppo");
@@ -327,6 +329,28 @@ function addAllievoItem(rowEl) {
   updateAllievoRemoveButtons(rowEl);
 }
 
+// Il campo va scelto solo se la disciplina lo prevede (tennis/squash/
+// padel) E il tipo attività non ha esplicitamente disattivato il
+// requisito (richiedeCampo === false, es. "Amministrazione": si registra
+// sotto una disciplina ma non si svolge su un campo). Finché il tipo
+// attività non specifica nulla (richiedeCampo assente = voci create
+// prima dell'introduzione di questo flag), il comportamento resta quello
+// di sempre: obbligatorio per tennis/squash/padel.
+function syncCampoField(rowEl) {
+  const disciplina = rowEl.querySelector(".row-disciplina").value;
+  const tipo = tipoAttivitaSelezionato(rowEl);
+  const campoField = rowEl.querySelector(".row-campo-field");
+  const campoSelect = rowEl.querySelector(".row-campo");
+  const campiDisponibili = campoSelect.querySelectorAll('option:not([value=""])').length > 0;
+
+  const disciplinaConCampo = ["tennis", "squash", "padel"].includes(disciplina);
+  const tipoEsclude = tipo && tipo.richiedeCampo === false;
+  const richiedeCampo = disciplinaConCampo && !tipoEsclude && campiDisponibili;
+
+  campoSelect.required = richiedeCampo;
+  campoField.classList.toggle("hidden", !disciplinaConCampo || tipoEsclude);
+}
+
 function syncAllievoField(rowEl) {
   const tipoAttivitaSel = rowEl.querySelector(".row-tipoattivita");
   const tipo = tipiAttivitaCache.find(t => t.id === tipoAttivitaSel.value);
@@ -362,6 +386,7 @@ function addRow() {
   rowEl.querySelector(".row-tipoattivita").addEventListener("change", () => {
     syncAllievoField(rowEl);
     syncOrarioAuto(rowEl);
+    syncCampoField(rowEl);
   });
   rowEl.querySelector(".row-orainizio-auto").addEventListener("change", () => aggiornaOraFineAuto(rowEl));
   rowEl.querySelector(".row-add-allievo-btn").addEventListener("click", () => addAllievoItem(rowEl));
