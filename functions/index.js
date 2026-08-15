@@ -1401,19 +1401,31 @@ exports.attivaSocioDaToken = onCall(async (request) => {
   }
 
   let uid = socioSnap.data().authUid;
-  if (!uid) {
-    uid = `socio_${socioId}`;
-    try {
-      await getAuth().createUser({ uid });
-    } catch (err) {
-      if (err.code !== "auth/uid-already-exists") throw err;
+  try {
+    if (!uid) {
+      uid = `socio_${socioId}`;
+      try {
+        await getAuth().createUser({ uid });
+      } catch (err) {
+        if (err.code !== "auth/uid-already-exists") throw err;
+      }
+      await socioRef.update({ authUid: uid });
     }
-    await socioRef.update({ authUid: uid });
-  }
 
-  await tokenRef.update({ usato: true, usatoAt: FieldValue.serverTimestamp() });
-  const customToken = await getAuth().createCustomToken(uid);
-  return { customToken, socioId };
+    // Segna il token usato solo DOPO che l'attivazione è davvero riuscita —
+    // prima veniva bruciato subito, quindi un fallimento qui rendeva il QR
+    // inutilizzabile per un retry, mascherando l'errore reale dietro
+    // "link già usato".
+    const customToken = await getAuth().createCustomToken(uid);
+    await tokenRef.update({ usato: true, usatoAt: FieldValue.serverTimestamp() });
+    return { customToken, socioId };
+  } catch (err) {
+    // Senza questo try/catch un'eccezione qui (es. Auth) esce come
+    // "INTERNAL" generico lato client, nascondendo la vera causa — stesso
+    // problema già risolto per inviaInvitoAzienda.
+    if (err instanceof HttpsError) throw err;
+    throw new HttpsError("internal", "Attivazione non riuscita: " + err.message);
+  }
 });
 
 // Dopo signInWithCustomToken il dispositivo ha una sessione Firebase Auth
@@ -1432,14 +1444,18 @@ exports.collegaSocioAlDispositivo = onCall(async (request) => {
   }
   const socio = socioSnap.data();
 
-  const deviceRef = db.collection("sociDevices").doc(request.auth.uid);
-  const deviceSnap = await deviceRef.get();
-  const profili = deviceSnap.exists ? (deviceSnap.data().profili || []) : [];
-  if (!profili.some(p => p.socioId === socioId)) {
-    profili.push({ socioId, nome: `${socio.nome} ${socio.cognome}`, categoria: socio.categoria });
+  try {
+    const deviceRef = db.collection("sociDevices").doc(request.auth.uid);
+    const deviceSnap = await deviceRef.get();
+    const profili = deviceSnap.exists ? (deviceSnap.data().profili || []) : [];
+    if (!profili.some(p => p.socioId === socioId)) {
+      profili.push({ socioId, nome: `${socio.nome} ${socio.cognome}`, categoria: socio.categoria });
+    }
+    await deviceRef.set({ profili, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    return { profili };
+  } catch (err) {
+    throw new HttpsError("internal", "Collegamento dispositivo non riuscito: " + err.message);
   }
-  await deviceRef.set({ profili, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-  return { profili };
 });
 
 // ---------- Aziende convenzionate: portale referente ----------
@@ -1699,6 +1715,48 @@ async function verificaDipendenteProprio(aziendaId, socioId) {
   }
   return socioSnap;
 }
+
+// Invio reale (SMTP) del link di attivazione a un dipendente appena
+// aggiunto — azione separata e a bottone (non automatica alla creazione)
+// così un fallimento di invio è sempre visibile al referente, invece di
+// perdersi silenziosamente. Riusa il token già generato da
+// aggiungiDipendenteAzienda (ne prende il più recente non ancora usato,
+// una sola query per socioId per non richiedere un indice composito).
+exports.inviaInvitoDipendente = onCall({ secrets: MAIL_SECRETS }, async (request) => {
+  const aziendaId = await verificaReferenteAzienda(request.auth);
+  const { socioId } = request.data || {};
+  if (!socioId) throw new HttpsError("invalid-argument", "socioId mancante.");
+
+  const socioSnap = await verificaDipendenteProprio(aziendaId, socioId);
+  const socio = socioSnap.data();
+  if (!socio.email) throw new HttpsError("failed-precondition", "Questo dipendente non ha un'email registrata.");
+
+  const tokenSnap = await db.collection("attivazioniSoci").where("socioId", "==", socioId).get();
+  const nonUsati = tokenSnap.docs.filter(d => !d.data().usato);
+  if (nonUsati.length === 0) {
+    throw new HttpsError("failed-precondition", "Nessun link di attivazione disponibile — riprova ad aggiungere il dipendente.");
+  }
+  nonUsati.sort((a, b) => (b.data().createdAt?.toMillis() || 0) - (a.data().createdAt?.toMillis() || 0));
+  const link = `${APP_URL}attiva-socio.html?t=${nonUsati[0].id}`;
+
+  const aziendaSnap = await db.collection("aziende").doc(aziendaId).get();
+  const nomeAzienda = (aziendaSnap.exists && aziendaSnap.data().nome) || "";
+
+  try {
+    await inviaEmail({
+      to: socio.email,
+      subject: `Il tuo accesso a Sport-OS — ${nomeAzienda}`,
+      html: `<p>Ciao ${socio.nome || ""},</p>`
+        + `<p><strong>${nomeAzienda}</strong> ti ha registrato per prenotare i campi alla tariffa aziendale convenzionata.</p>`
+        + `<p>Tocca questo link per attivare il tuo accesso:<br><a href="${link}">${link}</a></p>`
+        + `<p>Il link è valido una sola volta.</p>`
+    });
+  } catch (err) {
+    throw new HttpsError("internal", "Invio email fallito: " + err.message);
+  }
+
+  return { ok: true, email: socio.email };
+});
 
 exports.disattivaDipendenteAzienda = onCall(async (request) => {
   const aziendaId = await verificaReferenteAzienda(request.auth);

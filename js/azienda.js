@@ -47,7 +47,7 @@ function renderCartaStato() {
           <div class="entry-tipo">Carta salvata</div>
           <div class="entry-meta">Puoi addebitare quanto dovuto direttamente dal report qui sotto.${ultimoHtml}</div>
         </div>
-        <button type="button" class="btn btn-ghost" id="rimuovi-carta-btn">Rimuovi carta</button>
+        <button type="button" class="btn btn-ghost" id="rimuovi-carta-btn" style="width:auto;flex-shrink:0;">Rimuovi carta</button>
       </div>
     `;
     document.getElementById("rimuovi-carta-btn").addEventListener("click", onRimuoviCarta);
@@ -124,10 +124,10 @@ async function caricaDatiAzienda() {
           <div class="entry-meta">${barraConsumo(d.consumoMese, tetto)}</div>
           <div class="team-card-row" style="margin-top:8px;">
             <input type="number" class="dipendente-tetto-input" min="0" step="1" placeholder="Tetto personalizzato (CHF)" value="${d.tettoPersonalizzato != null ? d.tettoPersonalizzato : ""}" data-id="${d.id}">
-            <button class="btn btn-ghost salva-tetto-btn" data-id="${d.id}">Salva</button>
+            <button class="btn btn-ghost salva-tetto-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;flex-shrink:0;" data-id="${d.id}">Salva</button>
           </div>
         </div>
-        <button class="btn btn-ghost toggle-dipendente-btn" data-id="${d.id}" data-attivo="${d.attivo}">
+        <button class="btn btn-ghost toggle-dipendente-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;flex-shrink:0;" data-id="${d.id}" data-attivo="${d.attivo}">
           ${d.attivo ? "Disattiva" : "Riattiva"}
         </button>
       </div>
@@ -197,10 +197,44 @@ async function onCreateDipendente(e) {
     document.getElementById("nuovo-dipendente-qr-link").textContent = url;
     document.getElementById("nuovo-dipendente-qr-box").classList.remove("hidden");
 
+    const inviaBox = document.getElementById("nuovo-dipendente-invia-box");
+    const inviaBtn = document.getElementById("invia-link-dipendente-btn");
+    if (email) {
+      inviaBox.classList.remove("hidden");
+      inviaBtn.disabled = false;
+      inviaBtn.textContent = "Invia link via email";
+      inviaBtn.style.color = "";
+      inviaBtn.onclick = () => onInviaLinkDipendente(data.socioId, email, inviaBtn);
+    } else {
+      inviaBox.classList.add("hidden");
+    }
+
     document.getElementById("new-dipendente-form").reset();
     await caricaDatiAzienda();
   } catch (err) {
     showError(errorEl, "Errore: " + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// Bottone separato (non invio automatico alla creazione) così un
+// fallimento SMTP è sempre visibile qui, invece di perdersi in silenzio —
+// stesso schema già usato per "Invia invito" al referente in Configurazione.
+async function onInviaLinkDipendente(socioId, email, btn) {
+  const errorEl = document.getElementById("new-dipendente-error");
+  errorEl.textContent = "";
+  btn.disabled = true;
+  btn.textContent = "Invio…";
+  btn.style.color = "";
+  try {
+    const fn = firebase.functions().httpsCallable("inviaInvitoDipendente");
+    await fn({ socioId });
+    btn.textContent = `✓ Inviato a ${email}`;
+    btn.style.color = "var(--ball)";
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+    btn.textContent = "Invia link via email";
   } finally {
     btn.disabled = false;
   }
