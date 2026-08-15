@@ -158,6 +158,16 @@ service cloud.firestore {
       allow write: if hasPermission("config:gestisci");
     }
 
+    // Aziende convenzionate: il referente (users/{uid}.aziendaId == id)
+    // legge solo la propria; la gestione (creare aziende, impostare i
+    // tetti) resta riservata all'admin del circolo — il referente agisce
+    // sempre tramite le Cloud Function dedicate (mai in scrittura diretta
+    // su questa collection né su "soci", verificate lato server).
+    match /aziende/{id} {
+      allow read: if hasPermission("config:gestisci") || hasPermission("users:gestisci") || (isSignedIn() && userDoc().data.aziendaId == id);
+      allow write: if hasPermission("config:gestisci");
+    }
+
     // Lettura pubblica (non isSignedIn() come le altre voci di questo
     // gruppo): prenota-campo.html e chi-in-campo.html, pagine senza
     // login, devono poter leggere quali campi esistono. Non sono dati

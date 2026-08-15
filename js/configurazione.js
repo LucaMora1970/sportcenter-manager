@@ -938,7 +938,10 @@ function categorieConMaestro() {
 
 let CATEGORIA_LABEL = { azienda: "Azienda partner", esterno: "Utenti" };
 function aggiornaCategoriaLabel() {
-  CATEGORIA_LABEL = Object.fromEntries(categorieConMaestro().map(c => [c.id, c.nome]));
+  CATEGORIA_LABEL = Object.fromEntries([
+    ...categorieConMaestro().map(c => [c.id, c.nome]),
+    ...aziendeCache.map(a => [a.id, a.nome])
+  ]);
 }
 
 const DEFAULT_CATEGORIE_SOCIO_SEED = [
@@ -1035,15 +1038,109 @@ async function onCreateCategoriaSocio(e) {
 
 // Ripopola tutti i punti che elencano le categorie (select Tariffe campi,
 // checkbox Forfait stagionale, form giorni di anticipo) — richiamata dopo
-// ogni modifica a "Categorie socio" così restano sempre aggiornati senza
-// dover ricaricare la pagina.
+// ogni modifica a "Categorie socio" o "Aziende convenzionate" così restano
+// sempre aggiornati senza dover ricaricare la pagina. Le aziende compaiono
+// solo nella select di "Tariffe campi" (sono una categoria di prezzo a
+// tutti gli effetti) — non nel forfait stagionale, che è un concetto di
+// tesseramento e non le riguarda.
 function sincronizzaSelectCategorie() {
-  populateSelect(document.getElementById("new-tariffacampo-categoria"), categorieConMaestro().map(c => ({ id: c.id, label: c.nome })));
+  const categorieTariffe = [...categorieConMaestro(), ...aziendeAttive().map(a => ({ id: a.id, nome: a.nome }))];
+  populateSelect(document.getElementById("new-tariffacampo-categoria"), categorieTariffe.map(c => ({ id: c.id, label: c.nome })));
   document.getElementById("forfaitcampo-categorie-checks").innerHTML = categorieComplete()
     .filter(c => c.id !== "esterno")
     .map(c => `<div class="checkbox-row"><input type="checkbox" id="fc-cat-${c.id}" value="${c.id}"><label for="fc-cat-${c.id}">${escapeHtml(c.nome)}</label></div>`)
     .join("");
   renderCampiAnticipoPrenotazione();
+}
+
+// ---------- Aziende convenzionate ----------
+
+let aziendeCache = []; // [{id, nome, referenteNome, referenteEmail, tettoMensileAzienda, tettoDefaultPerUtente, attivo}]
+let editingAziendaId = null;
+
+function aziendeAttive() {
+  return aziendeCache.filter(a => a.attivo !== false);
+}
+
+function aziendaLabel(it) {
+  return it.nome;
+}
+
+function aziendaMeta(it) {
+  const parts = [];
+  if (it.referenteNome) parts.push(`Referente: ${it.referenteNome}`);
+  parts.push(it.tettoMensileAzienda != null ? `Tetto azienda: CHF ${Number(it.tettoMensileAzienda).toFixed(2)}/mese` : "Nessun tetto azienda");
+  parts.push(it.tettoDefaultPerUtente != null ? `Tetto dipendente: CHF ${Number(it.tettoDefaultPerUtente).toFixed(2)}/mese` : "Nessun tetto dipendente");
+  return parts.join(" · ");
+}
+
+async function loadAziende() {
+  const snap = await db.collection("aziende").get();
+  aziendeCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  aggiornaCategoriaLabel();
+  renderSimpleList("aziende-list", aziendeCache, aziendaLabel, aziendaMeta, "aziende", loadAziende, startEditAzienda);
+  sincronizzaSelectCategorie();
+}
+
+function startEditAzienda(item) {
+  editingAziendaId = item.id;
+  document.getElementById("new-azienda-id").value = item.id;
+  document.getElementById("new-azienda-id").disabled = true;
+  document.getElementById("new-azienda-nome").value = item.nome || "";
+  document.getElementById("new-azienda-referente-nome").value = item.referenteNome || "";
+  document.getElementById("new-azienda-referente-email").value = item.referenteEmail || "";
+  document.getElementById("new-azienda-tetto-azienda").value = item.tettoMensileAzienda != null ? item.tettoMensileAzienda : "";
+  document.getElementById("new-azienda-tetto-utente").value = item.tettoDefaultPerUtente != null ? item.tettoDefaultPerUtente : "";
+  document.getElementById("create-azienda-btn").textContent = "Salva modifiche";
+  document.getElementById("cancel-edit-azienda-btn").classList.remove("hidden");
+  document.getElementById("new-azienda-form").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function cancelEditAzienda() {
+  editingAziendaId = null;
+  document.getElementById("new-azienda-form").reset();
+  document.getElementById("new-azienda-id").disabled = false;
+  document.getElementById("create-azienda-btn").textContent = "+ Aggiungi azienda";
+  document.getElementById("cancel-edit-azienda-btn").classList.add("hidden");
+}
+
+async function onCreateAzienda(e) {
+  e.preventDefault();
+  const btn = document.getElementById("create-azienda-btn");
+  const errorEl = document.getElementById("new-azienda-error");
+  errorEl.textContent = "";
+  btn.disabled = true;
+
+  const id = document.getElementById("new-azienda-id").value.trim();
+  const nome = document.getElementById("new-azienda-nome").value.trim();
+  const referenteNome = document.getElementById("new-azienda-referente-nome").value.trim();
+  const referenteEmail = document.getElementById("new-azienda-referente-email").value.trim();
+  const tettoAziendaRaw = document.getElementById("new-azienda-tetto-azienda").value;
+  const tettoUtenteRaw = document.getElementById("new-azienda-tetto-utente").value;
+  const tettoMensileAzienda = tettoAziendaRaw !== "" ? parseFloat(tettoAziendaRaw) : null;
+  const tettoDefaultPerUtente = tettoUtenteRaw !== "" ? parseFloat(tettoUtenteRaw) : null;
+
+  try {
+    if (!nome) throw new Error("Inserisci un nome.");
+    if (editingAziendaId) {
+      await db.collection("aziende").doc(editingAziendaId).update({
+        nome, referenteNome: referenteNome || null, referenteEmail: referenteEmail || null,
+        tettoMensileAzienda, tettoDefaultPerUtente
+      });
+    } else {
+      if (!id) throw new Error("Inserisci un ID azienda (es. acme) — è anche la categoria da usare in \"Tariffe campi\".");
+      await db.collection("aziende").doc(id).set({
+        nome, referenteNome: referenteNome || null, referenteEmail: referenteEmail || null,
+        tettoMensileAzienda, tettoDefaultPerUtente, attivo: true
+      });
+    }
+    cancelEditAzienda();
+    await loadAziende();
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // Solo le discipline che usano davvero un tabellone campi (non ha senso
@@ -1438,6 +1535,8 @@ requireAuth(async (profile) => {
   document.getElementById("import-soci-form").addEventListener("submit", onImportSoci);
   document.getElementById("new-categoriasocio-form").addEventListener("submit", onCreateCategoriaSocio);
   document.getElementById("cancel-edit-categoriasocio-btn").addEventListener("click", cancelEditCategoriaSocio);
+  document.getElementById("new-azienda-form").addEventListener("submit", onCreateAzienda);
+  document.getElementById("cancel-edit-azienda-btn").addEventListener("click", cancelEditAzienda);
   document.getElementById("new-tariffacampo-form").addEventListener("submit", onCreateTariffaCampo);
   document.getElementById("new-tariffacampo-disciplina").addEventListener("change", syncTariffaCampoPadelFields);
   syncTariffaCampoPadelFields();
@@ -1456,6 +1555,7 @@ requireAuth(async (profile) => {
   await loadQuoteCampo();
   await seedCategorieSocioIfEmpty();
   await loadCategorieSocio();
+  await loadAziende();
   sincronizzaSelectCategorie();
   await loadTariffeCampi();
   await loadForfaitCampi();

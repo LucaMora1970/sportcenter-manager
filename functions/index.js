@@ -460,15 +460,20 @@ exports.creaPrenotazionePubblica = onCall(
       altriGiocatoriRisolti.push({ nome: nomeRisolto });
     }
 
-    const quotaPrenotante = await quotaCategoria({
+    let quotaPrenotante = await quotaCategoria({
       disciplina: "padel", posizione: null, categoria: prenotante.categoria,
       dataIso: date, startTime, durataMinuti: durationMinutes, festivi
     });
     if (quotaPrenotante == null) {
       throw new HttpsError("failed-precondition", "Tariffa non configurata per questo slot/categoria.");
     }
+    let categoriaPrenotante = prenotante.categoria;
+    ({ categoria: categoriaPrenotante, prezzo: quotaPrenotante } = await applicaTettoAzienda({
+      categoria: categoriaPrenotante, socioId: prenotante.socioId || null, prezzo: quotaPrenotante,
+      disciplina: "padel", posizione: null, dataIso: date, startTime, durataMinuti: durationMinutes, festivi
+    }));
     const prezzo = quotaPrenotante;
-    const prezzoDettaglio = [{ ruolo: "campo", categoria: prenotante.categoria, importo: quotaPrenotante }];
+    const prezzoDettaglio = [{ ruolo: "campo", categoria: categoriaPrenotante, importo: quotaPrenotante, socioId: prenotante.socioId || null }];
 
     let creditoDaScalare = 0;
     if (creditCode) {
@@ -1411,6 +1416,217 @@ exports.collegaSocioAlDispositivo = onCall(async (request) => {
   return { profili };
 });
 
+// ---------- Aziende convenzionate: portale referente ----------
+//
+// Ogni azienda convenzionata è anche una categoria di prezzo a sé (righe in
+// "tariffeCampi" con categoria == aziendaId, gestite in Configurazione) —
+// qui c'è solo la gestione dei dipendenti e il consumo mensile, mai il
+// prezzo (quello passa comunque da quotaCategoria come ogni altra
+// categoria). Ambito sempre preso da users/{uid}.aziendaId lato server,
+// mai da un parametro del client.
+
+async function verificaReferenteAzienda(auth) {
+  if (!auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+  const { userData, permessi, isAdmin } = await permessiUtente(auth.uid);
+  if (!isAdmin && !permessi.includes("azienda:propria")) {
+    throw new HttpsError("permission-denied", "Permesso mancante.");
+  }
+  const aziendaId = userData && userData.aziendaId;
+  if (!aziendaId) throw new HttpsError("failed-precondition", "Nessuna azienda associata al tuo account.");
+  return aziendaId;
+}
+
+// Consumo mensile (mese corrente, fuso Zurigo) per i dipendenti di
+// un'azienda: somma degli importi con categoria == aziendaId in
+// prezzoDettaglio di bookingDettagli confermati, attribuiti tramite il
+// socioId salvato su ciascuna voce — mai per nome (due persone possono
+// chiamarsi uguale) né per la sola categoria (serve sapere DI CHI è la
+// spesa, non solo che è un dipendente di quell'azienda). Query per
+// intervallo di date senza filtro "status" lato Firestore (evita di dover
+// creare un indice composito) — il filtro sullo stato si fa in JS.
+async function consumoMensileAzienda(aziendaId, socioIds) {
+  const oggi = oraLocaleZurigo().dataIso;
+  const inizioMese = oggi.slice(0, 7) + "-01";
+  const bookingsSnap = await db.collection("bookings")
+    .where("date", ">=", inizioMese)
+    .where("date", "<=", oggi)
+    .get();
+  const idsConfermati = bookingsSnap.docs
+    .filter(d => ["CONFIRMED", "COMPLETED"].includes(d.data().status))
+    .map(d => d.id);
+  const dettagliSnaps = await Promise.all(idsConfermati.map(id => db.collection("bookingDettagli").doc(id).get()));
+
+  const perSocioId = {};
+  socioIds.forEach(id => { perSocioId[id] = 0; });
+  let totaleAzienda = 0;
+  dettagliSnaps.forEach(snap => {
+    if (!snap.exists) return;
+    (snap.data().prezzoDettaglio || []).forEach(voce => {
+      if (voce.categoria !== aziendaId || !voce.socioId) return;
+      totaleAzienda += voce.importo || 0;
+      perSocioId[voce.socioId] = (perSocioId[voce.socioId] || 0) + (voce.importo || 0);
+    });
+  });
+  return { perSocioId, totaleAzienda };
+}
+
+// Se una categoria corrisponde a un'azienda convenzionata attiva (id di
+// "aziende"), verifica il tetto di spesa mensile (personale e aziendale)
+// PRIMA di accettare quel prezzo: se lo supererebbe, ricalcola l'intera
+// quota di quel giocatore con categoria "esterno" invece — nessuna
+// prenotazione bloccata, solo tariffa piena per quella parte, come da
+// richiesta. Chiamata sia da creaPrenotazionePubblica (padel) che da
+// creaPrenotazioneCampo (tennis/squash), una volta per giocatore — due
+// compagni possono appartenere ad aziende diverse, ognuno verificato per
+// conto proprio. Ritorna {categoria, prezzo} invariati se non è
+// un'azienda, se non ha nessun tetto configurato, o se rientra nei tetti.
+async function applicaTettoAzienda({ categoria, socioId, prezzo, disciplina, posizione, dataIso, startTime, durataMinuti, festivi }) {
+  if (!socioId) return { categoria, prezzo };
+  const aziendaSnap = await db.collection("aziende").doc(categoria).get();
+  if (!aziendaSnap.exists || aziendaSnap.data().attivo === false) return { categoria, prezzo };
+  const azienda = aziendaSnap.data();
+  if (azienda.tettoMensileAzienda == null && azienda.tettoDefaultPerUtente == null) return { categoria, prezzo };
+
+  const socioSnap = await db.collection("soci").doc(socioId).get();
+  const tettoSocio = (socioSnap.exists ? socioSnap.data().tettoPersonalizzato : null) ?? azienda.tettoDefaultPerUtente;
+
+  const { perSocioId, totaleAzienda } = await consumoMensileAzienda(categoria, [socioId]);
+  const consumoSocio = perSocioId[socioId] || 0;
+
+  const superaTettoSocio = tettoSocio != null && (consumoSocio + prezzo) > tettoSocio;
+  const superaTettoAzienda = azienda.tettoMensileAzienda != null && (totaleAzienda + prezzo) > azienda.tettoMensileAzienda;
+  if (!superaTettoSocio && !superaTettoAzienda) return { categoria, prezzo };
+
+  const prezzoEsterno = await quotaCategoria({ disciplina, posizione, categoria: "esterno", dataIso, startTime, durataMinuti, festivi });
+  return { categoria: "esterno", prezzo: prezzoEsterno != null ? prezzoEsterno : prezzo };
+}
+
+exports.listaSociAzienda = onCall(async (request) => {
+  const aziendaId = await verificaReferenteAzienda(request.auth);
+
+  const aziendaSnap = await db.collection("aziende").doc(aziendaId).get();
+  if (!aziendaSnap.exists) throw new HttpsError("not-found", "Azienda non trovata.");
+  const azienda = aziendaSnap.data();
+
+  const sociSnap = await db.collection("soci").where("aziendaId", "==", aziendaId).get();
+  const soci = sociSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const { perSocioId, totaleAzienda } = await consumoMensileAzienda(aziendaId, soci.map(s => s.id));
+
+  return {
+    azienda: {
+      nome: azienda.nome,
+      tettoMensileAzienda: azienda.tettoMensileAzienda ?? null,
+      tettoDefaultPerUtente: azienda.tettoDefaultPerUtente ?? null
+    },
+    consumoTotaleAzienda: totaleAzienda,
+    dipendenti: soci.map(s => ({
+      id: s.id, nome: s.nome, cognome: s.cognome, attivo: s.attivo !== false,
+      tettoPersonalizzato: s.tettoPersonalizzato ?? null,
+      consumoMese: perSocioId[s.id] || 0
+    }))
+  };
+});
+
+// Crea il dipendente come "soci" doc (categoria = aziendaId, così il
+// motore prezzi lo tratta come qualunque altra categoria) e genera subito
+// un token di attivazione — stesso schema di generaTokenAttivazione più
+// sotto, il referente lo mostra come QR/link al dipendente per collegare
+// il suo dispositivo (attiva-socio.html, invariato).
+exports.aggiungiDipendenteAzienda = onCall(async (request) => {
+  const aziendaId = await verificaReferenteAzienda(request.auth);
+  const { nome, cognome, email } = request.data || {};
+  if (!nome || !cognome) throw new HttpsError("invalid-argument", "Nome e cognome obbligatori.");
+
+  const socioRef = await db.collection("soci").add({
+    nome, cognome, email: (email || "").trim().toLowerCase() || null,
+    categoria: aziendaId, aziendaId, telefono: null, tessera: null,
+    scadenza: null, attivo: true, authUid: null, forfaitPagato: null,
+    createdAt: FieldValue.serverTimestamp()
+  });
+
+  const token = generaToken();
+  await db.collection("attivazioniSoci").doc(token).set({
+    socioId: socioRef.id, metodo: "qr", createdByUid: request.auth.uid,
+    usato: false, createdAt: FieldValue.serverTimestamp()
+  });
+
+  return { socioId: socioRef.id, token };
+});
+
+async function verificaDipendenteProprio(aziendaId, socioId) {
+  const socioSnap = await db.collection("soci").doc(socioId).get();
+  if (!socioSnap.exists || socioSnap.data().aziendaId !== aziendaId) {
+    throw new HttpsError("permission-denied", "Questo dipendente non appartiene alla tua azienda.");
+  }
+  return socioSnap;
+}
+
+exports.disattivaDipendenteAzienda = onCall(async (request) => {
+  const aziendaId = await verificaReferenteAzienda(request.auth);
+  const { socioId, attivo } = request.data || {};
+  if (!socioId) throw new HttpsError("invalid-argument", "socioId mancante.");
+  await verificaDipendenteProprio(aziendaId, socioId);
+  await db.collection("soci").doc(socioId).update({ attivo: attivo !== false });
+  return { ok: true };
+});
+
+exports.impostaTettoDipendenteAzienda = onCall(async (request) => {
+  const aziendaId = await verificaReferenteAzienda(request.auth);
+  const { socioId, tetto } = request.data || {};
+  if (!socioId) throw new HttpsError("invalid-argument", "socioId mancante.");
+  await verificaDipendenteProprio(aziendaId, socioId);
+  const tettoPersonalizzato = tetto !== "" && tetto != null ? Number(tetto) : null;
+  await db.collection("soci").doc(socioId).update({ tettoPersonalizzato });
+  return { ok: true };
+});
+
+// Report per il referente: chi ha prenotato, quante volte e quanto ha
+// speso alla tariffa azienda nell'intervallo scelto — base per il
+// conteggio periodico. Stessa identificazione per socioId di
+// consumoMensileAzienda (mai per nome). I nomi si leggono da "soci" (non
+// da bookingDettagli, che per il tennis salva il nome solo del prenotante
+// principale, non di un eventuale secondo giocatore dipendente).
+exports.reportAzienda = onCall(async (request) => {
+  const aziendaId = await verificaReferenteAzienda(request.auth);
+  const { dal, al } = request.data || {};
+  if (!dal || !al) throw new HttpsError("invalid-argument", "Intervallo di date mancante.");
+
+  const bookingsSnap = await db.collection("bookings")
+    .where("date", ">=", dal)
+    .where("date", "<=", al)
+    .get();
+  const idsConfermati = bookingsSnap.docs
+    .filter(d => ["CONFIRMED", "COMPLETED"].includes(d.data().status))
+    .map(d => d.id);
+  const dettagliSnaps = await Promise.all(idsConfermati.map(id => db.collection("bookingDettagli").doc(id).get()));
+
+  const perSocio = {}; // socioId -> {totale, prenotazioni}
+  let totale = 0;
+  dettagliSnaps.forEach(snap => {
+    if (!snap.exists) return;
+    (snap.data().prezzoDettaglio || []).forEach(voce => {
+      if (voce.categoria !== aziendaId || !voce.socioId) return;
+      totale += voce.importo || 0;
+      if (!perSocio[voce.socioId]) perSocio[voce.socioId] = { totale: 0, prenotazioni: 0 };
+      perSocio[voce.socioId].totale += voce.importo || 0;
+      perSocio[voce.socioId].prenotazioni += 1;
+    });
+  });
+
+  const socioIds = Object.keys(perSocio);
+  const sociSnaps = await Promise.all(socioIds.map(id => db.collection("soci").doc(id).get()));
+  const righe = socioIds.map((id, i) => {
+    const s = sociSnaps[i].exists ? sociSnaps[i].data() : null;
+    return {
+      nome: s ? `${s.nome} ${s.cognome}` : "(dipendente rimosso)",
+      totale: perSocio[id].totale,
+      prenotazioni: perSocio[id].prenotazioni
+    };
+  }).sort((a, b) => b.totale - a.totale);
+
+  return { totale, righe };
+});
+
 // Ricerca del secondo giocatore/compagni (tennis/padel), pubblica come
 // cercaSociStaff (pannello operatore) ma più prudente nell'esposizione dato
 // che qui non serve login: soglia più alta (3 caratteri), pochi risultati
@@ -1637,11 +1853,13 @@ exports.creaPrenotazioneCampo = onCall(
     // resta "esterno").
     let giocatore2Categoria = "esterno";
     let giocatore2NomeRisolto = giocatore2Nome || null;
+    let giocatore2SocioIdVerificato = null;
     if (disciplina === "tennis" && giocatore2SocioId) {
       const g2Snap = await db.collection("soci").doc(giocatore2SocioId).get();
       if (g2Snap.exists && g2Snap.data().attivo !== false) {
         giocatore2Categoria = g2Snap.data().categoria;
         giocatore2NomeRisolto = `${g2Snap.data().nome} ${g2Snap.data().cognome}`;
+        giocatore2SocioIdVerificato = giocatore2SocioId;
       }
     }
 
@@ -1654,16 +1872,26 @@ exports.creaPrenotazioneCampo = onCall(
     // tennis) non troverebbero mai corrispondenza.
     const durataMinuti = orarioToMin(endTime) - orarioToMin(startTime);
 
-    const quota1 = await quotaCategoria({ disciplina, posizione, categoria: prenotante.categoria, dataIso: date, startTime, durataMinuti, festivi });
+    let quota1 = await quotaCategoria({ disciplina, posizione, categoria: prenotante.categoria, dataIso: date, startTime, durataMinuti, festivi });
     if (quota1 == null) throw new HttpsError("failed-precondition", "Tariffa non configurata per questo campo/categoria.");
+    let categoria1 = prenotante.categoria;
+    ({ categoria: categoria1, prezzo: quota1 } = await applicaTettoAzienda({
+      categoria: categoria1, socioId: prenotante.socioId || null, prezzo: quota1,
+      disciplina, posizione, dataIso: date, startTime, durataMinuti, festivi
+    }));
     let prezzo = quota1;
-    const prezzoDettaglio = [{ ruolo: "prenotante", categoria: prenotante.categoria, importo: quota1 }];
+    const prezzoDettaglio = [{ ruolo: "prenotante", categoria: categoria1, importo: quota1, socioId: prenotante.socioId || null }];
 
     if (disciplina === "tennis") {
-      const quota2 = await quotaCategoria({ disciplina, posizione, categoria: giocatore2Categoria, dataIso: date, startTime, durataMinuti, festivi });
+      let quota2 = await quotaCategoria({ disciplina, posizione, categoria: giocatore2Categoria, dataIso: date, startTime, durataMinuti, festivi });
       if (quota2 == null) throw new HttpsError("failed-precondition", "Tariffa non configurata per il secondo giocatore.");
+      let categoria2 = giocatore2Categoria;
+      ({ categoria: categoria2, prezzo: quota2 } = await applicaTettoAzienda({
+        categoria: categoria2, socioId: giocatore2SocioIdVerificato, prezzo: quota2,
+        disciplina, posizione, dataIso: date, startTime, durataMinuti, festivi
+      }));
       prezzo += quota2;
-      prezzoDettaglio.push({ ruolo: "secondo giocatore", categoria: giocatore2Categoria, importo: quota2 });
+      prezzoDettaglio.push({ ruolo: "secondo giocatore", categoria: categoria2, importo: quota2, socioId: giocatore2SocioIdVerificato });
     }
 
     // Un maestro soggetto a quota campo (come per il padel STAFF_EXEMPT)

@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Portale azienda — Sport-OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script>if(localStorage.getItem("sportos-tema")==="light")document.documentElement.setAttribute("data-theme","light");</script>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d1f30">
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <h1 id="azienda-titolo">Azienda</h1>
+    <div class="user-chip" id="user-chip">—</div>
+    <div class="topbar-actions">
+      <button type="button" class="topbar-link" id="theme-toggle-btn">Tema chiaro</button>
+    </div>
+  </div>
+
+  <main>
+
+    <div id="access-denied" class="empty-state hidden">
+      <div class="display">Accesso non consentito</div>
+      <p>Questa pagina è riservata al referente di un'azienda convenzionata.</p>
+    </div>
+
+    <div id="azienda-content" class="hidden">
+
+      <!-- Riepilogo consumi -->
+      <div class="section-title"><h2>Consumo del mese</h2></div>
+      <div id="riepilogo-azienda">
+        <div class="empty-state"><div class="display">Caricamento…</div></div>
+      </div>
+
+      <hr class="court-divider">
+
+      <!-- Dipendenti -->
+      <div class="section-title"><h2>Dipendenti</h2></div>
+      <div class="error-msg" id="dipendenti-error"></div>
+      <div id="dipendenti-list">
+        <div class="empty-state"><div class="display">Caricamento…</div></div>
+      </div>
+
+      <div id="nuovo-dipendente-qr-box" class="hidden" style="margin:14px 0;text-align:center;">
+        <div id="nuovo-dipendente-qr-container" style="display:inline-block;background:#fff;padding:10px;border-radius:var(--radius);"></div>
+        <p id="nuovo-dipendente-qr-nome" style="color:var(--chalk-grey);font-size:0.82rem;margin-top:8px;"></p>
+        <p style="color:var(--chalk-grey);font-size:0.78rem;">Oppure copia e invia questo link: <span id="nuovo-dipendente-qr-link" style="font-family:'Space Mono', monospace;"></span></p>
+      </div>
+
+      <form id="new-dipendente-form">
+        <div class="row2">
+          <div class="field">
+            <label for="new-dipendente-nome">Nome</label>
+            <input type="text" id="new-dipendente-nome" required placeholder="Mario">
+          </div>
+          <div class="field">
+            <label for="new-dipendente-cognome">Cognome</label>
+            <input type="text" id="new-dipendente-cognome" required placeholder="Rossi">
+          </div>
+        </div>
+        <div class="field">
+          <label for="new-dipendente-email">Email (facoltativa)</label>
+          <input type="email" id="new-dipendente-email" placeholder="mario.rossi@acme.ch">
+        </div>
+        <div class="error-msg" id="new-dipendente-error"></div>
+        <button type="submit" class="btn btn-primary" id="create-dipendente-btn">+ Aggiungi dipendente</button>
+      </form>
+
+      <hr class="court-divider">
+
+      <!-- Report periodo -->
+      <div class="section-title"><h2>Report periodo</h2></div>
+      <form id="report-form" class="row2">
+        <div class="field">
+          <label for="report-dal">Dal</label>
+          <input type="date" id="report-dal" required>
+        </div>
+        <div class="field">
+          <label for="report-al">Al</label>
+          <input type="date" id="report-al" required>
+        </div>
+      </form>
+      <button type="button" class="btn btn-ghost" id="genera-report-btn" style="width:auto;padding:10px 16px;">Genera report</button>
+      <div class="error-msg" id="report-error"></div>
+      <div id="report-risultato" style="margin-top:14px;"></div>
+
+    </div>
+
+  </main>
+
+  <nav class="bottom-nav">
+    <a href="azienda.html" class="active">Azienda</a>
+    <a href="#" id="logout-link">Esci</a>
+  </nav>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/auth.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="js/azienda.js"></script>
+</body>
+</html>

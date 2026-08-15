@@ -516,6 +516,52 @@
       </details>
 
       <details class="config-section">
+      <summary><h2>Aziende convenzionate</h2></summary>
+      <div class="config-section-body">
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Ogni azienda convenzionata diventa una categoria a sé, con le proprie tariffe in "Tariffe campi" qui sotto (prezzo diretto, es. CHF 0 per gratuito). Il tetto di spesa mensile è facoltativo — oltre quel limite (aziendale o del singolo dipendente) la prenotazione passa automaticamente alla tariffa esterno, senza bloccarsi.</p>
+      <div id="aziende-list">
+        <div class="empty-state"><div class="display">Caricamento…</div></div>
+      </div>
+      <form id="new-azienda-form">
+        <div class="row2">
+          <div class="field">
+            <label for="new-azienda-id">ID azienda</label>
+            <input type="text" id="new-azienda-id" required placeholder="es. acme">
+          </div>
+          <div class="field">
+            <label for="new-azienda-nome">Nome</label>
+            <input type="text" id="new-azienda-nome" required placeholder="es. Acme SA">
+          </div>
+        </div>
+        <p style="color:var(--chalk-grey);font-size:0.78rem;margin:-6px 0 14px;">L'ID è la categoria da usare in "Tariffe campi" per impostare il prezzo di questa azienda.</p>
+        <div class="row2">
+          <div class="field">
+            <label for="new-azienda-referente-nome">Nome referente</label>
+            <input type="text" id="new-azienda-referente-nome" placeholder="es. Mario Rossi">
+          </div>
+          <div class="field">
+            <label for="new-azienda-referente-email">Email referente</label>
+            <input type="email" id="new-azienda-referente-email" placeholder="es. mario.rossi@acme.ch">
+          </div>
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label for="new-azienda-tetto-azienda">Tetto mensile azienda (CHF, facoltativo)</label>
+            <input type="number" id="new-azienda-tetto-azienda" min="0" step="1" placeholder="es. 2000">
+          </div>
+          <div class="field">
+            <label for="new-azienda-tetto-utente">Tetto mensile per dipendente (CHF, facoltativo)</label>
+            <input type="number" id="new-azienda-tetto-utente" min="0" step="1" placeholder="es. 150">
+          </div>
+        </div>
+        <div class="error-msg" id="new-azienda-error"></div>
+        <button type="submit" class="btn btn-ghost" id="create-azienda-btn">+ Aggiungi azienda</button>
+        <button type="button" class="btn btn-ghost hidden" id="cancel-edit-azienda-btn" style="margin-top:10px;">Annulla modifica</button>
+      </form>
+      </div>
+      </details>
+
+      <details class="config-section">
       <summary><h2>Tariffe campi (tennis/squash/padel)</h2></summary>
       <div class="config-section-body">
       <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Prezzo a slot per disciplina, posizione e categoria di chi gioca. Nel tennis il prezzo dello slot è la somma delle tariffe dei due giocatori.</p>

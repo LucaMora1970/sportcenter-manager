@@ -5,6 +5,7 @@
 
 let currentProfile = null;
 let rolesCache = []; // [{id, permessi:[...]}]
+let aziendeCache = []; // [{id, nome, ...}]
 let usersCache = [];
 
 const KNOWN_PERMISSIONS = [
@@ -20,7 +21,8 @@ const KNOWN_PERMISSIONS = [
   { id: "corsi:approva", label: "Corsi: approvare" },
   { id: "iscrizioni:gestisci", label: "Iscrizioni corsi: leggere e confermare/annullare (dati sensibili)" },
   { id: "prenotazioni:gestisci", label: "Prenotazioni padel: eliminare prenotazioni altrui" },
-  { id: "prenotazioni:proprie", label: "Prenotazioni padel: creare/eliminare solo le proprie e bloccare slot (es. maestri)" }
+  { id: "prenotazioni:proprie", label: "Prenotazioni padel: creare/eliminare solo le proprie e bloccare slot (es. maestri)" },
+  { id: "azienda:propria", label: "Referente aziendale: gestire dipendenti e consumi della propria azienda" }
 ];
 
 function permessoLabel(id) {
@@ -140,6 +142,17 @@ async function loadUsers() {
         </div>
 
         <div class="team-card-section">
+          <div class="team-card-section-label">Azienda (referente)</div>
+          <div class="team-card-row">
+            <select class="user-azienda-select" data-uid="${u.id}">
+              <option value="" ${!u.aziendaId ? "selected" : ""}>— nessuna —</option>
+              ${aziendeCache.map(a => `<option value="${a.id}" ${a.id === u.aziendaId ? "selected" : ""}>${escapeHtml(a.nome)}</option>`).join("")}
+            </select>
+            <button class="btn btn-ghost save-azienda-btn" data-uid="${u.id}">Salva</button>
+          </div>
+        </div>
+
+        <div class="team-card-section">
           <div class="team-card-section-label">Tariffe orarie (CHF)</div>
           <div class="team-card-row">
             ${DISCIPLINE.map(d => `
@@ -181,6 +194,9 @@ async function loadUsers() {
   });
   list.querySelectorAll(".save-ruolo-btn").forEach(btn => {
     btn.addEventListener("click", onSaveRuolo);
+  });
+  list.querySelectorAll(".save-azienda-btn").forEach(btn => {
+    btn.addEventListener("click", onSaveAzienda);
   });
   list.querySelectorAll(".send-reset-btn").forEach(btn => {
     btn.addEventListener("click", onSendPasswordReset);
@@ -355,6 +371,27 @@ async function populateRoleSelect() {
   select.innerHTML = rolesCache.map(r => `<option value="${r.id}">${r.id}</option>`).join("");
 }
 
+async function onSaveAzienda(e) {
+  const btn = e.currentTarget;
+  const uid = btn.dataset.uid;
+  const aziendaIdRaw = document.querySelector(`.user-azienda-select[data-uid="${uid}"]`).value;
+  btn.disabled = true;
+  try {
+    await db.collection("users").doc(uid).update({ aziendaId: aziendaIdRaw || null });
+    await loadUsers();
+  } catch (err) {
+    showError(document.getElementById("users-list-error"), "Errore: " + err.message);
+    btn.disabled = false;
+  }
+}
+
+async function populateAziendaSelect() {
+  const select = document.getElementById("new-user-azienda");
+  const snap = await db.collection("aziende").get();
+  aziendeCache = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(a => a.attivo !== false);
+  select.innerHTML = `<option value="">— nessuna —</option>` + aziendeCache.map(a => `<option value="${a.id}">${escapeHtml(a.nome)}</option>`).join("");
+}
+
 async function onCreateUser(e) {
   e.preventDefault();
   const btn = document.getElementById("create-user-btn");
@@ -366,6 +403,7 @@ async function onCreateUser(e) {
   const nome = document.getElementById("new-user-nome").value.trim();
   const email = document.getElementById("new-user-email").value.trim();
   const ruoloId = document.getElementById("new-user-ruolo").value;
+  const aziendaId = document.getElementById("new-user-azienda").value || null;
   const password = document.getElementById("new-user-password").value;
   const soggettoQuotaCampo = document.getElementById("new-user-quotacampo").checked;
 
@@ -385,6 +423,7 @@ async function onCreateUser(e) {
       email,
       ruoloId,
       ruoloNome: ruoloId,
+      aziendaId,
       attivo: true,
       soggettoQuotaCampo,
       tariffeOrarie
@@ -498,6 +537,7 @@ requireAuth(async (profile) => {
   renderNewUserTariffeFields();
 
   await populateRoleSelect();
+  await populateAziendaSelect();
   await loadUsers();
   await loadRoles();
 });
