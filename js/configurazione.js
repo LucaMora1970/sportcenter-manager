@@ -1133,10 +1133,12 @@ async function popolaSelectReferente() {
 // renderSimpleList è condivisa da un'altra decina di liste in questa
 // pagina — invece di aggiungerle un altro parametro solo per questo caso,
 // il pulsante "Invia invito" si inietta qui dopo, solo sulle card delle
-// aziende che hanno un referente con email.
+// aziende che hanno un referente collegato. Il gate è su referenteUid
+// (il campo autoritativo) e non su referenteEmail (solo una copia
+// denormalizzata) — se l'email manca lo dice il server quando si clicca.
 function aggiungiPulsantiInvito() {
   aziendeCache.forEach(a => {
-    if (!a.referenteEmail) return;
+    if (!a.referenteUid) return;
     const card = document.querySelector(`#aziende-list .entry-card[data-id="${a.id}"]`);
     if (!card || card.querySelector(".invita-referente-btn")) return;
     const btn = document.createElement("button");
