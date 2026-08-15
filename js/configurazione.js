@@ -1143,15 +1143,21 @@ async function onInvitaReferente(azienda, btn) {
   errorEl.textContent = "";
   btn.disabled = true;
   btn.textContent = "Invio…";
+  btn.style.color = "";
   try {
     if (!azienda.referenteUid) {
       throw new Error(`Collega prima un referente all'azienda "${azienda.nome}" (campo "Referente" nel form qui sopra).`);
     }
     const fn = firebase.functions().httpsCallable("inviaInvitoAzienda");
     const { data } = await fn({ aziendaId: azienda.id });
-    btn.textContent = `Invitato (${data.email})`;
+    btn.textContent = `✓ Inviato a ${data.email}`;
+    btn.style.color = "var(--ball)";
   } catch (err) {
+    // config-list-error è in cima alla pagina, lontano da questo bottone
+    // sepolto in una sezione richiudibile — senza scrollIntoView l'errore
+    // passa inosservato e sembra che "non succeda niente".
     showError(errorEl, "Errore: " + err.message);
+    errorEl.scrollIntoView({ behavior: "smooth", block: "center" });
     btn.textContent = "Invia invito";
   } finally {
     btn.disabled = false;
