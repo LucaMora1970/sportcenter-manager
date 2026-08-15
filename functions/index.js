@@ -1582,6 +1582,53 @@ exports.collegaReferenteAzienda = onCall(async (request) => {
   return { ok: true };
 });
 
+// Invio reale (SMTP, non più mailto: aperto sul dispositivo di chi
+// gestisce le aziende) dell'email di benvenuto al referente — richiesto
+// esplicitamente al posto del pattern "solo link, spedisce una persona"
+// usato per il reset password dello staff, perché qui il destinatario è
+// esterno e non va bene affidarsi al client di posta di chi è in
+// Configurazione in quel momento.
+exports.inviaInvitoAzienda = onCall({ secrets: MAIL_SECRETS }, async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+  const { permessi, isAdmin } = await permessiUtente(request.auth.uid);
+  if (!isAdmin && !permessi.includes("config:gestisci") && !permessi.includes("users:gestisci")) {
+    throw new HttpsError("permission-denied", "Permesso mancante.");
+  }
+
+  const { aziendaId } = request.data || {};
+  if (!aziendaId) throw new HttpsError("invalid-argument", "aziendaId mancante.");
+
+  const aziendaSnap = await db.collection("aziende").doc(aziendaId).get();
+  if (!aziendaSnap.exists) throw new HttpsError("not-found", "Azienda non trovata.");
+  const azienda = aziendaSnap.data();
+  if (!azienda.referenteUid) {
+    throw new HttpsError("failed-precondition", `Collega prima un referente all'azienda "${azienda.nome}".`);
+  }
+
+  const userSnap = await db.collection("users").doc(azienda.referenteUid).get();
+  if (!userSnap.exists) throw new HttpsError("not-found", "Account del referente non trovato.");
+  const user = userSnap.data();
+  if (!user.email) throw new HttpsError("failed-precondition", "L'account del referente non ha un'email registrata.");
+
+  const centroSnap = await db.collection("impostazioni").doc("centro").get();
+  const nomeCentro = (centroSnap.exists && centroSnap.data().nome) || "Tennis Club Mendrisio";
+
+  const link = await getAuth().generatePasswordResetLink(user.email, { url: `${APP_URL}index.html` });
+  const portaleUrl = `${APP_URL}azienda.html`;
+
+  await inviaEmail({
+    to: user.email,
+    subject: `Benvenuto in Sport-OS come Partner — ${nomeCentro}`,
+    html: `<p>Ciao ${user.nome || ""},</p>`
+      + `<p><strong>${azienda.nome}</strong> è ora un'azienda convenzionata con ${nomeCentro}! Da qui i tuoi dipendenti potranno prenotare i campi alla tariffa concordata.</p>`
+      + `<p>Accedi al tuo portale aziendale per gestire i dipendenti e vedere i consumi:<br><a href="${portaleUrl}">${portaleUrl}</a></p>`
+      + `<p>Per impostare la tua password, tocca questo link:<br><a href="${link}">${link}</a></p>`
+      + `<p>Email di accesso: ${user.email}</p>`
+  });
+
+  return { ok: true, email: user.email };
+});
+
 exports.listaSociAzienda = onCall(async (request) => {
   const aziendaId = await verificaReferenteAzienda(request.auth);
 

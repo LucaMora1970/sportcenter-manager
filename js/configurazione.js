@@ -1081,6 +1081,33 @@ async function loadAziende() {
   renderSimpleList("aziende-list", aziendeCache, aziendaLabel, aziendaMeta, "aziende", loadAziende, startEditAzienda);
   sincronizzaSelectCategorie();
   aggiungiPulsantiInvito();
+  aggiungiLinkPrenotazione();
+}
+
+// Link fisso, uguale per ogni azienda: la tariffa convenzionata si applica
+// da sola quando il dipendente si identifica in fase di prenotazione (già
+// aggiunto dal referente in azienda.html), quindi non serve nessun
+// parametro azienda-specifico nell'URL — solo comodo da avere qui pronto
+// da girare via WhatsApp/email invece che dover spiegare dove trovarlo.
+function aggiungiLinkPrenotazione() {
+  const linkCampi = `${basePageUrl()}prenota-campo.html`;
+  const linkPadel = `${basePageUrl()}prenota-padel.html`;
+  aziendeCache.forEach(a => {
+    const card = document.querySelector(`#aziende-list .entry-card[data-id="${a.id}"]`);
+    const main = card && card.querySelector(".entry-main");
+    if (!main || main.querySelector(".link-prenotazione-box")) return;
+    const box = document.createElement("div");
+    box.className = "link-prenotazione-box";
+    box.style.cssText = "font-size:0.72rem;color:var(--chalk-grey);margin-top:8px;line-height:1.6;";
+    box.innerHTML = `Link da girare ai dipendenti (tariffa applicata da sola quando si identificano):<br>`
+      + `Campi: <span style="font-family:'Space Mono', monospace;">${escapeHtml(linkCampi)}</span> `
+      + `<button type="button" class="btn btn-ghost copia-link-campi-btn" style="width:auto;padding:3px 8px;font-size:0.65rem;">Copia</button><br>`
+      + `Padel: <span style="font-family:'Space Mono', monospace;">${escapeHtml(linkPadel)}</span> `
+      + `<button type="button" class="btn btn-ghost copia-link-padel-btn" style="width:auto;padding:3px 8px;font-size:0.65rem;">Copia</button>`;
+    main.appendChild(box);
+    box.querySelector(".copia-link-campi-btn").addEventListener("click", e => copyToClipboard(linkCampi, e.currentTarget));
+    box.querySelector(".copia-link-padel-btn").addEventListener("click", e => copyToClipboard(linkPadel, e.currentTarget));
+  });
 }
 
 // Il referente si sceglie da un elenco (non più testo libero): solo
@@ -1122,36 +1149,25 @@ function aggiungiPulsantiInvito() {
   });
 }
 
-// Riusa lo stesso schema di onSendPasswordReset (js/users.js): genera solo
-// il link (Cloud Function con Admin SDK, non spedisce nulla) e apre il
-// client di posta di chi gestisce le aziende con un testo di benvenuto
-// come Partner già pronto — mai un invio automatico.
+// Invio reale via Cloud Function (SMTP server-side, funzione
+// inviaInvitoAzienda) — richiesto al posto del precedente pattern "genera
+// solo il link, spedisce chi gestisce le aziende dal proprio client di
+// posta" perché qui il destinatario è esterno al circolo.
 async function onInvitaReferente(azienda, btn) {
   const errorEl = document.getElementById("config-list-error");
   errorEl.textContent = "";
   btn.disabled = true;
+  btn.textContent = "Invio…";
   try {
     if (!azienda.referenteUid) {
       throw new Error(`Collega prima un referente all'azienda "${azienda.nome}" (campo "Referente" nel form qui sopra).`);
     }
-    const userSnap = await db.collection("users").doc(azienda.referenteUid).get();
-    if (!userSnap.exists) throw new Error("Account del referente non trovato.");
-    const user = userSnap.data();
-    if (!user.email) throw new Error("L'account del referente non ha un'email registrata.");
-
-    const fn = firebase.functions().httpsCallable("generaLinkResetPassword");
-    const result = await fn({ email: user.email });
-    const link = result.data.link;
-
-    const oggetto = `Benvenuto in Sport-OS come Partner — ${DATI_CENTRO.nome}`;
-    const corpo = `Ciao ${user.nome || ""},\n\n${azienda.nome} è ora un'azienda convenzionata con ${DATI_CENTRO.nome}! Da qui i tuoi dipendenti potranno prenotare i campi alla tariffa concordata.\n\n`
-      + `Accedi al tuo portale aziendale per gestire i dipendenti e vedere i consumi:\n${basePageUrl()}azienda.html\n\n`
-      + `Per impostare la tua password, apri questo link:\n${link}\n\nEmail: ${user.email}`;
-    const calce = `${DATI_CENTRO.nome}\nSportcenter Manager OS\n${basePageUrl()}index.html`;
-
-    window.location.href = `mailto:?to=${encodeURIComponent(user.email)}&subject=${encodeURIComponent(oggetto)}&body=${encodeURIComponent(corpo + "\n\n--\n" + calce)}`;
+    const fn = firebase.functions().httpsCallable("inviaInvitoAzienda");
+    const { data } = await fn({ aziendaId: azienda.id });
+    btn.textContent = `Invitato (${data.email})`;
   } catch (err) {
     showError(errorEl, "Errore: " + err.message);
+    btn.textContent = "Invia invito";
   } finally {
     btn.disabled = false;
   }
