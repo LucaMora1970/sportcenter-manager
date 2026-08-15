@@ -1527,6 +1527,61 @@ async function applicaTettoAzienda({ categoria, socioId, prezzo, disciplina, pos
   return { categoria: "esterno", prezzo: prezzoEsterno != null ? prezzoEsterno : prezzo };
 }
 
+// Unico punto che collega un'azienda a un account referente (o la
+// scollega, uid nullo) — azione di chi gestisce (config:gestisci /
+// users:gestisci), non del referente stesso. referenteNome/Email su
+// "aziende" restano una copia denormalizzata, aggiornata solo qui, per
+// non dover risolvere lo user ad ogni visualizzazione della lista.
+exports.collegaReferenteAzienda = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+  const { permessi, isAdmin } = await permessiUtente(request.auth.uid);
+  if (!isAdmin && !permessi.includes("config:gestisci") && !permessi.includes("users:gestisci")) {
+    throw new HttpsError("permission-denied", "Permesso mancante.");
+  }
+
+  const { aziendaId, uid } = request.data || {};
+  if (!aziendaId) throw new HttpsError("invalid-argument", "aziendaId mancante.");
+
+  const aziendaRef = db.collection("aziende").doc(aziendaId);
+  const aziendaSnap = await aziendaRef.get();
+  if (!aziendaSnap.exists) throw new HttpsError("not-found", "Azienda non trovata.");
+
+  // Scollega l'eventuale referente precedente se diverso dal nuovo — mai
+  // due utenti collegati alla stessa azienda, nessun accesso orfano.
+  const vecchioUid = aziendaSnap.data().referenteUid;
+  if (vecchioUid && vecchioUid !== uid) {
+    await db.collection("users").doc(vecchioUid).update({ aziendaId: null }).catch(() => {});
+  }
+
+  if (!uid) {
+    await aziendaRef.update({ referenteUid: null, referenteNome: null, referenteEmail: null });
+    return { ok: true };
+  }
+
+  const userSnap = await db.collection("users").doc(uid).get();
+  if (!userSnap.exists) throw new HttpsError("not-found", "Utente non trovato.");
+  const userData = userSnap.data();
+
+  // Verifica che il ruolo scelto conceda davvero azienda:propria — mai
+  // collegare per sbaglio un membro dello staff qualunque.
+  let permessiRuolo = [];
+  if (userData.ruoloId) {
+    const roleSnap = await db.collection("roles").doc(userData.ruoloId).get();
+    if (roleSnap.exists) permessiRuolo = roleSnap.data().permessi || [];
+  }
+  if (!permessiRuolo.includes("azienda:propria") && !permessiRuolo.includes("*")) {
+    throw new HttpsError("failed-precondition", "Il ruolo di questo utente non ha il permesso \"Referente aziendale\".");
+  }
+
+  await userSnap.ref.update({ aziendaId });
+  await aziendaRef.update({
+    referenteUid: uid,
+    referenteNome: userData.nome || null,
+    referenteEmail: userData.email || null
+  });
+  return { ok: true };
+});
+
 exports.listaSociAzienda = onCall(async (request) => {
   const aziendaId = await verificaReferenteAzienda(request.auth);
 

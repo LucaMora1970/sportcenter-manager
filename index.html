@@ -47,9 +47,11 @@
 <script src="js/utils.js"></script>
 <script src="js/auth.js"></script>
 <script>
-  // Se già loggato, salta direttamente al diario
-  auth.onAuthStateChanged((user) => {
-    if (user) window.location.href = "diario.html";
+  // Se già loggato, salta direttamente alla pagina giusta per il ruolo
+  auth.onAuthStateChanged(async (user) => {
+    if (!user) return;
+    const profile = await getCurrentUserProfile();
+    window.location.href = paginaIniziale(profile || { permessi: [] });
   });
 
   const form = document.getElementById("login-form");
@@ -67,7 +69,8 @@
 
     try {
       await auth.signInWithEmailAndPassword(email, password);
-      window.location.href = "diario.html";
+      const profile = await getCurrentUserProfile();
+      window.location.href = paginaIniziale(profile || { permessi: [] });
     } catch (err) {
       errorMsg.textContent = "Credenziali non valide. Riprova.";
       btn.disabled = false;

@@ -534,16 +534,11 @@
           </div>
         </div>
         <p style="color:var(--chalk-grey);font-size:0.78rem;margin:-6px 0 14px;">L'ID è la categoria da usare in "Tariffe campi" per impostare il prezzo di questa azienda.</p>
-        <div class="row2">
-          <div class="field">
-            <label for="new-azienda-referente-nome">Nome referente</label>
-            <input type="text" id="new-azienda-referente-nome" placeholder="es. Mario Rossi">
-          </div>
-          <div class="field">
-            <label for="new-azienda-referente-email">Email referente</label>
-            <input type="email" id="new-azienda-referente-email" placeholder="es. mario.rossi@acme.ch">
-          </div>
+        <div class="field">
+          <label for="new-azienda-referente">Referente</label>
+          <select id="new-azienda-referente"><option value="">— nessun referente —</option></select>
         </div>
+        <p style="color:var(--chalk-grey);font-size:0.78rem;margin:-6px 0 14px;">Solo utenti (Team) con un ruolo che ha il permesso "Referente aziendale" — crealo prima lì se non lo vedi qui.</p>
         <div class="row2">
           <div class="field">
             <label for="new-azienda-tetto-azienda">Tetto mensile azienda (CHF, facoltativo)</label>

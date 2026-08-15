@@ -42,6 +42,16 @@ function hasPermission(profile, permesso) {
   return profile.permessi.includes(permesso);
 }
 
+// Pagina su cui atterrare dopo il login: il diario resta la home per lo
+// staff "normale", ma un account che ha SOLO il permesso azienda:propria
+// (referente aziendale puro, senza altri permessi da staff) non potrebbe
+// nemmeno usare il diario — la sua pagina naturale è il proprio portale.
+function paginaIniziale(profile) {
+  const soloAzienda = profile.permessi.length > 0
+    && profile.permessi.every(p => p === "azienda:propria");
+  return soloAzienda ? "azienda.html" : "diario.html";
+}
+
 // Vero amministratore, a differenza di hasPermission() che ritorna sempre
 // true per l'admin qualunque permesso si chieda — serve per distinguere,
 // es., "può gestire il diario di tutti" da "è l'amministratore" (le voci

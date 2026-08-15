@@ -141,16 +141,14 @@ async function loadUsers() {
           </div>
         </div>
 
+        ${u.aziendaId ? `
         <div class="team-card-section">
           <div class="team-card-section-label">Azienda (referente)</div>
           <div class="team-card-row">
-            <select class="user-azienda-select" data-uid="${u.id}">
-              <option value="" ${!u.aziendaId ? "selected" : ""}>— nessuna —</option>
-              ${aziendeCache.map(a => `<option value="${a.id}" ${a.id === u.aziendaId ? "selected" : ""}>${escapeHtml(a.nome)}</option>`).join("")}
-            </select>
-            <button class="btn btn-ghost save-azienda-btn" data-uid="${u.id}">Salva</button>
+            <span style="font-size:0.82rem;color:var(--chalk-grey);">${escapeHtml((aziendeCache.find(a => a.id === u.aziendaId) || {}).nome || u.aziendaId)} — si collega/scollega da Configurazione → Aziende convenzionate.</span>
           </div>
         </div>
+        ` : ""}
 
         <div class="team-card-section">
           <div class="team-card-section-label">Tariffe orarie (CHF)</div>
@@ -194,9 +192,6 @@ async function loadUsers() {
   });
   list.querySelectorAll(".save-ruolo-btn").forEach(btn => {
     btn.addEventListener("click", onSaveRuolo);
-  });
-  list.querySelectorAll(".save-azienda-btn").forEach(btn => {
-    btn.addEventListener("click", onSaveAzienda);
   });
   list.querySelectorAll(".send-reset-btn").forEach(btn => {
     btn.addEventListener("click", onSendPasswordReset);
@@ -371,25 +366,12 @@ async function populateRoleSelect() {
   select.innerHTML = rolesCache.map(r => `<option value="${r.id}">${r.id}</option>`).join("");
 }
 
-async function onSaveAzienda(e) {
-  const btn = e.currentTarget;
-  const uid = btn.dataset.uid;
-  const aziendaIdRaw = document.querySelector(`.user-azienda-select[data-uid="${uid}"]`).value;
-  btn.disabled = true;
-  try {
-    await db.collection("users").doc(uid).update({ aziendaId: aziendaIdRaw || null });
-    await loadUsers();
-  } catch (err) {
-    showError(document.getElementById("users-list-error"), "Errore: " + err.message);
-    btn.disabled = false;
-  }
-}
-
-async function populateAziendaSelect() {
-  const select = document.getElementById("new-user-azienda");
+// Solo per mostrare il nome nella riga di sola lettura "Azienda" delle
+// card — il collegamento si fa esclusivamente da Configurazione →
+// Aziende convenzionate (collegaReferenteAzienda), mai da qui.
+async function caricaAziendeCache() {
   const snap = await db.collection("aziende").get();
   aziendeCache = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(a => a.attivo !== false);
-  select.innerHTML = `<option value="">— nessuna —</option>` + aziendeCache.map(a => `<option value="${a.id}">${escapeHtml(a.nome)}</option>`).join("");
 }
 
 async function onCreateUser(e) {
@@ -403,7 +385,6 @@ async function onCreateUser(e) {
   const nome = document.getElementById("new-user-nome").value.trim();
   const email = document.getElementById("new-user-email").value.trim();
   const ruoloId = document.getElementById("new-user-ruolo").value;
-  const aziendaId = document.getElementById("new-user-azienda").value || null;
   const password = document.getElementById("new-user-password").value;
   const soggettoQuotaCampo = document.getElementById("new-user-quotacampo").checked;
 
@@ -423,7 +404,6 @@ async function onCreateUser(e) {
       email,
       ruoloId,
       ruoloNome: ruoloId,
-      aziendaId,
       attivo: true,
       soggettoQuotaCampo,
       tariffeOrarie
@@ -537,7 +517,7 @@ requireAuth(async (profile) => {
   renderNewUserTariffeFields();
 
   await populateRoleSelect();
-  await populateAziendaSelect();
+  await caricaAziendeCache();
   await loadUsers();
   await loadRoles();
 });

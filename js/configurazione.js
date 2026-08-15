@@ -1083,6 +1083,26 @@ async function loadAziende() {
   aggiungiPulsantiInvito();
 }
 
+// Il referente si sceglie da un elenco (non più testo libero): solo
+// utenti (Team) il cui ruolo ha il permesso "azienda:propria" — unico
+// modo per non avere un'azienda collegata a un account che poi non ha
+// davvero accesso al proprio portale.
+async function popolaSelectReferente() {
+  const select = document.getElementById("new-azienda-referente");
+  const rolesSnap = await db.collection("roles").get();
+  const ruoliIdonei = rolesSnap.docs
+    .filter(d => (d.data().permessi || []).some(p => p === "azienda:propria" || p === "*"))
+    .map(d => d.id);
+
+  let utenti = [];
+  if (ruoliIdonei.length > 0) {
+    const usersSnap = await db.collection("users").where("ruoloId", "in", ruoliIdonei.slice(0, 10)).get();
+    utenti = usersSnap.docs.map(d => ({ uid: d.id, ...d.data() })).filter(u => u.attivo !== false);
+  }
+  select.innerHTML = `<option value="">— nessun referente —</option>`
+    + utenti.map(u => `<option value="${u.uid}">${escapeHtml(u.nome || u.email)} (${escapeHtml(u.email || "")})</option>`).join("");
+}
+
 // renderSimpleList è condivisa da un'altra decina di liste in questa
 // pagina — invece di aggiungerle un altro parametro solo per questo caso,
 // il pulsante "Invia invito" si inietta qui dopo, solo sulle card delle
@@ -1111,11 +1131,12 @@ async function onInvitaReferente(azienda, btn) {
   errorEl.textContent = "";
   btn.disabled = true;
   try {
-    const usersSnap = await db.collection("users").where("aziendaId", "==", azienda.id).limit(1).get();
-    if (usersSnap.empty) {
-      throw new Error(`Crea prima l'account del referente in Utenti, assegnandogli l'azienda "${azienda.nome}".`);
+    if (!azienda.referenteUid) {
+      throw new Error(`Collega prima un referente all'azienda "${azienda.nome}" (campo "Referente" nel form qui sopra).`);
     }
-    const user = usersSnap.docs[0].data();
+    const userSnap = await db.collection("users").doc(azienda.referenteUid).get();
+    if (!userSnap.exists) throw new Error("Account del referente non trovato.");
+    const user = userSnap.data();
     if (!user.email) throw new Error("L'account del referente non ha un'email registrata.");
 
     const fn = firebase.functions().httpsCallable("generaLinkResetPassword");
@@ -1141,8 +1162,7 @@ function startEditAzienda(item) {
   document.getElementById("new-azienda-id").value = item.id;
   document.getElementById("new-azienda-id").disabled = true;
   document.getElementById("new-azienda-nome").value = item.nome || "";
-  document.getElementById("new-azienda-referente-nome").value = item.referenteNome || "";
-  document.getElementById("new-azienda-referente-email").value = item.referenteEmail || "";
+  document.getElementById("new-azienda-referente").value = item.referenteUid || "";
   document.getElementById("new-azienda-tetto-azienda").value = item.tettoMensileAzienda != null ? item.tettoMensileAzienda : "";
   document.getElementById("new-azienda-tetto-utente").value = item.tettoDefaultPerUtente != null ? item.tettoDefaultPerUtente : "";
   document.getElementById("create-azienda-btn").textContent = "Salva modifiche";
@@ -1167,8 +1187,7 @@ async function onCreateAzienda(e) {
 
   const id = document.getElementById("new-azienda-id").value.trim();
   const nome = document.getElementById("new-azienda-nome").value.trim();
-  const referenteNome = document.getElementById("new-azienda-referente-nome").value.trim();
-  const referenteEmail = document.getElementById("new-azienda-referente-email").value.trim();
+  const referenteUid = document.getElementById("new-azienda-referente").value || null;
   const tettoAziendaRaw = document.getElementById("new-azienda-tetto-azienda").value;
   const tettoUtenteRaw = document.getElementById("new-azienda-tetto-utente").value;
   const tettoMensileAzienda = tettoAziendaRaw !== "" ? parseFloat(tettoAziendaRaw) : null;
@@ -1176,18 +1195,20 @@ async function onCreateAzienda(e) {
 
   try {
     if (!nome) throw new Error("Inserisci un nome.");
+    let aziendaId;
     if (editingAziendaId) {
-      await db.collection("aziende").doc(editingAziendaId).update({
-        nome, referenteNome: referenteNome || null, referenteEmail: referenteEmail || null,
-        tettoMensileAzienda, tettoDefaultPerUtente
-      });
+      aziendaId = editingAziendaId;
+      await db.collection("aziende").doc(aziendaId).update({ nome, tettoMensileAzienda, tettoDefaultPerUtente });
     } else {
       if (!id) throw new Error("Inserisci un ID azienda (es. acme) — è anche la categoria da usare in \"Tariffe campi\".");
-      await db.collection("aziende").doc(id).set({
-        nome, referenteNome: referenteNome || null, referenteEmail: referenteEmail || null,
-        tettoMensileAzienda, tettoDefaultPerUtente, attivo: true
-      });
+      aziendaId = id;
+      await db.collection("aziende").doc(id).set({ nome, tettoMensileAzienda, tettoDefaultPerUtente, attivo: true });
     }
+    // Collegamento/scollegamento del referente sempre tramite la Cloud
+    // Function dedicata: verifica il ruolo e tiene sincronizzato
+    // users/{uid}.aziendaId, mai una scrittura diretta da qui.
+    const collega = firebase.functions().httpsCallable("collegaReferenteAzienda");
+    await collega({ aziendaId, uid: referenteUid });
     cancelEditAzienda();
     await loadAziende();
   } catch (err) {
@@ -1609,6 +1630,7 @@ requireAuth(async (profile) => {
   await loadQuoteCampo();
   await seedCategorieSocioIfEmpty();
   await loadCategorieSocio();
+  await popolaSelectReferente();
   await loadAziende();
   sincronizzaSelectCategorie();
   await loadTariffeCampi();
