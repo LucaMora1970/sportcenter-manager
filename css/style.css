@@ -680,6 +680,21 @@ select:focus, input:focus, textarea:focus {
 
 /* ---------- Tabellone prenotazione campo padel ---------- */
 
+/* Giorno + durata (o interno/esterno) restano visibili durante lo scroll
+   della lista orari sotto — fondamentali per scegliere, specie su mobile
+   dove la lista può essere lunga. Sfondo uguale a .app così il contenuto
+   che scorre sotto non si vede in trasparenza. */
+.sticky-selectors {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--court-blue-950);
+  padding-top: 4px;
+  padding-bottom: 6px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--court-blue-700);
+}
+
 .day-strip {
   display: flex;
   gap: 8px;

@@ -434,7 +434,6 @@ function render() {
 
   const esitoPagamento = new URLSearchParams(location.search).get("pagamento");
   if (esitoPagamento === "fallito") {
-    alert("Pagamento non riuscito o annullato: lo slot è stato liberato, riprova pure.");
     history.replaceState(null, "", location.pathname);
   }
 
@@ -465,6 +464,11 @@ function render() {
   });
 
   document.getElementById("summaryCta").addEventListener("click", prenotaSlot);
+  document.querySelector(".chiudi-summary-btn").addEventListener("click", () => {
+    state.selected = null;
+    document.getElementById("tabellone-error").innerHTML = "";
+    render();
+  });
 
   ascoltaPrenotazioniGiorno();
 })();

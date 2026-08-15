@@ -329,6 +329,17 @@ function generaCodiceCredito() {
 // secondo.
 const COURT_ID = "1";
 
+// Il courtId del padel ("1") non corrisponde a nessun id reale in
+// "campi" (quell'id è solo interno, mai un doc Firestore) — se l'admin
+// ha comunque creato lì una voce per il padel (per dargli un nome vero,
+// es. "Indoor 1"), va usata solo per l'etichetta mostrata a chi prenota,
+// mai per l'identità della prenotazione. "1" resta il fallback se nessuna
+// voce è stata creata.
+async function padelCampoNumero() {
+  const snap = await db.collection("campi").where("disciplina", "==", "padel").limit(1).get();
+  return snap.empty ? COURT_ID : (snap.docs[0].data().numero || COURT_ID);
+}
+
 // Scrive tutto ciò che rende "reale" una prenotazione confermata:
 // biglietto privato, indice codice→prenotazione, mirror del pagamento, e
 // se c'è un credito coinvolto lo scala e lo registra. Chiamata sia dal
@@ -532,7 +543,7 @@ exports.creaPrenotazionePubblica = onCall(
       await confermaPrenotazionePubblica({
         bookingId: bookingRef.id, courtId: court, date, startTime, endTime, prezzo, token,
         paymentId: null, creditCode: creditCode || null, creditoScalato: creditoDaScalare,
-        disciplina: "padel", campoLabel: `Campo ${court}`
+        disciplina: "padel", campoLabel: `Campo ${await padelCampoNumero()}`
       });
       return { pagamentoNecessario: false, token };
     }
@@ -918,7 +929,7 @@ exports.webhookPostFinance = onRequest(
             const disciplina = campoSnap.exists ? campoSnap.data().disciplina : "padel";
             const campoLabel = campoSnap.exists
               ? `Campo ${campoSnap.data().numero}${campoSnap.data().posizione ? ` (${campoSnap.data().posizione})` : ""}`
-              : `Campo ${courtId}`;
+              : `Campo ${await padelCampoNumero()}`;
             await confermaPrenotazionePubblica({
               bookingId: meta.bookingId,
               courtId,

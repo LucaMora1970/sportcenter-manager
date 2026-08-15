@@ -156,6 +156,11 @@ function toISO(date) { return `${date.getFullYear()}-${pad2(date.getMonth() + 1)
 
 let CAMPI = []; // [{id, numero, disciplina, posizione}]
 let GRUPPI = []; // [{key, disciplina, posizione, label, campi:[...]}]
+// Il padel non ha un vero courtId in "campi" (fisso "1", mai un doc
+// Firestore) — se l'admin ha comunque creato lì una voce per dargli un
+// nome reale (es. "Indoor 1"), va usata solo per l'etichetta, mai per
+// l'identità della prenotazione. "1" resta il fallback.
+let PADEL_NUMERO = "1";
 let CHIUSURE_CENTRO = []; // [{id, discipline}]
 let CHIUSURE_PADEL = new Set(); // date ISO, solo per il padel (chiusurePadel)
 let TARIFFE_CAMPI = [];
@@ -261,7 +266,7 @@ function costruisciGruppi() {
   // Il padel ha oggi un solo campo, non modellato nella collection "campi"
   // (courtId fisso "1", come in prenota-padel.js/functions/index.js) —
   // voce sintetica per includerlo nello stesso ingresso unico.
-  GRUPPI.push({ key: "padel__", disciplina: "padel", posizione: null, label: "Padel", campi: [{ id: "1", numero: "1", disciplina: "padel" }] });
+  GRUPPI.push({ key: "padel__", disciplina: "padel", posizione: null, label: "Padel", campi: [{ id: "1", numero: PADEL_NUMERO, disciplina: "padel" }] });
   GRUPPI.sort((a, b) => rangoGruppo(a) - rangoGruppo(b));
 }
 
@@ -410,6 +415,7 @@ function slotsLiberi(gruppo) {
 
 function renderDurataPadel() {
   return `
+    <div class="picker-label" style="margin-bottom:8px;">Scegli la durata</div>
     <div class="gruppo-pills" id="durata-padel-pills" style="margin-bottom:10px;">
       <button type="button" data-dur="60" aria-pressed="${state.durataPadel === 60}">60'</button>
       <button type="button" data-dur="90" aria-pressed="${state.durataPadel === 90}">90'</button>
@@ -437,30 +443,34 @@ function wirePosizioneTennis() {
 
 function render() {
   const el = document.getElementById("slot-list");
+  const subToggleEl = document.getElementById("subToggleContainer");
   const gruppo = gruppoAttivo();
-  if (!gruppo) { el.innerHTML = ""; return; }
+  if (!gruppo) { el.innerHTML = ""; subToggleEl.innerHTML = ""; return; }
+
+  // Il sotto-selettore (durata padel / interno-esterno tennis) vive fuori
+  // da #slot-list, dentro lo stesso blocco sticky del day-strip — così
+  // resta sempre visibile mentre si scorrono gli orari, invece di sparire
+  // insieme al resto della lista.
+  subToggleEl.innerHTML = gruppo.disciplina === "padel" ? renderDurataPadel()
+    : gruppo.disciplina === "tennis" ? renderPosizioneTennis() : "";
+  wireDurataPadel();
+  wirePosizioneTennis();
 
   const chiuso = CHIUSURE_CENTRO.some(c => c.id === state.data && (!(c.discipline || []).length || c.discipline.includes(gruppo.disciplina)))
     || (gruppo.disciplina === "padel" && CHIUSURE_PADEL.has(state.data));
-  const subToggleHtml = gruppo.disciplina === "padel" ? renderDurataPadel()
-    : gruppo.disciplina === "tennis" ? renderPosizioneTennis() : "";
   if (chiuso) {
-    el.innerHTML = subToggleHtml + `<div class="empty-state"><div class="display">Centro chiuso</div><p>Non prenotabile in questa data.</p></div>`;
-    wireDurataPadel();
-    wirePosizioneTennis();
+    el.innerHTML = `<div class="empty-state"><div class="display">Centro chiuso</div><p>Non prenotabile in questa data.</p></div>`;
     return;
   }
 
   const liberi = slotsLiberi(gruppo);
   if (liberi.length === 0) {
-    el.innerHTML = subToggleHtml + `<div class="empty-state"><div class="display">Nessun orario libero</div><p>Prova un altro giorno.</p></div>`;
-    wireDurataPadel();
-    wirePosizioneTennis();
+    el.innerHTML = `<div class="empty-state"><div class="display">Nessun orario libero</div><p>Prova un altro giorno.</p></div>`;
     return;
   }
 
   const categoria = categoriaCorrente();
-  el.innerHTML = subToggleHtml + liberi.map((s, i) => {
+  el.innerHTML = liberi.map((s, i) => {
     const durataMinuti = gruppo.disciplina === "padel" ? state.durataPadel : orarioToMin(s.fine) - orarioToMin(s.inizio);
     const prezzo = quotaCategoriaClient(gruppo.disciplina, gruppo.posizione, categoria, state.data, s.inizio, durataMinuti);
     const prezzoLabel = prezzo == null ? "—" : (prezzo === 0 ? "Incluso" : `CHF ${prezzo.toFixed(2)}`);
@@ -480,8 +490,6 @@ function render() {
   el.querySelectorAll(".apri-prenota-btn").forEach((btn, i) => {
     btn.addEventListener("click", () => apriPannelloPrenota(liberi[i], i));
   });
-  wireDurataPadel();
-  wirePosizioneTennis();
 }
 
 function wireDurataPadel() {
@@ -521,6 +529,9 @@ function apriPannelloPrenota(slot, idx) {
 
   panel.innerHTML = `
     <div class="prenota-panel">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:4px;">
+        <button type="button" class="btn btn-ghost chiudi-prenota-btn" style="width:auto;padding:4px 10px;font-size:0.9rem;line-height:1;" aria-label="Chiudi">✕</button>
+      </div>
       ${introPadel}
       ${Array.from({ length: nCampi }).map((_, n) => `
         <div class="field" id="g-campo-${idx}-${n}">
@@ -540,6 +551,11 @@ function apriPannelloPrenota(slot, idx) {
     </div>
   `;
   panel.classList.remove("hidden");
+
+  panel.querySelector(".chiudi-prenota-btn").addEventListener("click", () => {
+    panel.innerHTML = "";
+    panel.classList.add("hidden");
+  });
 
   const selezionaGiocatore = (n, socioId, nome) => {
     giocatoriRisolti[n] = { socioId, nomeVisualizzato: nome };
@@ -715,7 +731,6 @@ async function caricaProfiliDispositivo() {
 
   const esitoPagamento = new URLSearchParams(location.search).get("pagamento");
   if (esitoPagamento === "fallito") {
-    alert("Pagamento non riuscito o annullato: lo slot è stato liberato, riprova pure.");
     history.replaceState(null, "", location.pathname);
   }
 
@@ -728,7 +743,10 @@ async function caricaProfiliDispositivo() {
     db.collection("chiusurePadel").get()
   ]);
 
-  CAMPI = campiSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(c => c.disciplina === "tennis" || c.disciplina === "squash");
+  const campiTutti = campiSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  CAMPI = campiTutti.filter(c => c.disciplina === "tennis" || c.disciplina === "squash");
+  const padelCampoReale = campiTutti.find(c => c.disciplina === "padel");
+  if (padelCampoReale && padelCampoReale.numero) PADEL_NUMERO = padelCampoReale.numero;
   CHIUSURE_CENTRO = chiusureSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   TARIFFE_CAMPI = tariffeSnap.docs.map(d => d.data());
   FORFAIT_CAMPI = forfaitSnap.docs.map(d => d.data());
