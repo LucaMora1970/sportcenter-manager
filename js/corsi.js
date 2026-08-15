@@ -117,6 +117,7 @@ function leggiFormCorso() {
     etaMax: num("corso-eta-max"),
     maxIscrittiPerSessione: num("corso-max-iscritti"),
     minIscrittiConferma: num("corso-min-iscritti"),
+    tokenizzazioneAttiva: document.getElementById("corso-tokenizzazione").checked,
     terminIscrizione: document.getElementById("corso-termine-iscrizione").value || null,
     ordine: num("corso-ordine"),
     condizioniGenerali: document.getElementById("corso-condizioni").value.trim(),
@@ -1083,6 +1084,7 @@ function startEditCorso(corso) {
   document.getElementById("corso-eta-max").value = corso.etaMax != null ? corso.etaMax : "";
   document.getElementById("corso-max-iscritti").value = corso.maxIscrittiPerSessione != null ? corso.maxIscrittiPerSessione : "";
   document.getElementById("corso-min-iscritti").value = corso.minIscrittiConferma != null ? corso.minIscrittiConferma : "";
+  document.getElementById("corso-tokenizzazione").checked = corso.tokenizzazioneAttiva !== false;
   document.getElementById("corso-termine-iscrizione").value = corso.terminIscrizione || "";
   document.getElementById("corso-ordine").value = corso.ordine != null ? corso.ordine : "";
   document.getElementById("corso-condizioni").value = corso.condizioniGenerali || "";

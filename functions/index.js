@@ -1854,10 +1854,14 @@ exports.avviaTokenizzazioneCorso = onCall(
       // occasione per mettere il metaData (non impostabile alla creazione,
       // che qui non passa da una TransactionCreate) — è quello che il
       // webhook userà per riconoscere questo tipo di transazione.
+      // "version" è obbligatorio (controllo di concorrenza ottimistica di
+      // PostFinance: senza, il patch fallisce con "No version was provided")
+      // — quello della transazione appena creata, già disponibile qui.
       await transactionsService().patchPaymentTransactionsId({
         id: transaction.id,
         space: spaceId,
         transactionPending: {
+          version: transaction.version,
           successUrl: `${APP_URL}iscrizione-corso-carta.html?t=${verificaToken}`,
           failedUrl: `${APP_URL}iscrizione-corso-carta.html?t=${verificaToken}`,
           metaData: { tipoTransazione: "tokenizzazione_corso", iscrizioneId, verificaToken }

@@ -201,8 +201,11 @@ async function onSubmitIscrizione(e) {
     // Il salvataggio carta ha senso solo per corsi con una soglia minima
     // di iscritti configurata — è il caso a cui serve l'addebito
     // automatico differito, unico scenario in cui non si conosce ancora
-    // se/quando il corso partirà davvero.
-    if (corsoSelezionato.minIscrittiConferma) {
+    // se/quando il corso partirà davvero. tokenizzazioneAttiva permette
+    // allo staff di disattivarlo comunque per corsi specifici (Corsi,
+    // checkbox "Offri il salvataggio carta"); assente sui corsi creati
+    // prima di questa opzione, che restano quindi invariati (!== false).
+    if (corsoSelezionato.minIscrittiConferma && corsoSelezionato.tokenizzazioneAttiva !== false) {
       document.getElementById("step-carta").classList.remove("hidden");
       document.getElementById("salva-carta-btn").addEventListener("click", () => avviaSalvataggioCarta(iscrizioneRef.id));
     }
