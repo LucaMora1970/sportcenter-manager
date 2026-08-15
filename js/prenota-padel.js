@@ -117,6 +117,9 @@ function giornoSettimanaCodice(dataIso) {
 }
 
 function quotaCategoriaClient(disciplina, posizione, categoria, dataIso, startTime, durataMinuti) {
+  // Stessa normalizzazione del server (functions/index.js, quotaCategoria):
+  // undefined e null devono contare come lo stesso "nessuna posizione".
+  posizione = posizione ?? null;
   const forfaitAttivo = FORFAIT_CAMPI.some(f =>
     f.disciplina === disciplina && f.posizione === posizione
     && dataIso >= f.periodoInizio && dataIso <= f.periodoFine

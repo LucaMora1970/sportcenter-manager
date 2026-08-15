@@ -925,9 +925,20 @@ function categorieComplete() {
   return [...categorieSocioCache, { id: "azienda", nome: "Azienda partner" }, { id: "esterno", nome: "Utenti" }];
 }
 
+// "maestro" non è una categoria di tesseramento (non compare in "Categorie
+// socio"): è il valore che risolviCategoriaPrenotante (functions/index.js)
+// assegna a chiunque sia loggato con un account staff. Va comunque
+// selezionabile ovunque serva un prezzo/impostazione per categoria —
+// altrimenti un membro dello staff che prenota un campo dalla pagina
+// pubblica trova sempre "Tariffa non configurata" perché per lui non può
+// mai esistere una riga tariffa con nessuna delle categorie socio.
+function categorieConMaestro() {
+  return [...categorieComplete(), { id: "maestro", nome: "Maestro" }];
+}
+
 let CATEGORIA_LABEL = { azienda: "Azienda partner", esterno: "Utenti" };
 function aggiornaCategoriaLabel() {
-  CATEGORIA_LABEL = Object.fromEntries(categorieComplete().map(c => [c.id, c.nome]));
+  CATEGORIA_LABEL = Object.fromEntries(categorieConMaestro().map(c => [c.id, c.nome]));
 }
 
 const DEFAULT_CATEGORIE_SOCIO_SEED = [
@@ -1027,7 +1038,7 @@ async function onCreateCategoriaSocio(e) {
 // ogni modifica a "Categorie socio" così restano sempre aggiornati senza
 // dover ricaricare la pagina.
 function sincronizzaSelectCategorie() {
-  populateSelect(document.getElementById("new-tariffacampo-categoria"), categorieComplete().map(c => ({ id: c.id, label: c.nome })));
+  populateSelect(document.getElementById("new-tariffacampo-categoria"), categorieConMaestro().map(c => ({ id: c.id, label: c.nome })));
   document.getElementById("forfaitcampo-categorie-checks").innerHTML = categorieComplete()
     .filter(c => c.id !== "esterno")
     .map(c => `<div class="checkbox-row"><input type="checkbox" id="fc-cat-${c.id}" value="${c.id}"><label for="fc-cat-${c.id}">${escapeHtml(c.nome)}</label></div>`)
@@ -1311,7 +1322,7 @@ async function onCreateChiusuraCentro(e) {
 let prenotazioniCampiAnticipoCache = {};
 
 function idPerAnticipo() {
-  return [...categorieComplete().map(c => c.id), "maestro"];
+  return categorieConMaestro().map(c => c.id);
 }
 
 function renderCampiAnticipoPrenotazione() {

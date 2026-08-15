@@ -170,7 +170,15 @@ let bookingsUnsub = null;
 function disciplinaLabel(d) { return { tennis: "Tennis", squash: "Squash", padel: "Padel" }[d] || d; }
 function posizioneLabel(p) { return { interno: "Interno", esterno: "Esterno" }[p] || p; }
 
+// Un dispositivo loggato con un account staff (documento "users") paga
+// come "maestro" — stessa precedenza di risolviCategoriaPrenotante in
+// functions/index.js, controllata PRIMA dei profili sociDevices: così
+// l'anteprima prezzo mostra la stessa categoria che verrà davvero
+// addebitata, invece di mostrare sempre "esterno" per chi è staff.
+let sessioneStaff = false;
+
 function categoriaCorrente() {
+  if (sessioneStaff) return "maestro";
   if (!profiloScelto) return "esterno";
   const p = PROFILI.find(x => x.socioId === profiloScelto);
   return p ? p.categoria : "esterno";
@@ -187,6 +195,9 @@ function giornoSettimanaCodice(dataIso) {
 }
 
 function quotaCategoriaClient(disciplina, posizione, categoria, dataIso, startTime, durataMinuti) {
+  // Stessa normalizzazione del server (functions/index.js, quotaCategoria):
+  // undefined e null devono contare come lo stesso "nessuna posizione".
+  posizione = posizione ?? null;
   const forfaitAttivo = FORFAIT_CAMPI.some(f =>
     f.disciplina === disciplina && f.posizione === posizione
     && dataIso >= f.periodoInizio && dataIso <= f.periodoFine
@@ -231,11 +242,16 @@ function rangoGruppo(g) {
 function costruisciGruppi() {
   const map = new Map();
   CAMPI.forEach(c => {
-    const key = `${c.disciplina}__${c.posizione || "_"}`;
+    // I campi squash non hanno mai avuto un campo "posizione" in Firestore
+    // (assente, non solo vuoto) — letto così darebbe `undefined`, diverso
+    // dal `null` esplicito salvato nelle tariffe: normalizzato qui, unica
+    // fonte di verità per il resto della pagina (gruppo.posizione).
+    const posizione = c.posizione ?? null;
+    const key = `${c.disciplina}__${posizione || "_"}`;
     if (!map.has(key)) {
       map.set(key, {
-        key, disciplina: c.disciplina, posizione: c.posizione,
-        label: `${disciplinaLabel(c.disciplina)}${c.posizione ? " " + posizioneLabel(c.posizione) : ""}`,
+        key, disciplina: c.disciplina, posizione,
+        label: `${disciplinaLabel(c.disciplina)}${posizione ? " " + posizioneLabel(posizione) : ""}`,
         campi: []
       });
     }
@@ -489,7 +505,7 @@ function numeroCampiGiocatore(disciplina) {
   return 0;
 }
 
-let giocatoriRisolti = []; // [{socioId, nomeVisualizzato, categoria} | null, ...]
+let giocatoriRisolti = []; // [{socioId, nomeVisualizzato} | null, ...]
 let ricercaGiocatoreTimeout = null;
 
 function apriPannelloPrenota(slot, idx) {
@@ -507,11 +523,17 @@ function apriPannelloPrenota(slot, idx) {
     <div class="prenota-panel">
       ${introPadel}
       ${Array.from({ length: nCampi }).map((_, n) => `
-        <div class="field">
+        <div class="field" id="g-campo-${idx}-${n}">
           <label for="g-nome-${idx}-${n}">${etichetta}${nCampi > 1 ? " " + (n + 2) : ""}</label>
-          <input type="text" id="g-nome-${idx}-${n}" placeholder="es. Mario Rossi">
+          <input type="text" id="g-nome-${idx}-${n}" placeholder="es. Mario Rossi" autocomplete="off">
+          <div id="g-esito-${idx}-${n}"></div>
         </div>
-        <div class="g2-esito" id="g-esito-${idx}-${n}"></div>
+        <div class="entry-card hidden" id="g-selezionato-${idx}-${n}" style="margin-bottom:14px;">
+          <div class="entry-main">
+            <div class="entry-tipo" id="g-selezionato-nome-${idx}-${n}"></div>
+          </div>
+          <button type="button" class="btn btn-ghost cambia-giocatore-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-n="${n}">Cambia</button>
+        </div>
       `).join("")}
       <div class="error-msg" id="conferma-error-${idx}"></div>
       <button type="button" class="btn btn-primary conferma-prenota-btn" data-idx="${idx}" style="margin-top:10px;">Conferma prenotazione</button>
@@ -519,30 +541,54 @@ function apriPannelloPrenota(slot, idx) {
   `;
   panel.classList.remove("hidden");
 
+  const selezionaGiocatore = (n, socioId, nome) => {
+    giocatoriRisolti[n] = { socioId, nomeVisualizzato: nome };
+    document.getElementById(`g-campo-${idx}-${n}`).classList.add("hidden");
+    document.getElementById(`g-selezionato-nome-${idx}-${n}`).textContent = nome;
+    document.getElementById(`g-selezionato-${idx}-${n}`).classList.remove("hidden");
+  };
+
   for (let n = 0; n < nCampi; n++) {
     const input = document.getElementById(`g-nome-${idx}-${n}`);
+    const esitoEl = document.getElementById(`g-esito-${idx}-${n}`);
+
     input.addEventListener("input", () => {
       clearTimeout(ricercaGiocatoreTimeout);
-      const esitoEl = document.getElementById(`g-esito-${idx}-${n}`);
-      const nome = input.value.trim();
       giocatoriRisolti[n] = null;
-      if (nome.length < 2) { esitoEl.textContent = ""; return; }
-      esitoEl.textContent = "Ricerca…";
-      esitoEl.className = "g2-esito";
+      const nome = input.value.trim();
+      if (nome.length < 3) { esitoEl.innerHTML = ""; return; }
+      esitoEl.innerHTML = `<p class="g2-esito">Ricerca…</p>`;
       ricercaGiocatoreTimeout = setTimeout(async () => {
         try {
           const fn = firebase.functions().httpsCallable("cercaGiocatore");
           const { data } = await fn({ nome });
-          if (data.trovato) {
-            giocatoriRisolti[n] = data;
-            esitoEl.textContent = `Riconosciuto: ${data.nomeVisualizzato} (${data.categoria})`;
-            esitoEl.className = "g2-esito ok";
-          } else {
-            esitoEl.textContent = "Non trovato tra i soci — verrà considerato esterno.";
-            esitoEl.className = "g2-esito no";
+          if (data.risultati.length === 0) {
+            esitoEl.innerHTML = `<p class="g2-esito no">Non trovato tra i soci — verrà considerato esterno.</p>`;
+            return;
           }
+          esitoEl.innerHTML = data.risultati.map(s => `
+            <div class="entry-card" style="margin-bottom:6px;">
+              <div class="entry-main">
+                <div class="entry-tipo">${escapeHtml(s.nome)} ${escapeHtml(s.cognome)}</div>
+              </div>
+              <button type="button" class="btn btn-ghost seleziona-giocatore-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;"
+                data-socio-id="${s.socioId}" data-nome="${escapeHtml(s.nome)} ${escapeHtml(s.cognome)}">Seleziona</button>
+            </div>
+          `).join("");
+          esitoEl.querySelectorAll(".seleziona-giocatore-btn").forEach(btn => {
+            btn.addEventListener("click", () => selezionaGiocatore(n, btn.dataset.socioId, btn.dataset.nome));
+          });
         } catch { /* ricerca facoltativa, non blocca la prenotazione */ }
       }, 500);
+    });
+
+    document.querySelector(`#g-selezionato-${idx}-${n} .cambia-giocatore-btn`).addEventListener("click", () => {
+      giocatoriRisolti[n] = null;
+      document.getElementById(`g-campo-${idx}-${n}`).classList.remove("hidden");
+      document.getElementById(`g-selezionato-${idx}-${n}`).classList.add("hidden");
+      input.value = "";
+      esitoEl.innerHTML = "";
+      input.focus();
     });
   }
 
@@ -611,6 +657,21 @@ async function caricaProfiliDispositivo() {
 
   if (!user) {
     boxTesto.textContent = "Stai prenotando come utente esterno";
+    sessioneStaff = false;
+    PROFILI = [];
+    profiloScelto = null;
+    selectBox.classList.add("hidden");
+    return;
+  }
+
+  try {
+    const userSnap = await db.collection("users").doc(user.uid).get();
+    sessioneStaff = userSnap.exists;
+  } catch {
+    sessioneStaff = false;
+  }
+  if (sessioneStaff) {
+    boxTesto.textContent = "Stai prenotando come membro dello staff (categoria Maestro)";
     PROFILI = [];
     profiloScelto = null;
     selectBox.classList.add("hidden");

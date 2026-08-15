@@ -1411,19 +1411,24 @@ exports.collegaSocioAlDispositivo = onCall(async (request) => {
   return { profili };
 });
 
-// Ricerca del secondo giocatore (tennis, solo singolo): mai esposto
-// l'elenco soci al client, solo nome+categoria di un match esatto (per
-// non applicare per errore la tariffa sbagliata su un'omonimia parziale).
+// Ricerca del secondo giocatore/compagni (tennis/padel), pubblica come
+// cercaSociStaff (pannello operatore) ma più prudente nell'esposizione dato
+// che qui non serve login: soglia più alta (3 caratteri), pochi risultati
+// (8), e niente categoria nell'elenco — solo nome, per limitare quanto un
+// visitatore non riconosciuto può "sfogliare" cercando lettere comuni. La
+// categoria del giocatore selezionato si riverifica comunque sempre lato
+// server al momento della prenotazione (mai fidarsi del client).
 exports.cercaGiocatore = onCall(async (request) => {
   const testo = (request.data?.nome || "").trim().toLowerCase();
-  if (testo.length < 2) return { trovato: false };
+  if (testo.length < 3) return { risultati: [] };
 
   const snap = await db.collection("soci").where("attivo", "==", true).limit(500).get();
-  const match = snap.docs
+  const risultati = snap.docs
     .map(d => ({ id: d.id, ...d.data() }))
-    .find(s => `${s.nome} ${s.cognome}`.toLowerCase() === testo || `${s.cognome} ${s.nome}`.toLowerCase() === testo);
-  if (!match) return { trovato: false };
-  return { trovato: true, socioId: match.id, nomeVisualizzato: `${match.nome} ${match.cognome}`, categoria: match.categoria };
+    .filter(s => `${s.nome} ${s.cognome}`.toLowerCase().includes(testo))
+    .slice(0, 8)
+    .map(s => ({ socioId: s.id, nome: s.nome, cognome: s.cognome }));
+  return { risultati };
 });
 
 // Vista "Chi c'è in campo": nomi (o pseudonimo, se impostato) visibili
@@ -1476,6 +1481,12 @@ function giornoSettimanaCodice(dataIso, festivi) {
 // specifica (durata fissata, poi banda oraria più stretta, poi meno
 // giorni selezionati).
 async function quotaCategoria({ disciplina, posizione, categoria, dataIso, startTime, durataMinuti, festivi }) {
+  // Firestore rifiuta "undefined" come valore di query — e un campo
+  // "posizione" può arrivare undefined da un documento "campi" che non
+  // l'ha mai avuta (es. squash), diverso dal null esplicito salvato nelle
+  // tariffe. Normalizzato qui una volta per tutte, così ogni chiamante
+  // può passare undefined o null indifferentemente.
+  posizione = posizione ?? null;
   const forfaitSnap = await db.collection("forfaitCampi")
     .where("disciplina", "==", disciplina)
     .where("posizione", "==", posizione)
@@ -1556,7 +1567,14 @@ exports.creaPrenotazioneCampo = onCall(
     if (!campoSnap.exists || campoSnap.data().attivo === false) {
       throw new HttpsError("not-found", "Campo non disponibile.");
     }
-    const { disciplina, posizione, numero } = campoSnap.data();
+    const { disciplina, numero } = campoSnap.data();
+    // I campi squash non hanno mai avuto un campo "posizione" in Firestore
+    // (assente, non semplicemente vuoto) — letto così darebbe `undefined`,
+    // diverso da `null` per una query Firestore (che anzi rifiuta undefined
+    // come valore) e diverso dal `null` esplicito salvato nelle tariffe.
+    // Normalizzato a null qui, unica fonte di verità per il resto della
+    // funzione.
+    const posizione = campoSnap.data().posizione ?? null;
     const campoLabel = `Campo ${numero}${posizione ? ` (${posizione})` : ""}`;
     if (disciplina !== "tennis" && disciplina !== "squash") {
       throw new HttpsError("invalid-argument", "Disciplina non gestita da questa funzione.");
