@@ -1612,19 +1612,28 @@ exports.inviaInvitoAzienda = onCall({ secrets: MAIL_SECRETS }, async (request) =
 
   const centroSnap = await db.collection("impostazioni").doc("centro").get();
   const nomeCentro = (centroSnap.exists && centroSnap.data().nome) || "Tennis Club Mendrisio";
-
-  const link = await getAuth().generatePasswordResetLink(user.email, { url: `${APP_URL}index.html` });
   const portaleUrl = `${APP_URL}azienda.html`;
 
-  await inviaEmail({
-    to: user.email,
-    subject: `Benvenuto in Sport-OS come Partner — ${nomeCentro}`,
-    html: `<p>Ciao ${user.nome || ""},</p>`
-      + `<p><strong>${azienda.nome}</strong> è ora un'azienda convenzionata con ${nomeCentro}! Da qui i tuoi dipendenti potranno prenotare i campi alla tariffa concordata.</p>`
-      + `<p>Accedi al tuo portale aziendale per gestire i dipendenti e vedere i consumi:<br><a href="${portaleUrl}">${portaleUrl}</a></p>`
-      + `<p>Per impostare la tua password, tocca questo link:<br><a href="${link}">${link}</a></p>`
-      + `<p>Email di accesso: ${user.email}</p>`
-  });
+  let link;
+  try {
+    link = await getAuth().generatePasswordResetLink(user.email, { url: `${APP_URL}index.html` });
+  } catch (err) {
+    throw new HttpsError("failed-precondition", "Impossibile generare il link di reset: " + err.message);
+  }
+
+  try {
+    await inviaEmail({
+      to: user.email,
+      subject: `Benvenuto in Sport-OS come Partner — ${nomeCentro}`,
+      html: `<p>Ciao ${user.nome || ""},</p>`
+        + `<p><strong>${azienda.nome}</strong> è ora un'azienda convenzionata con ${nomeCentro}! Da qui i tuoi dipendenti potranno prenotare i campi alla tariffa concordata.</p>`
+        + `<p>Accedi al tuo portale aziendale per gestire i dipendenti e vedere i consumi:<br><a href="${portaleUrl}">${portaleUrl}</a></p>`
+        + `<p>Per impostare la tua password, tocca questo link:<br><a href="${link}">${link}</a></p>`
+        + `<p>Email di accesso: ${user.email}</p>`
+    });
+  } catch (err) {
+    throw new HttpsError("internal", "Invio email fallito: " + err.message);
+  }
 
   return { ok: true, email: user.email };
 });
