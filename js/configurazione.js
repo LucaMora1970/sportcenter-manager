@@ -1097,9 +1097,14 @@ async function loadTariffeCampi() {
   renderSimpleList("tariffecampi-list", tariffe, tariffaCampoLabel, tariffaCampoMeta, "tariffeCampi", loadTariffeCampi, null, startDuplicaTariffaCampo);
 }
 
+// Nascosto per padel e squash: i campi di queste discipline non hanno mai
+// una posizione (indoor/outdoor) — tutti i campi squash esistenti hanno
+// infatti posizione non impostata, quindi una tariffa salvata con
+// "Interno"/"Esterno" per lo squash non troverebbe mai corrispondenza.
 function syncTariffaCampoPadelFields() {
-  const isPadel = document.getElementById("new-tariffacampo-disciplina").value === "padel";
-  document.getElementById("tariffacampo-posizione-field").classList.toggle("hidden", isPadel);
+  const disciplina = document.getElementById("new-tariffacampo-disciplina").value;
+  const senzaPosizione = disciplina === "padel" || disciplina === "squash";
+  document.getElementById("tariffacampo-posizione-field").classList.toggle("hidden", senzaPosizione);
 }
 
 // Precompila il form con i valori di una tariffa esistente (non è una vera
@@ -1133,7 +1138,7 @@ async function onCreateTariffaCampo(e) {
   const oraInizio = document.getElementById("new-tariffacampo-orainizio").value;
   const oraFine = document.getElementById("new-tariffacampo-orafine").value;
   const disciplina = document.getElementById("new-tariffacampo-disciplina").value;
-  const posizione = disciplina === "padel" ? null : (document.getElementById("new-tariffacampo-posizione").value || null);
+  const posizione = (disciplina === "padel" || disciplina === "squash") ? null : (document.getElementById("new-tariffacampo-posizione").value || null);
   const categoria = document.getElementById("new-tariffacampo-categoria").value;
   const durataMinuti = durataRaw !== "" ? parseInt(durataRaw, 10) : null;
   const giorniSettimana = Array.from(document.querySelectorAll("#tariffacampo-giorni-checks input:checked")).map(c => c.value);

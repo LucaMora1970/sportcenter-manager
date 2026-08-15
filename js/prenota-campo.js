@@ -447,7 +447,7 @@ function render() {
   el.innerHTML = subToggleHtml + liberi.map((s, i) => {
     const durataMinuti = gruppo.disciplina === "padel" ? state.durataPadel : orarioToMin(s.fine) - orarioToMin(s.inizio);
     const prezzo = quotaCategoriaClient(gruppo.disciplina, gruppo.posizione, categoria, state.data, s.inizio, durataMinuti);
-    const prezzoLabel = prezzo == null ? "—" : (prezzo === 0 ? "Incluso" : `da CHF ${prezzo.toFixed(2)}`);
+    const prezzoLabel = prezzo == null ? "—" : (prezzo === 0 ? "Incluso" : `CHF ${prezzo.toFixed(2)}`);
     return `
       <div class="slot-row">
         <div class="si">
