@@ -1081,33 +1081,16 @@ async function loadAziende() {
   renderSimpleList("aziende-list", aziendeCache, aziendaLabel, aziendaMeta, "aziende", loadAziende, startEditAzienda);
   sincronizzaSelectCategorie();
   aggiungiPulsantiInvito();
-  aggiungiLinkPrenotazione();
 }
 
-// Link fisso, uguale per ogni azienda: la tariffa convenzionata si applica
-// da sola quando il dipendente si identifica in fase di prenotazione (già
-// aggiunto dal referente in azienda.html), quindi non serve nessun
-// parametro azienda-specifico nell'URL — solo comodo da avere qui pronto
-// da girare via WhatsApp/email invece che dover spiegare dove trovarlo.
-function aggiungiLinkPrenotazione() {
-  const linkCampi = `${basePageUrl()}prenota-campo.html`;
-  const linkPadel = `${basePageUrl()}prenota-padel.html`;
-  aziendeCache.forEach(a => {
-    const card = document.querySelector(`#aziende-list .entry-card[data-id="${a.id}"]`);
-    const main = card && card.querySelector(".entry-main");
-    if (!main || main.querySelector(".link-prenotazione-box")) return;
-    const box = document.createElement("div");
-    box.className = "link-prenotazione-box";
-    box.style.cssText = "font-size:0.72rem;color:var(--chalk-grey);margin-top:8px;line-height:1.6;";
-    box.innerHTML = `Link da girare ai dipendenti (tariffa applicata da sola quando si identificano):<br>`
-      + `Campi: <span style="font-family:'Space Mono', monospace;">${escapeHtml(linkCampi)}</span> `
-      + `<button type="button" class="btn btn-ghost copia-link-campi-btn" style="width:auto;padding:3px 8px;font-size:0.65rem;">Copia</button><br>`
-      + `Padel: <span style="font-family:'Space Mono', monospace;">${escapeHtml(linkPadel)}</span> `
-      + `<button type="button" class="btn btn-ghost copia-link-padel-btn" style="width:auto;padding:3px 8px;font-size:0.65rem;">Copia</button>`;
-    main.appendChild(box);
-    box.querySelector(".copia-link-campi-btn").addEventListener("click", e => copyToClipboard(linkCampi, e.currentTarget));
-    box.querySelector(".copia-link-padel-btn").addEventListener("click", e => copyToClipboard(linkPadel, e.currentTarget));
-  });
+// Link fisso, uguale per ogni azienda (la tariffa convenzionata si applica
+// da sola quando il dipendente si identifica in fase di prenotazione) —
+// mostrato una sola volta nella descrizione della sezione, non ripetuto
+// su ogni scheda.
+function initLinkPrenotazioneAziende() {
+  const link = `${basePageUrl()}prenota-campo.html`;
+  document.getElementById("aziende-link-prenotazione").textContent = link;
+  document.getElementById("aziende-copia-link-btn").addEventListener("click", e => copyToClipboard(link, e.currentTarget));
 }
 
 // Il referente si sceglie da un elenco (non più testo libero): solo
@@ -1649,6 +1632,7 @@ requireAuth(async (profile) => {
   await seedCategorieSocioIfEmpty();
   await loadCategorieSocio();
   await popolaSelectReferente();
+  initLinkPrenotazioneAziende();
   await loadAziende();
   sincronizzaSelectCategorie();
   await loadTariffeCampi();
