@@ -173,6 +173,9 @@ async function loadUsers() {
           <button class="btn btn-ghost send-reset-btn" data-email="${escapeHtml(u.email || "")}" data-nome="${escapeHtml(u.nome || "")}">
             Prepara email reset password
           </button>
+          <button class="btn btn-danger delete-user-btn" data-uid="${u.id}" data-nome="${escapeHtml(u.nome || u.id)}">
+            Elimina utente
+          </button>
         </div>
       </div>
     `;
@@ -196,6 +199,33 @@ async function loadUsers() {
   list.querySelectorAll(".send-reset-btn").forEach(btn => {
     btn.addEventListener("click", onSendPasswordReset);
   });
+  list.querySelectorAll(".delete-user-btn").forEach(btn => {
+    btn.addEventListener("click", onDeleteUser);
+  });
+}
+
+// Cancellazione reale (Firestore + account Auth, irreversibile) — doppia
+// conferma esplicita richiesta perché a differenza di "Disattiva" qui non
+// si torna indietro.
+async function onDeleteUser(e) {
+  const btn = e.currentTarget;
+  const uid = btn.dataset.uid;
+  const nome = btn.dataset.nome;
+
+  if (!confirm(`Eliminare definitivamente "${nome}"? Verranno cancellati sia l'account di accesso che tutti i suoi dati utente.`)) return;
+  if (!confirm(`Sei sicuro? "${nome}" non potrà più accedere e l'operazione non è reversibile.`)) return;
+
+  btn.disabled = true;
+  btn.textContent = "Elimino…";
+  try {
+    const fn = firebase.functions().httpsCallable("eliminaUtente");
+    await fn({ uid });
+    await loadUsers();
+  } catch (err) {
+    showError(document.getElementById("users-list-error"), "Errore: " + err.message);
+    btn.disabled = false;
+    btn.textContent = "Elimina utente";
+  }
 }
 
 // ---------- Comunicazione al team (mailto con destinatari in CCN) ----------

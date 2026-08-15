@@ -2581,3 +2581,43 @@ exports.generaLinkResetPassword = onCall(async (request) => {
     throw new HttpsError("failed-precondition", "Impossibile generare il link: " + err.message);
   }
 });
+
+// Elimina davvero un utente (documento Firestore + account Auth) — serve
+// l'Admin SDK perché il client non può cancellare l'account di un altro
+// utente. Pensata soprattutto per ripulire utenze di test rotte (es.
+// create fuori dal form standard, con campi mancanti) senza lasciare
+// account Auth orfani che poi bloccano la ricreazione con la stessa email.
+exports.eliminaUtente = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+  if (request.auth.uid === request.data?.uid) {
+    throw new HttpsError("failed-precondition", "Non puoi eliminare te stesso.");
+  }
+
+  const { permessi, isAdmin } = await permessiUtente(request.auth.uid);
+  if (!isAdmin && !permessi.includes("users:gestisci")) {
+    throw new HttpsError("permission-denied", "Permesso mancante per gestire gli utenti.");
+  }
+
+  const { uid } = request.data || {};
+  if (!uid) throw new HttpsError("invalid-argument", "uid mancante.");
+
+  const userSnap = await db.collection("users").doc(uid).get();
+  if (!userSnap.exists) throw new HttpsError("not-found", "Utente non trovato.");
+
+  // Nessun'azienda deve restare con un referente puntato a un utente che
+  // non esiste più — stesso scollegamento fatto da collegaReferenteAzienda
+  // quando si cambia referente.
+  const aziendeSnap = await db.collection("aziende").where("referenteUid", "==", uid).get();
+  await Promise.all(aziendeSnap.docs.map(d => d.ref.update({ referenteUid: null, referenteNome: null, referenteEmail: null })));
+
+  await db.collection("users").doc(uid).delete();
+  try {
+    await getAuth().deleteUser(uid);
+  } catch (err) {
+    // L'account Auth potrebbe non esistere più (es. già ripulito a mano) —
+    // il documento Firestore è comunque sparito, non è un fallimento reale.
+    if (err.code !== "auth/user-not-found") throw err;
+  }
+
+  return { ok: true };
+});
