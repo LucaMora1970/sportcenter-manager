@@ -1767,6 +1767,34 @@ exports.disattivaDipendenteAzienda = onCall(async (request) => {
   return { ok: true };
 });
 
+// Cancellazione reale (non solo Disattiva) — pensata soprattutto per
+// ripulire dipendenti di prova durante il test, o un token di attivazione
+// rimasto bloccato. Cancella anche i token di attivazione non usati e,
+// se il dispositivo era già stato attivato, il relativo account Auth
+// (stesso schema di eliminaUtente).
+exports.eliminaDipendenteAzienda = onCall(async (request) => {
+  const aziendaId = await verificaReferenteAzienda(request.auth);
+  const { socioId } = request.data || {};
+  if (!socioId) throw new HttpsError("invalid-argument", "socioId mancante.");
+  const socioSnap = await verificaDipendenteProprio(aziendaId, socioId);
+  const authUid = socioSnap.data().authUid;
+
+  const tokenSnap = await db.collection("attivazioniSoci").where("socioId", "==", socioId).get();
+  await Promise.all(tokenSnap.docs.map(d => d.ref.delete()));
+
+  await db.collection("soci").doc(socioId).delete();
+
+  if (authUid) {
+    try {
+      await getAuth().deleteUser(authUid);
+    } catch (err) {
+      if (err.code !== "auth/user-not-found") throw err;
+    }
+  }
+
+  return { ok: true };
+});
+
 exports.impostaTettoDipendenteAzienda = onCall(async (request) => {
   const aziendaId = await verificaReferenteAzienda(request.auth);
   const { socioId, tetto } = request.data || {};

@@ -127,15 +127,21 @@ async function caricaDatiAzienda() {
             <button class="btn btn-ghost salva-tetto-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;flex-shrink:0;" data-id="${d.id}">Salva</button>
           </div>
         </div>
-        <button class="btn btn-ghost toggle-dipendente-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;flex-shrink:0;" data-id="${d.id}" data-attivo="${d.attivo}">
-          ${d.attivo ? "Disattiva" : "Riattiva"}
-        </button>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <button class="btn btn-ghost toggle-dipendente-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;flex-shrink:0;" data-id="${d.id}" data-attivo="${d.attivo}">
+            ${d.attivo ? "Disattiva" : "Riattiva"}
+          </button>
+          <button class="btn btn-danger elimina-dipendente-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;flex-shrink:0;" data-id="${d.id}" data-nome="${escapeHtml(d.nome)} ${escapeHtml(d.cognome)}">
+            Elimina
+          </button>
+        </div>
       </div>
     `;
     }).join("");
 
     listEl.querySelectorAll(".salva-tetto-btn").forEach(btn => btn.addEventListener("click", onSalvaTetto));
     listEl.querySelectorAll(".toggle-dipendente-btn").forEach(btn => btn.addEventListener("click", onToggleDipendente));
+    listEl.querySelectorAll(".elimina-dipendente-btn").forEach(btn => btn.addEventListener("click", onEliminaDipendente));
   } catch (err) {
     showError(document.getElementById("dipendenti-error"), "Errore: " + err.message);
   }
@@ -153,6 +159,24 @@ async function onSalvaTetto(e) {
   } catch (err) {
     showError(document.getElementById("dipendenti-error"), "Errore: " + err.message);
     btn.disabled = false;
+  }
+}
+
+async function onEliminaDipendente(e) {
+  const btn = e.currentTarget;
+  const socioId = btn.dataset.id;
+  const nome = btn.dataset.nome;
+  if (!confirm(`Eliminare definitivamente "${nome}"? Verranno cancellati il profilo e l'eventuale accesso già attivato — non è reversibile.`)) return;
+  btn.disabled = true;
+  btn.textContent = "Elimino…";
+  try {
+    const fn = firebase.functions().httpsCallable("eliminaDipendenteAzienda");
+    await fn({ socioId });
+    await caricaDatiAzienda();
+  } catch (err) {
+    showError(document.getElementById("dipendenti-error"), "Errore: " + err.message);
+    btn.disabled = false;
+    btn.textContent = "Elimina";
   }
 }
 
