@@ -889,6 +889,21 @@ exports.webhookPostFinance = onRequest(
             console.error("webhookPostFinance: fallback pagamento_corso fallito:", err);
           }
         }
+      } else if (meta.tipoTransazione === "tokenizzazione_azienda" && meta.aziendaId) {
+        // Salvataggio carta a costo zero (azienda convenzionata): sul
+        // successo il token è pronto per un addebito, deciso di volta in
+        // volta dal referente — nessun addebito automatico da qui.
+        await db.collection("aziende").doc(meta.aziendaId).update({
+          tokenStato: successo ? "ATTIVO" : "FALLITO"
+        });
+      } else if (meta.tipoTransazione === "addebito_azienda" && meta.aziendaId) {
+        // Corregge lo stato ottimistico "IN_CORSO" impostato da
+        // addebitaAzienda con l'esito reale — stesso schema del fallback
+        // di pagamento_corso, ma qui non c'è un link di ripiego automatico:
+        // il referente vede l'esito nel proprio portale e può riprovare.
+        await db.collection("aziende").doc(meta.aziendaId).update({
+          "ultimoAddebito.stato": successo ? "PAGATO" : "FALLITO"
+        });
       } else if (meta.tipoTransazione === "voucher" && meta.token) {
         // Buono regalo acquistato dalla pagina pubblica — nessun documento
         // esiste prima del successo (a differenza delle prenotazioni non
@@ -1527,7 +1542,9 @@ exports.listaSociAzienda = onCall(async (request) => {
     azienda: {
       nome: azienda.nome,
       tettoMensileAzienda: azienda.tettoMensileAzienda ?? null,
-      tettoDefaultPerUtente: azienda.tettoDefaultPerUtente ?? null
+      tettoDefaultPerUtente: azienda.tettoDefaultPerUtente ?? null,
+      tokenStato: azienda.tokenStato ?? null,
+      ultimoAddebito: azienda.ultimoAddebito ?? null
     },
     consumoTotaleAzienda: totaleAzienda,
     dipendenti: soci.map(s => ({
@@ -1597,11 +1614,12 @@ exports.impostaTettoDipendenteAzienda = onCall(async (request) => {
 // consumoMensileAzienda (mai per nome). I nomi si leggono da "soci" (non
 // da bookingDettagli, che per il tennis salva il nome solo del prenotante
 // principale, non di un eventuale secondo giocatore dipendente).
-exports.reportAzienda = onCall(async (request) => {
-  const aziendaId = await verificaReferenteAzienda(request.auth);
-  const { dal, al } = request.data || {};
-  if (!dal || !al) throw new HttpsError("invalid-argument", "Intervallo di date mancante.");
-
+// Calcolo condiviso tra reportAzienda (sola lettura, per lo staff/il
+// referente) e addebitaAzienda (fonte di verità per l'importo caricato —
+// mai un numero arrivato dal client). Stessa identificazione per socioId
+// di consumoMensileAzienda, solo su un intervallo di date libero invece
+// che sul mese corrente.
+async function consumoPeriodoAzienda(aziendaId, dal, al) {
   const bookingsSnap = await db.collection("bookings")
     .where("date", ">=", dal)
     .where("date", "<=", al)
@@ -1624,6 +1642,16 @@ exports.reportAzienda = onCall(async (request) => {
     });
   });
 
+  return { totale, perSocio };
+}
+
+exports.reportAzienda = onCall(async (request) => {
+  const aziendaId = await verificaReferenteAzienda(request.auth);
+  const { dal, al } = request.data || {};
+  if (!dal || !al) throw new HttpsError("invalid-argument", "Intervallo di date mancante.");
+
+  const { totale, perSocio } = await consumoPeriodoAzienda(aziendaId, dal, al);
+
   const socioIds = Object.keys(perSocio);
   const sociSnaps = await Promise.all(socioIds.map(id => db.collection("soci").doc(id).get()));
   const righe = socioIds.map((id, i) => {
@@ -1637,6 +1665,146 @@ exports.reportAzienda = onCall(async (request) => {
 
   return { totale, righe };
 });
+
+// Salvataggio carta aziendale, stesso schema di avviaTokenizzazioneCorso
+// ma per un'azienda invece di un'iscrizione, e con chi chiama già
+// autenticato (referente della propria azienda) invece che anonimo:
+// niente pagina di ritorno pubblica dedicata né collection ponte, il
+// ritorno è azienda.html stessa (query string), che rilegge lo stato da
+// listaSociAzienda con la stessa sessione già autorizzata.
+exports.avviaTokenizzazioneAzienda = onCall(
+  { secrets: [POSTFINANCE_SPACE_ID, POSTFINANCE_USER_ID, POSTFINANCE_APP_KEY] },
+  async (request) => {
+    const aziendaId = await verificaReferenteAzienda(request.auth);
+    const aziendaSnap = await db.collection("aziende").doc(aziendaId).get();
+    if (!aziendaSnap.exists) throw new HttpsError("not-found", "Azienda non trovata.");
+    const azienda = aziendaSnap.data();
+
+    const spaceId = parseInt(POSTFINANCE_SPACE_ID.value(), 10);
+    const tService = tokensService();
+
+    try {
+      const token = await tService.postPaymentTokens({
+        space: spaceId,
+        tokenCreate: {
+          externalId: aziendaId,
+          customerEmailAddress: azienda.referenteEmail || undefined,
+          enabledForOneClickPayment: true
+        }
+      });
+
+      const transaction = await tService.postPaymentTokensIdCreateTransactionForTokenUpdate({
+        id: token.id,
+        space: spaceId
+      });
+
+      // "version" obbligatorio per il patch (controllo di concorrenza
+      // ottimistica di PostFinance) — vedi avviaTokenizzazioneCorso.
+      await transactionsService().patchPaymentTransactionsId({
+        id: transaction.id,
+        space: spaceId,
+        transactionPending: {
+          version: transaction.version,
+          successUrl: `${APP_URL}azienda.html?tokenizzazione=esito`,
+          failedUrl: `${APP_URL}azienda.html?tokenizzazione=esito`,
+          metaData: { tipoTransazione: "tokenizzazione_azienda", aziendaId }
+        }
+      });
+
+      const paymentPageUrl = await transactionsService().getPaymentTransactionsIdPaymentPageUrl({
+        id: transaction.id,
+        space: spaceId
+      });
+
+      await aziendaSnap.ref.update({ tokenId: token.id, tokenStato: "PENDING" });
+
+      return { paymentPageUrl };
+    } catch (err) {
+      console.error("avviaTokenizzazioneAzienda: errore PostFinance:", err);
+      throw new HttpsError("internal", "Errore nel salvataggio della carta. Riprova.");
+    }
+  }
+);
+
+exports.eliminaTokenAzienda = onCall(
+  { secrets: [POSTFINANCE_SPACE_ID, POSTFINANCE_USER_ID, POSTFINANCE_APP_KEY] },
+  async (request) => {
+    const aziendaId = await verificaReferenteAzienda(request.auth);
+    const aziendaRef = db.collection("aziende").doc(aziendaId);
+    const aziendaSnap = await aziendaRef.get();
+    if (!aziendaSnap.exists) throw new HttpsError("not-found", "Azienda non trovata.");
+    const azienda = aziendaSnap.data();
+
+    if (azienda.tokenStato !== "ATTIVO") return { eliminato: false };
+
+    const spaceId = parseInt(POSTFINANCE_SPACE_ID.value(), 10);
+    try {
+      await tokensService().deletePaymentTokensId({ id: azienda.tokenId, space: spaceId });
+    } catch (err) {
+      console.error("eliminaTokenAzienda: errore PostFinance:", err);
+    }
+    await aziendaRef.update({ tokenStato: "ELIMINATO" });
+    return { eliminato: true };
+  }
+);
+
+// Addebito di quanto dovuto per un periodo, innescato sempre dal
+// referente (mai schedulato) dopo aver generato il report — mai un
+// addebito automatico. L'importo si ricalcola qui con la stessa logica
+// di reportAzienda, mai fidandosi di un numero passato dal client.
+exports.addebitaAzienda = onCall(
+  { secrets: [POSTFINANCE_SPACE_ID, POSTFINANCE_USER_ID, POSTFINANCE_APP_KEY] },
+  async (request) => {
+    const aziendaId = await verificaReferenteAzienda(request.auth);
+    const { dal, al } = request.data || {};
+    if (!dal || !al) throw new HttpsError("invalid-argument", "Intervallo di date mancante.");
+
+    const aziendaRef = db.collection("aziende").doc(aziendaId);
+    const aziendaSnap = await aziendaRef.get();
+    if (!aziendaSnap.exists) throw new HttpsError("not-found", "Azienda non trovata.");
+    const azienda = aziendaSnap.data();
+    if (azienda.tokenStato !== "ATTIVO") {
+      throw new HttpsError("failed-precondition", "Nessuna carta salvata per questa azienda.");
+    }
+
+    const { totale } = await consumoPeriodoAzienda(aziendaId, dal, al);
+    if (totale <= 0) {
+      return { addebitato: false, motivo: "Nessun importo da addebitare per questo periodo." };
+    }
+
+    const spaceId = parseInt(POSTFINANCE_SPACE_ID.value(), 10);
+    const service = transactionsService();
+    const riferimento = `${aziendaId}-${dal}-${al}`;
+    try {
+      const transaction = await service.postPaymentTransactions({
+        space: spaceId,
+        transactionCreate: {
+          currency: "CHF",
+          merchantReference: riferimento,
+          token: azienda.tokenId,
+          lineItems: [{
+            uniqueId: riferimento,
+            name: `${azienda.nome} — utilizzo campi ${dal} → ${al}`,
+            quantity: 1,
+            amountIncludingTax: totale,
+            type: LineItemType.Product
+          }],
+          metaData: { tipoTransazione: "addebito_azienda", aziendaId, dal, al, importo: String(totale) },
+          environmentSelectionStrategy: FORZA_AMBIENTE_TEST
+            ? TransactionEnvironmentSelectionStrategy.ForceTestEnvironment
+            : TransactionEnvironmentSelectionStrategy.UseConfiguration
+        }
+      });
+
+      await service.postPaymentTransactionsIdProcessWithToken({ id: transaction.id, space: spaceId });
+      await aziendaRef.update({ ultimoAddebito: { dal, al, importo: totale, stato: "IN_CORSO", data: FieldValue.serverTimestamp() } });
+      return { addebitato: true, importo: totale };
+    } catch (err) {
+      console.error("addebitaAzienda: errore PostFinance:", err);
+      throw new HttpsError("internal", "Errore nell'addebito. Riprova.");
+    }
+  }
+);
 
 // Ricerca del secondo giocatore/compagni (tennis/padel), pubblica come
 // cercaSociStaff (pannello operatore) ma più prudente nell'esposizione dato

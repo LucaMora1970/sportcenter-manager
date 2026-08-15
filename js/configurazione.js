@@ -1080,6 +1080,60 @@ async function loadAziende() {
   aggiornaCategoriaLabel();
   renderSimpleList("aziende-list", aziendeCache, aziendaLabel, aziendaMeta, "aziende", loadAziende, startEditAzienda);
   sincronizzaSelectCategorie();
+  aggiungiPulsantiInvito();
+}
+
+// renderSimpleList è condivisa da un'altra decina di liste in questa
+// pagina — invece di aggiungerle un altro parametro solo per questo caso,
+// il pulsante "Invia invito" si inietta qui dopo, solo sulle card delle
+// aziende che hanno un referente con email.
+function aggiungiPulsantiInvito() {
+  aziendeCache.forEach(a => {
+    if (!a.referenteEmail) return;
+    const card = document.querySelector(`#aziende-list .entry-card[data-id="${a.id}"]`);
+    if (!card || card.querySelector(".invita-referente-btn")) return;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-ghost invita-referente-btn";
+    btn.style.cssText = "width:auto;padding:8px 12px;font-size:0.7rem;";
+    btn.textContent = "Invia invito";
+    btn.addEventListener("click", () => onInvitaReferente(a, btn));
+    card.lastElementChild.prepend(btn);
+  });
+}
+
+// Riusa lo stesso schema di onSendPasswordReset (js/users.js): genera solo
+// il link (Cloud Function con Admin SDK, non spedisce nulla) e apre il
+// client di posta di chi gestisce le aziende con un testo di benvenuto
+// come Partner già pronto — mai un invio automatico.
+async function onInvitaReferente(azienda, btn) {
+  const errorEl = document.getElementById("config-list-error");
+  errorEl.textContent = "";
+  btn.disabled = true;
+  try {
+    const usersSnap = await db.collection("users").where("aziendaId", "==", azienda.id).limit(1).get();
+    if (usersSnap.empty) {
+      throw new Error(`Crea prima l'account del referente in Utenti, assegnandogli l'azienda "${azienda.nome}".`);
+    }
+    const user = usersSnap.docs[0].data();
+    if (!user.email) throw new Error("L'account del referente non ha un'email registrata.");
+
+    const fn = firebase.functions().httpsCallable("generaLinkResetPassword");
+    const result = await fn({ email: user.email });
+    const link = result.data.link;
+
+    const oggetto = `Benvenuto in Sport-OS come Partner — ${DATI_CENTRO.nome}`;
+    const corpo = `Ciao ${user.nome || ""},\n\n${azienda.nome} è ora un'azienda convenzionata con ${DATI_CENTRO.nome}! Da qui i tuoi dipendenti potranno prenotare i campi alla tariffa concordata.\n\n`
+      + `Accedi al tuo portale aziendale per gestire i dipendenti e vedere i consumi:\n${basePageUrl()}azienda.html\n\n`
+      + `Per impostare la tua password, apri questo link:\n${link}\n\nEmail: ${user.email}`;
+    const calce = `${DATI_CENTRO.nome}\nSportcenter Manager OS\n${basePageUrl()}index.html`;
+
+    window.location.href = `mailto:?to=${encodeURIComponent(user.email)}&subject=${encodeURIComponent(oggetto)}&body=${encodeURIComponent(corpo + "\n\n--\n" + calce)}`;
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 function startEditAzienda(item) {

@@ -30,6 +30,75 @@ function barraConsumo(consumato, tetto) {
   `;
 }
 
+const STATO_ADDEBITO_LABEL = { IN_CORSO: "in corso", PAGATO: "pagato", FALLITO: "fallito" };
+
+function renderCartaStato() {
+  const el = document.getElementById("carta-stato");
+  const stato = datiAzienda.azienda.tokenStato;
+  const ultimo = datiAzienda.azienda.ultimoAddebito;
+  const ultimoHtml = ultimo
+    ? `<p style="color:var(--chalk-grey);font-size:0.8rem;margin-top:8px;">Ultimo addebito: ${escapeHtml(ultimo.dal)} → ${escapeHtml(ultimo.al)}, ${formatCHF(ultimo.importo)} — ${STATO_ADDEBITO_LABEL[ultimo.stato] || ultimo.stato}</p>`
+    : "";
+
+  if (stato === "ATTIVO") {
+    el.innerHTML = `
+      <div class="entry-card">
+        <div class="entry-main">
+          <div class="entry-tipo">Carta salvata</div>
+          <div class="entry-meta">Puoi addebitare quanto dovuto direttamente dal report qui sotto.${ultimoHtml}</div>
+        </div>
+        <button type="button" class="btn btn-ghost" id="rimuovi-carta-btn">Rimuovi carta</button>
+      </div>
+    `;
+    document.getElementById("rimuovi-carta-btn").addEventListener("click", onRimuoviCarta);
+    return;
+  }
+
+  const messaggio = stato === "PENDING" ? "Salvataggio in corso — se hai appena completato la verifica, ricarica la pagina tra qualche secondo."
+    : stato === "FALLITO" ? "L'ultimo tentativo di salvataggio carta non è riuscito. Riprova."
+    : "Nessuna carta salvata.";
+  el.innerHTML = `
+    <div class="entry-card">
+      <div class="entry-main">
+        <div class="entry-tipo">${messaggio}</div>
+        <div class="entry-meta">Facoltativo — senza carta salvata potrete comunque saldare quanto dovuto in altro modo.${ultimoHtml}</div>
+      </div>
+      <button type="button" class="btn btn-primary" id="salva-carta-btn" style="width:auto;">Salva carta</button>
+    </div>
+  `;
+  document.getElementById("salva-carta-btn").addEventListener("click", onSalvaCarta);
+}
+
+async function onSalvaCarta() {
+  const btn = document.getElementById("salva-carta-btn");
+  const errorEl = document.getElementById("carta-error");
+  errorEl.textContent = "";
+  btn.disabled = true;
+  try {
+    const fn = firebase.functions().httpsCallable("avviaTokenizzazioneAzienda");
+    const { data } = await fn();
+    window.location.href = data.paymentPageUrl;
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+    btn.disabled = false;
+  }
+}
+
+async function onRimuoviCarta() {
+  const btn = document.getElementById("rimuovi-carta-btn");
+  const errorEl = document.getElementById("carta-error");
+  errorEl.textContent = "";
+  btn.disabled = true;
+  try {
+    const fn = firebase.functions().httpsCallable("eliminaTokenAzienda");
+    await fn();
+    await caricaDatiAzienda();
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+    btn.disabled = false;
+  }
+}
+
 async function caricaDatiAzienda() {
   const riepilogoEl = document.getElementById("riepilogo-azienda");
   const listEl = document.getElementById("dipendenti-list");
@@ -40,6 +109,7 @@ async function caricaDatiAzienda() {
 
     document.getElementById("azienda-titolo").textContent = data.azienda.nome;
     riepilogoEl.innerHTML = barraConsumo(data.consumoTotaleAzienda, data.azienda.tettoMensileAzienda);
+    renderCartaStato();
 
     if (data.dipendenti.length === 0) {
       listEl.innerHTML = `<div class="empty-state"><div class="display">Nessun dipendente</div><p>Aggiungine uno dal form qui sotto.</p></div>`;
@@ -136,6 +206,8 @@ async function onCreateDipendente(e) {
   }
 }
 
+let ultimoReport = null; // { dal, al, totale } — per il bottone "Addebita"
+
 async function onGeneraReport() {
   const btn = document.getElementById("genera-report-btn");
   const errorEl = document.getElementById("report-error");
@@ -150,11 +222,18 @@ async function onGeneraReport() {
   try {
     const fn = firebase.functions().httpsCallable("reportAzienda");
     const { data } = await fn({ dal, al });
+    ultimoReport = { dal, al, totale: data.totale };
+
+    const addebitaHtml = datiAzienda.azienda.tokenStato === "ATTIVO" && data.totale > 0
+      ? `<button type="button" class="btn btn-primary" id="addebita-btn" style="margin-bottom:14px;">Addebita ${formatCHF(data.totale)} alla carta registrata</button>`
+      : "";
+
     if (data.righe.length === 0) {
       risultatoEl.innerHTML = `<div class="empty-state"><div class="display">Nessuna prenotazione nel periodo</div></div>`;
     } else {
       risultatoEl.innerHTML = `
         <p style="color:var(--chalk-grey);font-size:0.85rem;margin-bottom:10px;">Totale periodo: <strong style="color:var(--line-white);">${formatCHF(data.totale)}</strong></p>
+        ${addebitaHtml}
         ${data.righe.map(r => `
           <div class="entry-card">
             <div class="entry-main">
@@ -166,11 +245,36 @@ async function onGeneraReport() {
         `).join("")}
       `;
     }
+    const addebitaBtn = document.getElementById("addebita-btn");
+    if (addebitaBtn) addebitaBtn.addEventListener("click", onAddebita);
   } catch (err) {
     showError(errorEl, "Errore: " + err.message);
     risultatoEl.innerHTML = "";
   } finally {
     btn.disabled = false;
+  }
+}
+
+async function onAddebita() {
+  const btn = document.getElementById("addebita-btn");
+  const errorEl = document.getElementById("report-error");
+  errorEl.textContent = "";
+  if (!ultimoReport) return;
+  btn.disabled = true;
+  btn.textContent = "Addebito in corso…";
+  try {
+    const fn = firebase.functions().httpsCallable("addebitaAzienda");
+    const { data } = await fn({ dal: ultimoReport.dal, al: ultimoReport.al });
+    if (!data.addebitato) {
+      showError(errorEl, data.motivo || "Addebito non riuscito.");
+    } else {
+      btn.textContent = "Addebito avviato — controlla lo stato qui sotto tra poco";
+      await caricaDatiAzienda();
+    }
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+    btn.disabled = false;
+    btn.textContent = "Riprova ad addebitare";
   }
 }
 
@@ -185,6 +289,10 @@ requireAuth(async (profile) => {
     return;
   }
   document.getElementById("azienda-content").classList.remove("hidden");
+
+  if (new URLSearchParams(location.search).get("tokenizzazione")) {
+    history.replaceState(null, "", location.pathname);
+  }
 
   document.getElementById("new-dipendente-form").addEventListener("submit", onCreateDipendente);
   document.getElementById("genera-report-btn").addEventListener("click", onGeneraReport);
