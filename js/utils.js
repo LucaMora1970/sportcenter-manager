@@ -104,12 +104,22 @@ async function loadDatiCentro() {
   }
 }
 
+// Indirizzo e contatti del centro come due righe di testo pronte
+// all'uso, ovunque serva un'intestazione compatta oltre alla stampa
+// (es. biglietto a schermo, PNG scaricabile) — stessa formattazione di
+// intestazioneStampaHtml, centralizzata qui per non duplicarla.
+function datiCentroRighe() {
+  const c = DATI_CENTRO;
+  const riga2 = [c.indirizzo, [c.cap, c.localita].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+  const riga3 = [c.telefono, c.email, c.homepage].filter(Boolean).join(" · ");
+  return { riga2, riga3 };
+}
+
 // Intestazione comune per i documenti stampati (#print-area) — nome del
 // centro, indirizzo e contatti, quando compilati in Configurazione.
 function intestazioneStampaHtml() {
   const c = DATI_CENTRO;
-  const riga2 = [c.indirizzo, [c.cap, c.localita].filter(Boolean).join(" ")].filter(Boolean).join(", ");
-  const riga3 = [c.telefono, c.email, c.homepage].filter(Boolean).join(" · ");
+  const { riga2, riga3 } = datiCentroRighe();
   return `
     <div class="stampa-intestazione">
       <strong>${escapeHtml(c.nome)}</strong>

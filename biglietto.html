@@ -22,6 +22,9 @@
     text-align: center;
   }
   .ticket-logo { width: 64px; height: 64px; margin: 0 auto 12px; display: block; border-radius: 12px; }
+  .ticket-centro { text-align: center; margin-bottom: 14px; }
+  .ticket-centro .nome { font-weight: 600; font-size: 0.82rem; }
+  .ticket-centro .dettagli { color: var(--chalk-grey); font-size: 0.68rem; margin-top: 2px; }
   .ticket-status {
     display: inline-block; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;
     border: 1px solid #7f9e4a; color: #c1e08f; border-radius: 4px; padding: 3px 10px; margin-bottom: 14px;
@@ -85,6 +88,10 @@
     <div id="ticket-content" class="hidden">
       <div class="ticket-card" id="ticket-card">
         <img src="icons/icon-512.png" alt="" class="ticket-logo" id="ticket-logo">
+        <div class="ticket-centro">
+          <div class="nome" id="ticket-centro-nome">Tennis Club Mendrisio</div>
+          <div class="dettagli" id="ticket-centro-dettagli"></div>
+        </div>
         <div class="ticket-status">Prenotazione confermata</div>
         <div class="ticket-rows">
           <div class="ticket-row"><span class="k">Data</span><span class="v" id="t-data">—</span></div>

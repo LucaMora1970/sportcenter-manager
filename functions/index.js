@@ -279,11 +279,21 @@ const ORARI_INIZIO_SQUASH = generaOrari(8 * 60 + 15, 21 * 60 + 45, 45); // 08:15
 
 // Elenco {inizio, fine} degli slot fissi prenotabili per la disciplina, o
 // [] se la disciplina non usa questo modello (es. padel, che resta sulla
-// griglia continua sopra).
-function slotFissiDisciplina(disciplina) {
-  if (disciplina === "tennis") return SLOT_TENNIS.map(([inizio, fine]) => ({ inizio, fine }));
-  if (disciplina === "squash") return ORARI_INIZIO_SQUASH.map(inizio => ({ inizio, fine: addMinuti(inizio, 45) }));
-  return [];
+// griglia continua sopra). Sabato/domenica/festivi il centro chiude alle
+// 20:30 (CLOSE_WEEKEND, stessa soglia già usata dal padel) invece delle
+// 23:00 feriali — dataIso/festivi sono opzionali solo per non rompere
+// eventuali altri chiamanti che non conoscono ancora il giorno; passarli
+// sempre quando disponibili.
+function slotFissiDisciplina(disciplina, dataIso, festivi) {
+  let slots;
+  if (disciplina === "tennis") slots = SLOT_TENNIS.map(([inizio, fine]) => ({ inizio, fine }));
+  else if (disciplina === "squash") slots = ORARI_INIZIO_SQUASH.map(inizio => ({ inizio, fine: addMinuti(inizio, 45) }));
+  else return [];
+  if (dataIso) {
+    const close = chiusuraGiorno(dataIso, festivi);
+    slots = slots.filter(s => orarioToMin(s.fine) <= close);
+  }
+  return slots;
 }
 
 function sovrapposto(aInizio, aFine, bInizio, bFine) {
@@ -2221,8 +2231,9 @@ exports.creaPrenotazioneCampo = onCall(
       throw new HttpsError("invalid-argument", "Disciplina non gestita da questa funzione.");
     }
 
-    const slot = slotFissiDisciplina(disciplina).find(s => s.inizio === startTime);
-    if (!slot) throw new HttpsError("invalid-argument", "Orario non valido per questa disciplina.");
+    const festivi = generaleSnap.exists ? (generaleSnap.data().festivi || []) : [];
+    const slot = slotFissiDisciplina(disciplina, date, festivi).find(s => s.inizio === startTime);
+    if (!slot) throw new HttpsError("invalid-argument", "Orario non valido per questa disciplina — verifica anche l'orario di chiusura del weekend.");
     const endTime = slot.fine;
 
     if (chiusuraSnap.exists) {
@@ -2280,7 +2291,6 @@ exports.creaPrenotazioneCampo = onCall(
       giocatore2SocioIdVerificato = giocatore2SocioId;
     }
 
-    const festivi = generaleSnap.exists ? (generaleSnap.data().festivi || []) : [];
     // Durata reale dello slot (fissa per disciplina, nota da slotFissiDisciplina
     // qui sopra): va sempre passata a quotaCategoria, anche se molte righe
     // tariffa non specificano una durata (in tal caso il match è comunque

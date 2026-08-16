@@ -109,9 +109,20 @@ async function salvaBigliettoPng() {
   ctx.font = "600 22px Arial";
   ctx.fillText((DATI_CENTRO.nome || "").toUpperCase(), W / 2, 210);
 
+  // Indirizzo/contatti "anche in piccolo" ma sempre sul biglietto
+  // rilasciato, non solo sulla ricevuta stampata — righe facoltative,
+  // il titolo sotto si sposta di conseguenza solo se compilate.
+  let headerY = 210;
+  ctx.fillStyle = "#7d93a3";
+  ctx.font = "14px Arial";
+  Object.values(datiCentroRighe()).filter(Boolean).forEach(riga => {
+    headerY += 20;
+    ctx.fillText(riga, W / 2, headerY);
+  });
+
   ctx.fillStyle = "#576f00";
   ctx.font = "700 34px Arial";
-  ctx.fillText("PRENOTAZIONE CONFERMATA", W / 2, 260);
+  ctx.fillText("PRENOTAZIONE CONFERMATA", W / 2, headerY + 40);
 
   const righe = [
     ["Data", document.getElementById("t-data").textContent],
@@ -121,7 +132,7 @@ async function salvaBigliettoPng() {
     ["Pagato", document.getElementById("t-prezzo").textContent]
   ];
   ctx.textAlign = "left";
-  let y = 330;
+  let y = headerY + 110;
   righe.forEach(([k, v]) => {
     ctx.fillStyle = "#52697a";
     ctx.font = "22px Arial";
@@ -217,6 +228,9 @@ function aggiungiAlCalendario(data) {
 (async function init() {
   await loadDatiCentro();
   document.getElementById("centro-kicker").textContent = DATI_CENTRO.nome;
+  document.getElementById("ticket-centro-nome").textContent = DATI_CENTRO.nome;
+  document.getElementById("ticket-centro-dettagli").textContent =
+    Object.values(datiCentroRighe()).filter(Boolean).join(" — ");
 
   const token = new URLSearchParams(location.search).get("t");
   if (!token) {

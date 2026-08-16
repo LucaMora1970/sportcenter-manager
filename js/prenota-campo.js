@@ -39,10 +39,20 @@ function generaOrariSquash() {
 }
 const ORARI_INIZIO_SQUASH = generaOrariSquash();
 
-function slotFissiDisciplina(disciplina) {
-  if (disciplina === "tennis") return SLOT_TENNIS.map(([inizio, fine]) => ({ inizio, fine }));
-  if (disciplina === "squash") return ORARI_INIZIO_SQUASH.map(inizio => ({ inizio, fine: addMinuti(inizio, 45) }));
-  return [];
+// dataIso opzionale: se passato, toglie gli slot che finirebbero dopo la
+// chiusura del giorno (sabato/domenica/festivi il centro chiude alle
+// 20:30, non solo per il padel — vedi padelChiusuraGiorno più sotto,
+// stessa soglia riusata qui invece di duplicarla una terza volta).
+function slotFissiDisciplina(disciplina, dataIso) {
+  let slots;
+  if (disciplina === "tennis") slots = SLOT_TENNIS.map(([inizio, fine]) => ({ inizio, fine }));
+  else if (disciplina === "squash") slots = ORARI_INIZIO_SQUASH.map(inizio => ({ inizio, fine: addMinuti(inizio, 45) }));
+  else return [];
+  if (dataIso) {
+    const close = padelChiusuraGiorno(dataIso);
+    slots = slots.filter(s => orarioToMin(s.fine) <= close);
+  }
+  return slots;
 }
 
 // ---------- Padel: griglia continua con anti-buco (duplicata da
@@ -400,7 +410,7 @@ function slotsLiberi(gruppo) {
     return starts.map(s => ({ campo, inizio: minutiToOrario(s), fine: minutiToOrario(s + state.durataPadel) }));
   }
 
-  const fissi = slotFissiDisciplina(gruppo.disciplina);
+  const fissi = slotFissiDisciplina(gruppo.disciplina, state.data);
   const risultati = [];
   gruppo.campi.forEach(campo => {
     const occupati = state.bookingsPerCourt[campo.id] || [];
