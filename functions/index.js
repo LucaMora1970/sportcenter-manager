@@ -413,16 +413,34 @@ exports.creaPrenotazionePubblica = onCall(
     if (!date || !startTime || !endTime || !durationMinutes) {
       throw new HttpsError("invalid-argument", "Dati prenotazione incompleti.");
     }
-    if (await giornoChiuso(date)) {
-      throw new HttpsError("failed-precondition", "Il campo è chiuso in questa data.");
-    }
 
     const court = courtId || COURT_ID;
     const startMin = orarioToMin(startTime);
+
+    // Stesso pattern già applicato a creaPrenotazioneCampo: queste letture
+    // non dipendono l'una dall'altra, quindi partono tutte insieme invece
+    // che una alla volta. Credito e codici socio dei compagni sono noti
+    // già dall'input, quindi le relative letture partono comunque anche
+    // se poi il giorno risulta chiuso — nel caso raro (giorno chiuso) sono
+    // solo letture in più, il cui risultato viene semplicemente ignorato
+    // dal controllo subito sotto.
+    const [chiuso, generaleSnap, preSnap, prenotante, creditoSnap, g2Snap, g3Snap, g4Snap] = await Promise.all([
+      giornoChiuso(date),
+      db.collection("impostazioni").doc("generale").get(),
+      db.collection("bookings").where("date", "==", date).where("courtId", "==", court).get(),
+      risolviCategoriaPrenotante(request.auth, profiloId),
+      creditCode ? db.collection("credits").doc(creditCode).get() : Promise.resolve(null),
+      giocatore2SocioId ? db.collection("soci").doc(giocatore2SocioId).get() : Promise.resolve(null),
+      giocatore3SocioId ? db.collection("soci").doc(giocatore3SocioId).get() : Promise.resolve(null),
+      giocatore4SocioId ? db.collection("soci").doc(giocatore4SocioId).get() : Promise.resolve(null)
+    ]);
+    if (chiuso) {
+      throw new HttpsError("failed-precondition", "Il campo è chiuso in questa data.");
+    }
+
     // Giorni festivi (impostazioni/generale.festivi): contano come domenica
     // ai fini della tariffa e accorciano l'orario di chiusura come sabato/
     // domenica — un solo fetch, riusato per entrambi qui sotto.
-    const generaleSnap = await db.collection("impostazioni").doc("generale").get();
     const festivi = generaleSnap.exists ? (generaleSnap.data().festivi || []) : [];
     const close = chiusuraGiorno(date, festivi);
 
@@ -430,10 +448,6 @@ exports.creaPrenotazionePubblica = onCall(
     // concluso, es. abbandonato o webhook mai arrivato) — fuori dalla
     // transazione qui sotto: è solo pulizia, non deve rallentarla né
     // farla fallire per un errore di cancellazione.
-    const preSnap = await db.collection("bookings")
-      .where("date", "==", date)
-      .where("courtId", "==", court)
-      .get();
     const scadute = preSnap.docs.filter(d => pendingScaduto(d.data()));
     if (scadute.length > 0) await Promise.all(scadute.map(d => d.ref.delete()));
 
@@ -447,29 +461,23 @@ exports.creaPrenotazionePubblica = onCall(
     // "soci", mai fidandosi delle categorie dichiarate dal client. Stessa
     // funzione di risoluzione categoria del prenotante già usata da
     // creaPrenotazioneCampo (definita più sotto in questo file, hoisted).
-    const prenotante = await risolviCategoriaPrenotante(request.auth, profiloId);
-
     const altriGiocatoriInput = [
-      { nome: giocatore2Nome, socioId: giocatore2SocioId },
-      { nome: giocatore3Nome, socioId: giocatore3SocioId },
-      { nome: giocatore4Nome, socioId: giocatore4SocioId }
+      { nome: giocatore2Nome, socioId: giocatore2SocioId, snap: g2Snap },
+      { nome: giocatore3Nome, socioId: giocatore3SocioId, snap: g3Snap },
+      { nome: giocatore4Nome, socioId: giocatore4SocioId, snap: g4Snap }
     ].filter(g => g.nome || g.socioId);
 
     // I nominativi dei compagni servono solo per il tabellone/record (chi
     // gioca), non per il prezzo: la tariffa padel è per l'intero campo, non
     // per giocatore — un solo calcolo qui sotto, in base alla categoria di
     // chi prenota, indipendente da quanti (e chi) giocano con lui.
-    const altriGiocatoriRisolti = [];
-    for (const g of altriGiocatoriInput) {
+    const altriGiocatoriRisolti = altriGiocatoriInput.map(g => {
       let nomeRisolto = g.nome || null;
-      if (g.socioId) {
-        const gSnap = await db.collection("soci").doc(g.socioId).get();
-        if (gSnap.exists && gSnap.data().attivo !== false) {
-          nomeRisolto = `${gSnap.data().nome} ${gSnap.data().cognome}`;
-        }
+      if (g.snap && g.snap.exists && g.snap.data().attivo !== false) {
+        nomeRisolto = `${g.snap.data().nome} ${g.snap.data().cognome}`;
       }
-      altriGiocatoriRisolti.push({ nome: nomeRisolto });
-    }
+      return { nome: nomeRisolto };
+    });
 
     let quotaPrenotante = await quotaCategoria({
       disciplina: "padel", posizione: null, categoria: prenotante.categoria,
@@ -488,7 +496,6 @@ exports.creaPrenotazionePubblica = onCall(
 
     let creditoDaScalare = 0;
     if (creditCode) {
-      const creditoSnap = await db.collection("credits").doc(creditCode).get();
       if (!creditoSnap.exists || creditoSnap.data().status === "USED"
         || creditoSnap.data().status === "EXPIRED" || creditoSnap.data().status === "CANCELLED") {
         throw new HttpsError("failed-precondition", "Codice credito non valido o già utilizzato.");
@@ -1339,6 +1346,32 @@ exports.richiediAttivazioneEmail = onCall({ secrets: MAIL_SECRETS }, async (requ
   return { ok: true };
 });
 
+// Self-service "password dimenticata" dalla pagina di login staff
+// (index.html): a differenza di generaLinkResetPassword (richiede un
+// admin già loggato che spedisce a mano), qui non c'è nessun operatore
+// presente, quindi l'email parte da sola via SMTP — stesso schema di
+// richiediAttivazioneEmail. Risposta sempre "ok" anche se l'email non
+// corrisponde a nessun account, per non rivelare chi è registrato.
+exports.richiediResetPassword = onCall({ secrets: MAIL_SECRETS }, async (request) => {
+  const email = (request.data?.email || "").trim();
+  if (!email) throw new HttpsError("invalid-argument", "Email mancante.");
+
+  try {
+    const link = await getAuth().generatePasswordResetLink(email, { url: `${APP_URL}index.html` });
+    await inviaEmail({
+      to: email,
+      subject: "Reimposta la tua password — Sport-OS",
+      html: `<p>Hai chiesto di reimpostare la password di accesso a Sport-OS.</p>`
+        + `<p>Tocca il link qui sotto per sceglierne una nuova:</p>`
+        + `<p><a href="${link}">${link}</a></p>`
+        + `<p>Se non sei stato tu a richiederlo, ignora pure questa email.</p>`
+    });
+  } catch (err) {
+    console.error("richiediResetPassword:", err);
+  }
+  return { ok: true };
+});
+
 // Ricerca soci per il pannello operatore (per generare il QR di
 // attivazione) — dietro permesso, mai esposta al pubblico.
 exports.cercaSociStaff = onCall(async (request) => {
@@ -2155,7 +2188,23 @@ exports.creaPrenotazioneCampo = onCall(
       throw new HttpsError("invalid-argument", "Dati prenotazione incompleti.");
     }
 
-    const campoSnap = await db.collection("campi").doc(courtId).get();
+    // Le 7 letture qui sotto non dipendono l'una dall'altra (nessuna usa
+    // il risultato di un'altra per partire, solo le validazioni dopo ne
+    // hanno bisogno) — lanciate insieme invece che una alla volta per non
+    // sommare 7 round-trip in sequenza verso Firestore. giocatore2SocioId
+    // è noto già dall'input, quindi la lettura parte anche se poi risulta
+    // che la disciplina non è tennis (in quel caso il risultato è
+    // semplicemente ignorato più sotto, nessun effetto collaterale).
+    const [campoSnap, chiusuraSnap, impostazioniSnap, generaleSnap, preSnap, prenotante, g2Snap] = await Promise.all([
+      db.collection("campi").doc(courtId).get(),
+      db.collection("chiusureCentro").doc(date).get(),
+      db.collection("impostazioni").doc("prenotazioniCampi").get(),
+      db.collection("impostazioni").doc("generale").get(),
+      db.collection("bookings").where("date", "==", date).where("courtId", "==", courtId).get(),
+      risolviCategoriaPrenotante(request.auth, profiloId),
+      giocatore2SocioId ? db.collection("soci").doc(giocatore2SocioId).get() : Promise.resolve(null)
+    ]);
+
     if (!campoSnap.exists || campoSnap.data().attivo === false) {
       throw new HttpsError("not-found", "Campo non disponibile.");
     }
@@ -2176,7 +2225,6 @@ exports.creaPrenotazioneCampo = onCall(
     if (!slot) throw new HttpsError("invalid-argument", "Orario non valido per questa disciplina.");
     const endTime = slot.fine;
 
-    const chiusuraSnap = await db.collection("chiusureCentro").doc(date).get();
     if (chiusuraSnap.exists) {
       const discipline = chiusuraSnap.data().discipline || [];
       if (discipline.length === 0 || discipline.includes(disciplina)) {
@@ -2188,12 +2236,9 @@ exports.creaPrenotazioneCampo = onCall(
       throw new HttpsError("failed-precondition", "Questo slot non è più disponibile — scegline un altro.");
     }
 
-    const prenotante = await risolviCategoriaPrenotante(request.auth, profiloId);
-
     // Finestra di anticipo: quanti giorni prima ciascuna categoria può
     // prenotare — priorità ai soci, come richiesto. 7 giorni se non
     // configurato.
-    const impostazioniSnap = await db.collection("impostazioni").doc("prenotazioniCampi").get();
     const impostazioni = impostazioniSnap.exists ? impostazioniSnap.data() : {};
     const anticipoMax = (impostazioni.giorniAnticipoPrenotazione || {})[prenotante.categoria] ?? 7;
     const oggiIso = oraLocaleZurigo().dataIso;
@@ -2219,7 +2264,6 @@ exports.creaPrenotazioneCampo = onCall(
     }
 
     // Pulizia best-effort delle "PENDING_PAYMENT" scadute.
-    const preSnap = await db.collection("bookings").where("date", "==", date).where("courtId", "==", courtId).get();
     const scadute = preSnap.docs.filter(d => pendingScaduto(d.data()));
     if (scadute.length > 0) await Promise.all(scadute.map(d => d.ref.delete()));
 
@@ -2230,16 +2274,12 @@ exports.creaPrenotazioneCampo = onCall(
     let giocatore2Categoria = "esterno";
     let giocatore2NomeRisolto = giocatore2Nome || null;
     let giocatore2SocioIdVerificato = null;
-    if (disciplina === "tennis" && giocatore2SocioId) {
-      const g2Snap = await db.collection("soci").doc(giocatore2SocioId).get();
-      if (g2Snap.exists && g2Snap.data().attivo !== false) {
-        giocatore2Categoria = g2Snap.data().categoria;
-        giocatore2NomeRisolto = `${g2Snap.data().nome} ${g2Snap.data().cognome}`;
-        giocatore2SocioIdVerificato = giocatore2SocioId;
-      }
+    if (disciplina === "tennis" && g2Snap && g2Snap.exists && g2Snap.data().attivo !== false) {
+      giocatore2Categoria = g2Snap.data().categoria;
+      giocatore2NomeRisolto = `${g2Snap.data().nome} ${g2Snap.data().cognome}`;
+      giocatore2SocioIdVerificato = giocatore2SocioId;
     }
 
-    const generaleSnap = await db.collection("impostazioni").doc("generale").get();
     const festivi = generaleSnap.exists ? (generaleSnap.data().festivi || []) : [];
     // Durata reale dello slot (fissa per disciplina, nota da slotFissiDisciplina
     // qui sopra): va sempre passata a quotaCategoria, anche se molte righe

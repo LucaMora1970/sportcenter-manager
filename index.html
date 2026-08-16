@@ -36,13 +36,31 @@
       </div>
       <div class="error-msg" id="error-msg"></div>
       <button type="submit" class="btn btn-primary" id="login-btn">Accedi</button>
+      <button type="button" class="btn btn-ghost" id="forgot-password-btn" style="margin-top:10px;width:100%;">Password dimenticata?</button>
     </form>
+
+    <form id="reset-form" class="hidden">
+      <div class="field">
+        <label for="reset-email">Email</label>
+        <input type="email" id="reset-email" required placeholder="nome.cognome@circolo.ch">
+      </div>
+      <div class="error-msg" id="reset-error"></div>
+      <button type="submit" class="btn btn-primary" id="reset-btn">Invia link di reset</button>
+      <button type="button" class="btn btn-ghost" id="reset-back-btn" style="margin-top:10px;width:100%;">Torna al login</button>
+    </form>
+
+    <div id="reset-inviato" class="hidden empty-state">
+      <div class="display">Controlla la posta</div>
+      <p>Se l'indirizzo è registrato, riceverai a breve un'email con il link per reimpostare la password.</p>
+      <button type="button" class="btn btn-ghost" id="reset-inviato-back-btn" style="margin-top:14px;">Torna al login</button>
+    </div>
   </div>
 </div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
 <script src="js/firebase-config.js"></script>
 <script src="js/utils.js"></script>
 <script src="js/auth.js"></script>
@@ -75,6 +93,46 @@
       errorMsg.textContent = "Credenziali non valide. Riprova.";
       btn.disabled = false;
       btn.textContent = "Accedi";
+    }
+  });
+
+  const loginForm = document.getElementById("login-form");
+  const resetForm = document.getElementById("reset-form");
+  const resetInviato = document.getElementById("reset-inviato");
+  const resetError = document.getElementById("reset-error");
+  const resetBtn = document.getElementById("reset-btn");
+
+  function mostraLogin() {
+    loginForm.classList.remove("hidden");
+    resetForm.classList.add("hidden");
+    resetInviato.classList.add("hidden");
+  }
+
+  document.getElementById("forgot-password-btn").addEventListener("click", () => {
+    loginForm.classList.add("hidden");
+    resetForm.classList.remove("hidden");
+    document.getElementById("reset-email").value = document.getElementById("email").value.trim();
+  });
+  document.getElementById("reset-back-btn").addEventListener("click", mostraLogin);
+  document.getElementById("reset-inviato-back-btn").addEventListener("click", mostraLogin);
+
+  resetForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    resetError.textContent = "";
+    resetBtn.disabled = true;
+    resetBtn.textContent = "Invio…";
+
+    const email = document.getElementById("reset-email").value.trim();
+    try {
+      const fn = firebase.functions().httpsCallable("richiediResetPassword");
+      await fn({ email });
+      resetForm.classList.add("hidden");
+      resetInviato.classList.remove("hidden");
+    } catch (err) {
+      resetError.textContent = "Errore: " + err.message;
+    } finally {
+      resetBtn.disabled = false;
+      resetBtn.textContent = "Invia link di reset";
     }
   });
 </script>
