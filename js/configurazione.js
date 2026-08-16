@@ -95,6 +95,7 @@ async function loadImpostazioniForm() {
   document.getElementById("minuti-eliminazione-diario").value = IMPOSTAZIONI.minutiEliminazioneDiario;
   document.getElementById("impostazioni-festivi").value = (IMPOSTAZIONI.festivi || []).join("\n");
   document.getElementById("chiusura-weekend").value = IMPOSTAZIONI.chiusuraWeekend || "20:30";
+  document.getElementById("link-dopo-salva-biglietto").value = IMPOSTAZIONI.linkDopoSalvaBiglietto || "";
 }
 
 async function onSaveImpostazioni(e) {
@@ -108,15 +109,17 @@ async function onSaveImpostazioni(e) {
   const festivi = document.getElementById("impostazioni-festivi").value
     .split("\n").map(r => r.trim()).filter(Boolean);
   const chiusuraWeekend = document.getElementById("chiusura-weekend").value;
+  const linkDopoSalvaBiglietto = document.getElementById("link-dopo-salva-biglietto").value.trim();
 
   try {
     if (isNaN(minuti) || minuti < 0) throw new Error("Inserisci un numero di minuti valido.");
     if (festivi.some(d => !/^\d{4}-\d{2}-\d{2}$/.test(d))) throw new Error("Ogni data festiva deve essere nel formato AAAA-MM-GG.");
     if (!/^\d{2}:\d{2}$/.test(chiusuraWeekend)) throw new Error("Inserisci un orario di chiusura weekend valido.");
-    await db.collection("impostazioni").doc("generale").set({ minutiEliminazioneDiario: minuti, festivi, chiusuraWeekend }, { merge: true });
+    await db.collection("impostazioni").doc("generale").set({ minutiEliminazioneDiario: minuti, festivi, chiusuraWeekend, linkDopoSalvaBiglietto }, { merge: true });
     IMPOSTAZIONI.minutiEliminazioneDiario = minuti;
     IMPOSTAZIONI.festivi = festivi;
     IMPOSTAZIONI.chiusuraWeekend = chiusuraWeekend;
+    IMPOSTAZIONI.linkDopoSalvaBiglietto = linkDopoSalvaBiglietto;
   } catch (err) {
     showError(errorEl, "Errore: " + err.message);
   } finally {

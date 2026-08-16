@@ -263,6 +263,7 @@ function aggiungiAlCalendario(data) {
 
 (async function init() {
   await loadDatiCentro();
+  await loadImpostazioni();
   document.getElementById("centro-kicker").textContent = DATI_CENTRO.nome;
   document.getElementById("ticket-centro-nome").textContent = DATI_CENTRO.nome;
   document.getElementById("ticket-centro-dettagli").textContent =
@@ -285,31 +286,33 @@ function aggiungiAlCalendario(data) {
   ticketData = data;
   renderBiglietto(data, token);
 
-  // Il link "torna alla prenotazione" deve puntare alla pagina giusta:
-  // il padel ha ancora la sua pagina dedicata, tennis/squash usano
-  // l'ingresso unico — data.disciplina (assente = vecchi biglietti,
-  // solo padel esisteva) decide quale.
+  // Il link "torna alla prenotazione" (ora un'icona, vedi biglietto.html)
+  // deve puntare alla pagina giusta: il padel ha ancora la sua pagina
+  // dedicata, tennis/squash usano l'ingresso unico — data.disciplina
+  // (assente = vecchi biglietti, solo padel esisteva) decide quale.
   const tornaLink = document.getElementById("torna-prenotazione-link");
   if (data.disciplina && data.disciplina !== "padel") {
     tornaLink.href = "prenota-campo.html";
-    tornaLink.textContent = "← Torna alla prenotazione";
+    tornaLink.setAttribute("aria-label", "Torna alla prenotazione");
   } else {
     tornaLink.href = "prenota-padel.html";
-    tornaLink.textContent = "← Torna a Prenotazione Padel";
+    tornaLink.setAttribute("aria-label", "Torna a Prenotazione Padel");
   }
 
-  // Dopo il salvataggio, si riporta l'utente sul sito vetrina del circolo
-  // (Configurazione → Dati del centro → Homepage) invece di lasciarlo
-  // fermo sul biglietto — se il campo non è compilato, il pulsante si
-  // limita a scaricare come prima. Piccolo ritardo prima di navigare,
-  // stesso motivo del link "torna alla prenotazione" qui sotto: avviare
-  // un download e cambiare pagina nello stesso istante può interrompere
-  // il download su alcuni browser.
+  // Dopo il salvataggio, si riporta l'utente su un link deciso in
+  // Configurazione → Impostazioni generali → "Link dopo 'Salva
+  // biglietto'" — non necessariamente il sito del circolo (per quello
+  // c'è impostazioni/centro.homepage, usato altrove per l'intestazione),
+  // qui può essere qualunque pagina. Vuoto = nessun redirect, resta sul
+  // biglietto. Piccolo ritardo prima di navigare: avviare un download e
+  // cambiare pagina nello stesso istante può interrompere il download su
+  // alcuni browser.
   document.getElementById("salva-btn").addEventListener("click", () => {
     salvaBigliettoPng();
     bigliettoSalvato = true;
-    if (DATI_CENTRO.homepage) {
-      const url = /^https?:\/\//i.test(DATI_CENTRO.homepage) ? DATI_CENTRO.homepage : `https://${DATI_CENTRO.homepage}`;
+    const link = IMPOSTAZIONI.linkDopoSalvaBiglietto;
+    if (link) {
+      const url = /^https?:\/\//i.test(link) ? link : `https://${link}`;
       setTimeout(() => { window.location.href = url; }, 600);
     }
   });
@@ -333,7 +336,7 @@ function aggiungiAlCalendario(data) {
     }
     salvaBigliettoPng();
     bigliettoSalvato = true;
-    link.textContent = "Biglietto salvato — torno alla prenotazione…";
+    link.querySelector("span").textContent = "Salvato…";
     setTimeout(() => { window.location.href = link.href; }, 600);
   });
 })();

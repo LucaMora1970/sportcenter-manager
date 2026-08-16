@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tabellone generale — Tennis Club Mendrisio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script>if(localStorage.getItem("sportos-tema")==="light")document.documentElement.setAttribute("data-theme","light");</script>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d1f30">
+<style>
+  /* Pagina pensata anche per restare accesa su un monitor in reception:
+     niente bottom-nav (non è parte della shell interna, come
+     attiva-socio/iscrizione-corso), contrasto alto, nessun elemento
+     interattivo superfluo oltre al cambio giorno. */
+  .giorno-nav {
+    display: flex; align-items: center; justify-content: center; gap: 18px;
+    margin-bottom: 22px;
+  }
+  .giorno-nav button {
+    background: none; border: 1px solid var(--court-blue-700); border-radius: 8px;
+    color: var(--chalk-grey); font-size: 1.1rem; width: 38px; height: 38px; cursor: pointer;
+  }
+  .giorno-nav button:hover { color: var(--line-white); border-color: var(--chalk-grey); }
+  .giorno-label { text-align: center; min-width: 220px; }
+  .giorno-label .data { font-family: 'Oswald', sans-serif; font-size: 1.15rem; font-weight: 600; text-transform: capitalize; }
+  .giorno-label .oggi-link { display: block; font-size: 0.72rem; color: var(--chalk-grey); cursor: pointer; margin-top: 2px; }
+  .giorno-label .oggi-link:hover { color: var(--ball); }
+
+  .modo-indicatore {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    font-size: 0.74rem; color: var(--chalk-grey); margin-bottom: 22px;
+  }
+  .modo-indicatore .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--chalk-grey-dim); }
+  .modo-indicatore.direzione .dot { background: var(--ball); }
+
+  .disc-group { margin-bottom: 26px; }
+  .disc-label {
+    font-family: 'Oswald', sans-serif; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase;
+    font-size: 0.82rem; color: var(--ball); margin-bottom: 10px; padding-bottom: 6px;
+    border-bottom: 1px dashed var(--court-blue-700);
+  }
+  :root[data-theme="light"] .disc-label { color: var(--ball-dim); }
+
+  .court-row { display: flex; align-items: stretch; gap: 10px; margin-bottom: 7px; }
+  .court-name {
+    flex: 0 0 130px; display: flex; align-items: center; font-size: 0.82rem; font-weight: 600;
+    color: var(--line-white, inherit);
+  }
+  .timeline {
+    flex: 1; display: flex; height: 42px; border-radius: 8px; overflow: hidden;
+    background: var(--court-blue-950); border: 1px solid var(--court-blue-700);
+  }
+  .seg { display: flex; align-items: center; overflow: hidden; }
+  .seg.free { background: var(--court-blue-950); }
+  .seg.occ {
+    background: var(--court-blue-800); border-left: 2px solid var(--court-blue-700); border-right: 2px solid var(--court-blue-700);
+    padding: 0 8px; font-size: 0.7rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .seg.occ.tipo-block { background: color-mix(in srgb, var(--danger) 22%, var(--court-blue-800)); }
+  .seg.occ.tipo-exempt { background: color-mix(in srgb, #9e4a7f 30%, var(--court-blue-800)); }
+  .seg.chiuso {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    color: var(--chalk-grey-dim); font-size: 0.76rem; letter-spacing: 0.04em;
+  }
+
+  .hour-ticks { display: flex; margin: 10px 0 4px 140px; }
+  .hour-ticks span { flex: 1; font-size: 0.7rem; color: var(--chalk-grey-dim); font-family: 'Space Mono', monospace; }
+
+  .board-wrap { position: relative; }
+  .now-line {
+    position: absolute; top: 0; bottom: 0; width: 2px; background: var(--danger); pointer-events: none;
+    left: calc(140px + (100% - 140px) * var(--now-pct));
+  }
+  .now-line::before {
+    content: "ora"; position: absolute; top: -16px; left: 50%; transform: translateX(-50%);
+    font-size: 0.62rem; color: var(--danger); white-space: nowrap;
+  }
+
+  @media (max-width: 680px) {
+    .court-name { flex-basis: 88px; font-size: 0.72rem; }
+    .hour-ticks { margin-left: 98px; }
+    .now-line { left: calc(98px + (100% - 98px) * var(--now-pct)); }
+    .seg.occ span { display: none; } /* su schermi stretti solo il colore, niente testo troncato illeggibile */
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <div>
+      <div class="topbar-kicker" id="centro-kicker">Tennis Club Mendrisio</div>
+      <h1>Tabellone generale</h1>
+    </div>
+    <div></div>
+    <button type="button" class="topbar-link" id="theme-toggle-btn">Tema chiaro</button>
+  </div>
+
+  <main>
+
+    <div class="giorno-nav">
+      <button type="button" id="giorno-prev" aria-label="Giorno precedente">←</button>
+      <div class="giorno-label">
+        <div class="data" id="giorno-data">—</div>
+        <span class="oggi-link" id="giorno-oggi">Torna a oggi</span>
+      </div>
+      <button type="button" id="giorno-next" aria-label="Giorno successivo">→</button>
+    </div>
+
+    <div class="modo-indicatore" id="modo-indicatore">
+      <span class="dot"></span><span id="modo-testo">Vista pubblica — solo stato occupato</span>
+    </div>
+
+    <div id="stato-caricamento" class="empty-state">
+      <div class="display">Caricamento…</div>
+    </div>
+
+    <div id="board-wrap" class="board-wrap hidden">
+      <div id="board"></div>
+      <div class="hour-ticks" id="hour-ticks"></div>
+    </div>
+
+  </main>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/tabellone-generale.js"></script>
+</body>
+</html>
