@@ -590,7 +590,7 @@ function apriPannelloPrenota(slot, idx) {
       esitoEl.innerHTML = `<p class="g2-esito">Ricerca…</p>`;
       ricercaGiocatoreTimeout = setTimeout(async () => {
         try {
-          const fn = firebase.functions().httpsCallable("cercaGiocatore");
+          const fn = cloudFunctions().httpsCallable("cercaGiocatore");
           const { data } = await fn({ nome });
           if (data.risultati.length === 0) {
             esitoEl.innerHTML = `<p class="g2-esito no">Non trovato tra i soci — verrà considerato esterno.</p>`;
@@ -640,7 +640,7 @@ async function confermaPrenota(slot, idx) {
   try {
     let fn, payload;
     if (slot.campo.disciplina === "padel") {
-      fn = firebase.functions().httpsCallable("creaPrenotazionePubblica");
+      fn = cloudFunctions().httpsCallable("creaPrenotazionePubblica");
       payload = {
         courtId: slot.campo.id,
         date: state.data,
@@ -653,7 +653,7 @@ async function confermaPrenota(slot, idx) {
         giocatore4Nome: nCampi > 2 ? nomeRisolto(2) : null, giocatore4SocioId: nCampi > 2 ? socioIdRisolto(2) : null
       };
     } else {
-      fn = firebase.functions().httpsCallable("creaPrenotazioneCampo");
+      fn = cloudFunctions().httpsCallable("creaPrenotazioneCampo");
       payload = {
         courtId: slot.campo.id,
         date: state.data,

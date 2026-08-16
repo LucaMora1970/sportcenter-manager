@@ -325,7 +325,7 @@ async function annullaEConverti(bookingId, btn) {
   if (!confirm("Annullare questa prenotazione e convertirla in credito per il cliente?")) return;
   btn.disabled = true;
   try {
-    const fn = firebase.functions().httpsCallable("annullaEConvertiInCredito");
+    const fn = cloudFunctions().httpsCallable("annullaEConvertiInCredito");
     const result = await fn({ bookingId });
     alert(`Credito creato: ${result.data.creditCode} — CHF ${result.data.importo.toFixed(2)}\n\nComunicalo al cliente per una prenotazione futura.`);
     await caricaGiorno();
@@ -339,7 +339,7 @@ async function eliminaPrenotazione(bookingId, btn) {
   if (!confirm("Eliminare questa prenotazione? Lo slot torna libero. L'operazione non è reversibile.")) return;
   btn.disabled = true;
   try {
-    const fn = firebase.functions().httpsCallable("eliminaPrenotazioneOperatore");
+    const fn = cloudFunctions().httpsCallable("eliminaPrenotazioneOperatore");
     await fn({ bookingId });
     await caricaGiorno();
   } catch (err) {
@@ -456,7 +456,7 @@ async function creaPrenotazioneOperatore(tipo) {
   mostraCaricamento(tipo === "BLOCK" ? "Blocco dello slot in corso…" : "Creazione della prenotazione in corso…");
 
   try {
-    const fn = firebase.functions().httpsCallable("creaPrenotazioneOperatore");
+    const fn = cloudFunctions().httpsCallable("creaPrenotazioneOperatore");
     await fn({
       courtId: COURT_ID,
       date: state.data,
@@ -665,7 +665,7 @@ async function cercaSociAttivazione(testo) {
   errorEl.textContent = "";
   risultatiEl.innerHTML = `<div class="empty-state"><div class="display">Ricerca…</div></div>`;
   try {
-    const fn = firebase.functions().httpsCallable("cercaSociStaff");
+    const fn = cloudFunctions().httpsCallable("cercaSociStaff");
     const { data } = await fn({ testo });
     if (data.risultati.length === 0) {
       risultatiEl.innerHTML = `<div class="empty-state"><div class="display">Nessun risultato</div></div>`;
@@ -694,7 +694,7 @@ async function generaQrAttivazione(socioId, nome) {
   const errorEl = document.getElementById("attivazione-error");
   errorEl.textContent = "";
   try {
-    const fn = firebase.functions().httpsCallable("generaTokenAttivazione");
+    const fn = cloudFunctions().httpsCallable("generaTokenAttivazione");
     const { data } = await fn({ socioId });
     const url = `${basePageUrl()}attiva-socio.html?t=${data.token}`;
     const container = document.getElementById("attivazione-qr-container");
@@ -734,7 +734,7 @@ async function onEmettiBuonoOmaggio() {
   const btn = document.getElementById("emetti-buono-btn");
   btn.disabled = true;
   try {
-    const fn = firebase.functions().httpsCallable("emettiBuonoOmaggio");
+    const fn = cloudFunctions().httpsCallable("emettiBuonoOmaggio");
     const result = await fn({ importo, nota: nota || null });
     const link = `${basePageUrl()}buono-regalo-conferma.html?t=${result.data.token}`;
     risultatoEl.innerHTML = `

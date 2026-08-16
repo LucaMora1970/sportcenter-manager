@@ -23,12 +23,12 @@ function mostraStato(id) {
 async function attivaConToken(token) {
   mostraStato("stato-attivazione");
   try {
-    const attiva = firebase.functions().httpsCallable("attivaSocioDaToken");
+    const attiva = cloudFunctions().httpsCallable("attivaSocioDaToken");
     const { data } = await attiva({ token });
 
     await firebase.auth().signInWithCustomToken(data.customToken);
 
-    const collega = firebase.functions().httpsCallable("collegaSocioAlDispositivo");
+    const collega = cloudFunctions().httpsCallable("collegaSocioAlDispositivo");
     await collega({ socioId: data.socioId });
 
     mostraStato("stato-ok");
@@ -47,7 +47,7 @@ async function onRichiediEmail(e) {
 
   const email = document.getElementById("richiedi-email-input").value.trim();
   try {
-    const fn = firebase.functions().httpsCallable("richiediAttivazioneEmail");
+    const fn = cloudFunctions().httpsCallable("richiediAttivazioneEmail");
     await fn({ email });
     document.getElementById("richiedi-email-form").classList.add("hidden");
     document.getElementById("richiedi-email-inviato").classList.remove("hidden");

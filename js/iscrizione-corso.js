@@ -229,7 +229,7 @@ async function avviaSalvataggioCarta(iscrizioneId) {
   mostraCaricamento("Preparazione del salvataggio carta…");
 
   try {
-    const fn = firebase.functions().httpsCallable("avviaTokenizzazioneCorso");
+    const fn = cloudFunctions().httpsCallable("avviaTokenizzazioneCorso");
     const result = await fn({ iscrizioneId });
     window.location.href = result.data.paymentPageUrl;
   } catch (err) {

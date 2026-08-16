@@ -75,7 +75,7 @@ async function onSalvaCarta() {
   errorEl.textContent = "";
   btn.disabled = true;
   try {
-    const fn = firebase.functions().httpsCallable("avviaTokenizzazioneAzienda");
+    const fn = cloudFunctions().httpsCallable("avviaTokenizzazioneAzienda");
     const { data } = await fn();
     window.location.href = data.paymentPageUrl;
   } catch (err) {
@@ -90,7 +90,7 @@ async function onRimuoviCarta() {
   errorEl.textContent = "";
   btn.disabled = true;
   try {
-    const fn = firebase.functions().httpsCallable("eliminaTokenAzienda");
+    const fn = cloudFunctions().httpsCallable("eliminaTokenAzienda");
     await fn();
     await caricaDatiAzienda();
   } catch (err) {
@@ -103,7 +103,7 @@ async function caricaDatiAzienda() {
   const riepilogoEl = document.getElementById("riepilogo-azienda");
   const listEl = document.getElementById("dipendenti-list");
   try {
-    const fn = firebase.functions().httpsCallable("listaSociAzienda");
+    const fn = cloudFunctions().httpsCallable("listaSociAzienda");
     const { data } = await fn();
     datiAzienda = data;
 
@@ -153,7 +153,7 @@ async function onSalvaTetto(e) {
   const input = document.querySelector(`.dipendente-tetto-input[data-id="${socioId}"]`);
   btn.disabled = true;
   try {
-    const fn = firebase.functions().httpsCallable("impostaTettoDipendenteAzienda");
+    const fn = cloudFunctions().httpsCallable("impostaTettoDipendenteAzienda");
     await fn({ socioId, tetto: input.value !== "" ? input.value : null });
     await caricaDatiAzienda();
   } catch (err) {
@@ -170,7 +170,7 @@ async function onEliminaDipendente(e) {
   btn.disabled = true;
   btn.textContent = "Elimino…";
   try {
-    const fn = firebase.functions().httpsCallable("eliminaDipendenteAzienda");
+    const fn = cloudFunctions().httpsCallable("eliminaDipendenteAzienda");
     await fn({ socioId });
     await caricaDatiAzienda();
   } catch (err) {
@@ -186,7 +186,7 @@ async function onToggleDipendente(e) {
   const nuovoStato = btn.dataset.attivo !== "true";
   btn.disabled = true;
   try {
-    const fn = firebase.functions().httpsCallable("disattivaDipendenteAzienda");
+    const fn = cloudFunctions().httpsCallable("disattivaDipendenteAzienda");
     await fn({ socioId, attivo: nuovoStato });
     await caricaDatiAzienda();
   } catch (err) {
@@ -207,7 +207,7 @@ async function onCreateDipendente(e) {
   const email = document.getElementById("new-dipendente-email").value.trim();
 
   try {
-    const fn = firebase.functions().httpsCallable("aggiungiDipendenteAzienda");
+    const fn = cloudFunctions().httpsCallable("aggiungiDipendenteAzienda");
     const { data } = await fn({ nome, cognome, email });
 
     const url = `${basePageUrl()}attiva-socio.html?t=${data.token}`;
@@ -252,7 +252,7 @@ async function onInviaLinkDipendente(socioId, email, btn) {
   btn.textContent = "Invio…";
   btn.style.color = "";
   try {
-    const fn = firebase.functions().httpsCallable("inviaInvitoDipendente");
+    const fn = cloudFunctions().httpsCallable("inviaInvitoDipendente");
     await fn({ socioId });
     btn.textContent = `✓ Inviato a ${email}`;
     btn.style.color = "var(--ball)";
@@ -278,7 +278,7 @@ async function onGeneraReport() {
   btn.disabled = true;
   risultatoEl.innerHTML = `<div class="empty-state"><div class="display">Calcolo…</div></div>`;
   try {
-    const fn = firebase.functions().httpsCallable("reportAzienda");
+    const fn = cloudFunctions().httpsCallable("reportAzienda");
     const { data } = await fn({ dal, al });
     ultimoReport = { dal, al, totale: data.totale };
 
@@ -321,7 +321,7 @@ async function onAddebita() {
   btn.disabled = true;
   btn.textContent = "Addebito in corso…";
   try {
-    const fn = firebase.functions().httpsCallable("addebitaAzienda");
+    const fn = cloudFunctions().httpsCallable("addebitaAzienda");
     const { data } = await fn({ dal: ultimoReport.dal, al: ultimoReport.al });
     if (!data.addebitato) {
       showError(errorEl, data.motivo || "Addebito non riuscito.");

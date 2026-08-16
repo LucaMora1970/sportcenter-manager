@@ -218,7 +218,7 @@ async function onDeleteUser(e) {
   btn.disabled = true;
   btn.textContent = "Elimino…";
   try {
-    const fn = firebase.functions().httpsCallable("eliminaUtente");
+    const fn = cloudFunctions().httpsCallable("eliminaUtente");
     await fn({ uid });
     await loadUsers();
   } catch (err) {
@@ -292,7 +292,7 @@ async function onSendPasswordReset(e) {
   btn.disabled = true;
   btn.textContent = "Preparazione…";
   try {
-    const fn = firebase.functions().httpsCallable("generaLinkResetPassword");
+    const fn = cloudFunctions().httpsCallable("generaLinkResetPassword");
     const result = await fn({ email });
     const link = result.data.link;
 

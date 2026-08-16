@@ -319,7 +319,7 @@ async function prenotaSlot() {
   const creditCode = document.getElementById("credito-input").value.trim() || null;
 
   try {
-    const creaPrenotazione = firebase.functions().httpsCallable("creaPrenotazionePubblica");
+    const creaPrenotazione = cloudFunctions().httpsCallable("creaPrenotazionePubblica");
     const result = await creaPrenotazione({
       courtId: COURT_ID,
       date: state.data,

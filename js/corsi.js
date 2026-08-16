@@ -592,7 +592,7 @@ async function confermaGruppoSlot(corsoId, giorno, orario, container) {
 // richiamato altrove) quando il webhook risolve l'esito, non c'è da
 // aspettare qui la risposta prima di continuare.
 function addebitaIscrittiConCartaSalvata(iscritti) {
-  const fn = firebase.functions().httpsCallable("addebitaIscrizioneCorso");
+  const fn = cloudFunctions().httpsCallable("addebitaIscrizioneCorso");
   iscritti.filter(i => i.tokenStato === "ATTIVO").forEach(i => {
     fn({ iscrizioneId: i.id }).catch(err => console.error("addebitaIscrizioneCorso:", err));
   });
@@ -763,7 +763,7 @@ async function rifiutaIscrizione(iscrizioneId, corsoId, nome, email) {
     // Corso che non parte (o iscritto scartato): la carta salvata va
     // eliminata esplicitamente, non lasciata semplicemente inutilizzata.
     if (iscrizioneCache?.tokenStato === "ATTIVO") {
-      firebase.functions().httpsCallable("eliminaTokenIscrizione")({ iscrizioneId })
+      cloudFunctions().httpsCallable("eliminaTokenIscrizione")({ iscrizioneId })
         .catch(err => console.error("eliminaTokenIscrizione:", err));
     }
     await ricaricaIscrizioniCorso(corsoId);

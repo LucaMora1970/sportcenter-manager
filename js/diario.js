@@ -588,7 +588,7 @@ async function onRichiediPagamento(entryId, btn) {
   btn.textContent = "Attendere…";
   mostraCaricamento("Creazione della richiesta di pagamento in corso…");
   try {
-    const fn = firebase.functions().httpsCallable("richiediPagamentoDiario");
+    const fn = cloudFunctions().httpsCallable("richiediPagamentoDiario");
     // Niente copia automatica qui: dopo un'attesa di rete (questa
     // chiamata) Safari invalida il permesso di scrittura degli appunti
     // legato al click originale, quindi la copia fallirebbe in

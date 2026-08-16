@@ -2,6 +2,15 @@
 // utils.js — costanti e helper condivisi tra le pagine
 // ============================================================
 
+// Cloud Functions su europe-west6 (Zurigo) — vedi runbook "Migrazione a
+// Zurigo". Usare SEMPRE questo helper invece di firebase.functions(), che
+// senza regione esplicita punta ancora al vecchio default us-central1
+// (le funzioni restano lì, in parallelo, finché non viene completata la
+// fase di pulizia — ma non è più lì che deve arrivare il traffico).
+function cloudFunctions() {
+  return firebase.app().functions("europe-west6");
+}
+
 // Giorni della settimana, usati da Corsi (proposta) e dal modulo pubblico
 // di iscrizione (flag di disponibilità) — stessa fonte per non disallinearli.
 const GIORNI_SETTIMANA = [

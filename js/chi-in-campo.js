@@ -90,7 +90,7 @@ async function caricaERenderizza() {
   const riconosciuto = !!firebase.auth().currentUser;
   if (riconosciuto && prenotazioni.length > 0) {
     try {
-      const fn = firebase.functions().httpsCallable("dettagliGiocatori");
+      const fn = cloudFunctions().httpsCallable("dettagliGiocatori");
       const { data } = await fn({ bookingIds: prenotazioni.map(b => b.id) });
       dettagli = data.dettagli || {};
     } catch { /* i nomi sono un valore aggiunto, non bloccano la vista */ }

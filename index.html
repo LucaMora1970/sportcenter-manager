@@ -124,7 +124,7 @@
 
     const email = document.getElementById("reset-email").value.trim();
     try {
-      const fn = firebase.functions().httpsCallable("richiediResetPassword");
+      const fn = cloudFunctions().httpsCallable("richiediResetPassword");
       await fn({ email });
       resetForm.classList.add("hidden");
       resetInviato.classList.remove("hidden");

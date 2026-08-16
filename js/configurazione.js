@@ -1152,7 +1152,7 @@ async function onInvitaReferente(azienda, btn) {
     if (!azienda.referenteUid) {
       throw new Error(`Collega prima un referente all'azienda "${azienda.nome}" (campo "Referente" nel form qui sopra).`);
     }
-    const fn = firebase.functions().httpsCallable("inviaInvitoAzienda");
+    const fn = cloudFunctions().httpsCallable("inviaInvitoAzienda");
     const { data } = await fn({ aziendaId: azienda.id });
     btn.textContent = `✓ Inviato a ${data.email}`;
     btn.style.color = "var(--ball)";
@@ -1218,7 +1218,7 @@ async function onCreateAzienda(e) {
     // Collegamento/scollegamento del referente sempre tramite la Cloud
     // Function dedicata: verifica il ruolo e tiene sincronizzato
     // users/{uid}.aziendaId, mai una scrittura diretta da qui.
-    const collega = firebase.functions().httpsCallable("collegaReferenteAzienda");
+    const collega = cloudFunctions().httpsCallable("collegaReferenteAzienda");
     await collega({ aziendaId, uid: referenteUid });
     cancelEditAzienda();
     await loadAziende();
@@ -1254,7 +1254,7 @@ async function onImportSoci(e) {
 
   try {
     if (righe.length === 0) throw new Error("Incolla almeno una riga.");
-    const fn = firebase.functions().httpsCallable("importaSoci");
+    const fn = cloudFunctions().httpsCallable("importaSoci");
     const result = await fn({ righe });
     successEl.textContent = `Importati ${result.data.importate} soci`
       + (result.data.scartate ? ` (${result.data.scartate} righe scartate — controlla il formato).` : ".");

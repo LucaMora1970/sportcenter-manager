@@ -56,7 +56,7 @@ async function acquistaBuono() {
   mostraCaricamento("Creazione del pagamento in corso — non chiudere questa pagina…");
 
   try {
-    const fn = firebase.functions().httpsCallable("acquistaBuonoRegalo");
+    const fn = cloudFunctions().httpsCallable("acquistaBuonoRegalo");
     const result = await fn({ importo: importoSelezionato });
     window.location.href = result.data.paymentPageUrl;
   } catch (err) {
