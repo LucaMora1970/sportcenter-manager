@@ -75,7 +75,9 @@ function disciplinaLabel(id) {
 // Popolata da loadImpostazioni() (doc Firestore "impostazioni/generale",
 // configurabile da Configurazione). Ogni pagina che deve controllare
 // puoEliminareVoceDiario() deve chiamare `await loadImpostazioni()` a inizio pagina.
-let IMPOSTAZIONI = { minutiEliminazioneDiario: 15, festivi: [] };
+// chiusuraWeekend: orario "HH:MM" di chiusura sabato/domenica/festivi per
+// tennis, squash e padel — 20:30 è il default storico, prima hardcoded.
+let IMPOSTAZIONI = { minutiEliminazioneDiario: 15, festivi: [], chiusuraWeekend: "20:30" };
 
 async function loadImpostazioni() {
   // Se le firestore.rules per "impostazioni" non sono ancora state pubblicate
@@ -83,7 +85,7 @@ async function loadImpostazioni() {
   // hardcoded sopra invece di bloccare l'inizializzazione dell'intera pagina.
   try {
     const doc = await db.collection("impostazioni").doc("generale").get();
-    if (doc.exists) IMPOSTAZIONI = { minutiEliminazioneDiario: 15, festivi: [], ...doc.data() };
+    if (doc.exists) IMPOSTAZIONI = { minutiEliminazioneDiario: 15, festivi: [], chiusuraWeekend: "20:30", ...doc.data() };
   } catch (err) {
     console.warn("loadImpostazioni: uso il default, lettura fallita:", err.message);
   }

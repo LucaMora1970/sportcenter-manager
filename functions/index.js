@@ -117,6 +117,9 @@ function tokensService() {
 // va aggiornato anche qui.
 const OPEN = 8 * 60;
 const CLOSE = 23 * 60;
+// Default se impostazioni/generale.chiusuraWeekend non è ancora
+// configurato (Configurazione → Impostazioni generali) — stesso valore
+// storico di prima che diventasse modificabile.
 const CLOSE_WEEKEND = 20 * 60 + 30;
 const SLOT_FISSO_PRANZO = 12 * 60 + 15;
 const SLOT_FISSO_SERALE = 17 * 60 + 30; // 17:30, solo lun-ven, solo 90'
@@ -137,9 +140,24 @@ function orarioToMin(orario) {
   return h * 60 + m;
 }
 
-function chiusuraGiorno(dataIso, festivi) {
+// chiusuraWeekendMin: minuti di chiusura sabato/domenica/festivi, letti da
+// impostazioni/generale.chiusuraWeekend dal chiamante (vedi
+// chiusuraWeekendMinDa qui sotto) — parametro facoltativo con fallback al
+// vecchio valore fisso, per non rompere eventuali chiamanti che non lo
+// passano ancora.
+function chiusuraGiorno(dataIso, festivi, chiusuraWeekendMin = CLOSE_WEEKEND) {
   const giorno = new Date(dataIso + "T00:00:00").getDay();
-  return (giorno === 0 || giorno === 6 || (festivi || []).includes(dataIso)) ? CLOSE_WEEKEND : CLOSE;
+  return (giorno === 0 || giorno === 6 || (festivi || []).includes(dataIso)) ? chiusuraWeekendMin : CLOSE;
+}
+
+// Estrae festivi + chiusuraWeekend (in minuti) da un doc "generale" già
+// letto, con gli stessi default del fallback client (js/utils.js
+// IMPOSTAZIONI) se il campo non è ancora stato salvato.
+function festiviEChiusuraWeekend(generaleSnap) {
+  const generale = generaleSnap.exists ? generaleSnap.data() : {};
+  const festivi = generale.festivi || [];
+  const chiusuraWeekendMin = generale.chiusuraWeekend ? orarioToMin(generale.chiusuraWeekend) : CLOSE_WEEKEND;
+  return { festivi, chiusuraWeekendMin };
 }
 
 function feriale(dataIso, festivi) {
@@ -279,18 +297,18 @@ const ORARI_INIZIO_SQUASH = generaOrari(8 * 60 + 15, 21 * 60 + 45, 45); // 08:15
 
 // Elenco {inizio, fine} degli slot fissi prenotabili per la disciplina, o
 // [] se la disciplina non usa questo modello (es. padel, che resta sulla
-// griglia continua sopra). Sabato/domenica/festivi il centro chiude alle
-// 20:30 (CLOSE_WEEKEND, stessa soglia già usata dal padel) invece delle
-// 23:00 feriali — dataIso/festivi sono opzionali solo per non rompere
-// eventuali altri chiamanti che non conoscono ancora il giorno; passarli
-// sempre quando disponibili.
-function slotFissiDisciplina(disciplina, dataIso, festivi) {
+// griglia continua sopra). Sabato/domenica/festivi il centro chiude
+// all'orario configurabile in Configurazione (chiusuraWeekendMin, stessa
+// soglia già usata dal padel) invece delle 23:00 feriali — dataIso/festivi
+// sono opzionali solo per non rompere eventuali altri chiamanti che non
+// conoscono ancora il giorno; passarli sempre quando disponibili.
+function slotFissiDisciplina(disciplina, dataIso, festivi, chiusuraWeekendMin) {
   let slots;
   if (disciplina === "tennis") slots = SLOT_TENNIS.map(([inizio, fine]) => ({ inizio, fine }));
   else if (disciplina === "squash") slots = ORARI_INIZIO_SQUASH.map(inizio => ({ inizio, fine: addMinuti(inizio, 45) }));
   else return [];
   if (dataIso) {
-    const close = chiusuraGiorno(dataIso, festivi);
+    const close = chiusuraGiorno(dataIso, festivi, chiusuraWeekendMin);
     slots = slots.filter(s => orarioToMin(s.fine) <= close);
   }
   return slots;
@@ -451,8 +469,8 @@ exports.creaPrenotazionePubblica = onCall(
     // Giorni festivi (impostazioni/generale.festivi): contano come domenica
     // ai fini della tariffa e accorciano l'orario di chiusura come sabato/
     // domenica — un solo fetch, riusato per entrambi qui sotto.
-    const festivi = generaleSnap.exists ? (generaleSnap.data().festivi || []) : [];
-    const close = chiusuraGiorno(date, festivi);
+    const { festivi, chiusuraWeekendMin } = festiviEChiusuraWeekend(generaleSnap);
+    const close = chiusuraGiorno(date, festivi, chiusuraWeekendMin);
 
     // Pulizia best-effort delle "PENDING_PAYMENT" scadute (pagamento mai
     // concluso, es. abbandonato o webhook mai arrivato) — fuori dalla
@@ -665,8 +683,8 @@ exports.creaPrenotazioneOperatore = onCall(async (request) => {
   const court = courtId || COURT_ID;
   const startMin = orarioToMin(startTime);
   const generaleSnap = await db.collection("impostazioni").doc("generale").get();
-  const festivi = generaleSnap.exists ? (generaleSnap.data().festivi || []) : [];
-  const close = chiusuraGiorno(date, festivi);
+  const { festivi, chiusuraWeekendMin } = festiviEChiusuraWeekend(generaleSnap);
+  const close = chiusuraGiorno(date, festivi, chiusuraWeekendMin);
 
   // Pulizia best-effort delle scadute — fuori dalla transazione qui
   // sotto, è solo pulizia.
@@ -2231,8 +2249,8 @@ exports.creaPrenotazioneCampo = onCall(
       throw new HttpsError("invalid-argument", "Disciplina non gestita da questa funzione.");
     }
 
-    const festivi = generaleSnap.exists ? (generaleSnap.data().festivi || []) : [];
-    const slot = slotFissiDisciplina(disciplina, date, festivi).find(s => s.inizio === startTime);
+    const { festivi, chiusuraWeekendMin } = festiviEChiusuraWeekend(generaleSnap);
+    const slot = slotFissiDisciplina(disciplina, date, festivi, chiusuraWeekendMin).find(s => s.inizio === startTime);
     if (!slot) throw new HttpsError("invalid-argument", "Orario non valido per questa disciplina — verifica anche l'orario di chiusura del weekend.");
     const endTime = slot.fine;
 

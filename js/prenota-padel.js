@@ -19,7 +19,6 @@ const COURT_ID = "1";
 
 const OPEN = 8 * 60;
 const CLOSE = 23 * 60;
-const CLOSE_WEEKEND = 20 * 60 + 30;
 const BOUNDARY = 17 * 60;
 const SLOT_FISSO_PRANZO = 12 * 60 + 15;
 const SLOT_FISSO_SERALE = 17 * 60 + 30; // 17:30, solo lun-ven, solo 90'
@@ -76,10 +75,13 @@ function formatTimestamp(ts) {
 }
 
 // Un giorno festivo (IMPOSTAZIONI.festivi, js/utils.js) accorcia l'orario
-// come sabato/domenica — stesso criterio del server.
+// come sabato/domenica, fino a IMPOSTAZIONI.chiusuraWeekend (configurabile
+// da Configurazione → Impostazioni generali, default "20:30") — stesso
+// criterio del server.
 function chiusuraGiorno(dataIso) {
   const giorno = new Date(dataIso + "T00:00:00").getDay();
-  return (giorno === 0 || giorno === 6 || (IMPOSTAZIONI.festivi || []).includes(dataIso)) ? CLOSE_WEEKEND : CLOSE;
+  const chiusuraWeekend = orarioToMin(IMPOSTAZIONI.chiusuraWeekend || "20:30");
+  return (giorno === 0 || giorno === 6 || (IMPOSTAZIONI.festivi || []).includes(dataIso)) ? chiusuraWeekend : CLOSE;
 }
 
 // Lunedì-venerdì, festivi esclusi (stesso elenco usato per la chiusura ridotta).

@@ -208,6 +208,11 @@
           <textarea id="impostazioni-festivi" rows="6" placeholder="2026-01-01&#10;2026-04-18&#10;2026-08-01"></textarea>
         </div>
         <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Usati per le tariffe campi: un giorno festivo viene trattato come una domenica ai fini del prezzo, indipendentemente dal giorno della settimana in cui cade.</p>
+        <div class="field">
+          <label for="chiusura-weekend">Orario di chiusura sabato, domenica e festivi</label>
+          <input type="time" id="chiusura-weekend" required>
+        </div>
+        <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Vale per tennis, squash e padel: nessuno slot viene proposto o accettato oltre questo orario nel weekend/festivi. Nei giorni feriali il centro chiude sempre alle 23:00.</p>
         <div class="error-msg" id="impostazioni-error"></div>
         <button type="submit" class="btn btn-ghost" id="salva-impostazioni-btn">Salva</button>
       </form>

@@ -62,16 +62,20 @@ function slotFissiDisciplina(disciplina, dataIso) {
 // algoritmo del tabellone padel dedicato.
 const PADEL_OPEN = 8 * 60;
 const PADEL_CLOSE = 23 * 60;
-const PADEL_CLOSE_WEEKEND = 20 * 60 + 30;
 const PADEL_BOUNDARY = 17 * 60;
 const PADEL_SLOT_FISSO_PRANZO = 12 * 60 + 15;
 const PADEL_SLOT_FISSO_SERALE = 17 * 60 + 30;
 
 // Un giorno festivo (IMPOSTAZIONI.festivi, js/utils.js) accorcia l'orario
-// come sabato/domenica — stesso criterio delle altre pagine di prenotazione.
+// come sabato/domenica, fino a IMPOSTAZIONI.chiusuraWeekend (configurabile
+// da Configurazione → Impostazioni generali, default "20:30") — stesso
+// criterio delle altre pagine di prenotazione. Vale anche per tennis/
+// squash, che riusano questa stessa funzione (vedi slotFissiDisciplina
+// sopra), non solo per il padel nonostante il nome.
 function padelChiusuraGiorno(dataIso) {
   const giorno = new Date(dataIso + "T00:00:00").getDay();
-  return (giorno === 0 || giorno === 6 || (IMPOSTAZIONI.festivi || []).includes(dataIso)) ? PADEL_CLOSE_WEEKEND : PADEL_CLOSE;
+  const chiusuraWeekend = orarioToMin(IMPOSTAZIONI.chiusuraWeekend || "20:30");
+  return (giorno === 0 || giorno === 6 || (IMPOSTAZIONI.festivi || []).includes(dataIso)) ? chiusuraWeekend : PADEL_CLOSE;
 }
 function padelFeriale(dataIso) {
   const giorno = new Date(dataIso + "T00:00:00").getDay();
