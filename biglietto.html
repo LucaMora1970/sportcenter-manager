@@ -43,21 +43,26 @@
   .ticket-powered a { color: inherit; }
   #qr-container { display: flex; justify-content: center; margin: 16px 0; }
   #qr-container img, #qr-container canvas { border-radius: 8px; }
-  /* Azioni secondarie (torna alla prenotazione, calendario, ricevuta):
-     tre icone affiancate dentro la stessa barra sticky di "Salva
-     biglietto" (non più nel flusso della pagina) — sempre visibili
-     insieme al pulsante principale, senza mai competere con lui. */
-  .ticket-icon-actions { display: flex; justify-content: center; gap: 34px; margin-top: 12px; }
+  /* Azioni secondarie (inoltra, torna alla prenotazione, calendario,
+     ricevuta): quattro icone affiancate dentro la stessa barra sticky di
+     "Salva biglietto" (non più nel flusso della pagina) — sempre
+     visibili insieme al pulsante principale, senza mai competere con
+     lui. Gap ridotto rispetto a quando erano tre, per starci comodi
+     anche sui telefoni più piccoli. */
+  .ticket-icon-actions { display: flex; justify-content: center; gap: 22px; margin-top: 12px; }
   .ticket-icon-actions button,
   .ticket-icon-actions a {
     display: flex; flex-direction: column; align-items: center; gap: 4px;
     background: none; border: none; padding: 0; font-family: inherit; cursor: pointer;
-    color: var(--chalk-grey); font-size: 0.64rem; text-decoration: none;
+    color: var(--chalk-grey); font-size: 0.62rem; text-decoration: none; white-space: nowrap;
   }
   .ticket-icon-actions svg { width: 20px; height: 20px; }
   .ticket-icon-actions button:hover,
   .ticket-icon-actions a:hover { color: var(--line-white); }
   .ticket-icon-actions button:disabled { opacity: 0.45; cursor: default; }
+  @media (max-width: 360px) {
+    .ticket-icon-actions { gap: 14px; }
+  }
 
   /* Azione primaria sempre a portata di pollice, con le azioni
      secondarie subito sotto nella stessa barra: il resto del biglietto
@@ -80,7 +85,7 @@
   }
 
   /* Spazio sotto la card pari alla nuova altezza della barra sticky
-     (pulsante + 3 azioni secondarie), invece del 96px generico pensato
+     (pulsante + 4 azioni secondarie), invece del 96px generico pensato
      per la bottom-nav interna — qui altrimenti la barra coprirebbe il
      fondo del biglietto. */
   main { padding-bottom: 210px; }
@@ -137,6 +142,14 @@
   <div class="ticket-save-bar hidden" id="ticket-save-bar">
     <button type="button" class="btn btn-primary" id="salva-btn">Salva biglietto</button>
     <div class="ticket-icon-actions">
+      <button type="button" id="inoltra-btn" aria-label="Inoltra il biglietto">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 3v12"></path>
+          <path d="M8 7l4-4 4 4"></path>
+          <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"></path>
+        </svg>
+        <span>Inoltra</span>
+      </button>
       <a href="prenota-padel.html" id="torna-prenotazione-link" aria-label="Torna alla prenotazione">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <line x1="19" y1="12" x2="5" y2="12"></line>

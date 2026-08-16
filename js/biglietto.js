@@ -83,12 +83,13 @@ function renderBiglietto(data, token) {
   document.getElementById("ticket-save-bar").classList.remove("hidden");
 }
 
-// Ridisegna l'intero biglietto su <canvas> (logo + testi + QR) per
-// poterlo scaricare come immagine — nessun backend di generazione
-// immagini necessario, tutto lato client. Sempre in versione chiara
-// (indipendente dal tema scelto per la pagina): un'immagine chiara si
-// stampa meglio ed è più adatta a essere inoltrata/condivisa.
-async function salvaBigliettoPng() {
+// Ridisegna l'intero biglietto su <canvas> (logo + testi + QR) — nessun
+// backend di generazione immagini necessario, tutto lato client. Sempre
+// in versione chiara (indipendente dal tema scelto per la pagina): un'immagine
+// chiara si stampa meglio ed è più adatta a essere inoltrata/condivisa.
+// Riusata sia per il download ("Salva biglietto") sia per la condivisione
+// ("Inoltra", vedi condividiBiglietto) — stesso disegno, destinazione diversa.
+async function disegnaBigliettoCanvas() {
   const canvas = document.getElementById("ticket-canvas");
   const ctx = canvas.getContext("2d");
   const W = canvas.width, H = canvas.height;
@@ -170,10 +171,59 @@ async function salvaBigliettoPng() {
   ctx.fillText("Powered by Sport-OS", W / 2, qrTop + qrSize + 74);
   ctx.fillText("Copyright L.M. 2026", W / 2, qrTop + qrSize + 96);
 
+  return canvas;
+}
+
+async function salvaBigliettoPng() {
+  const canvas = await disegnaBigliettoCanvas();
   const link = document.createElement("a");
   link.download = `biglietto-${document.getElementById("t-codice").textContent}.png`;
   link.href = canvas.toDataURL("image/png");
   link.click();
+}
+
+// "Inoltra": apre il selettore nativo del telefono (WhatsApp, Mail, ecc.
+// — qualunque app di condivisione installata, non ne forziamo una) con
+// l'immagine del biglietto già pronta — così chi la riceve la vede
+// subito, senza dover prima aprire un link. Se il browser non supporta
+// la condivisione di file (soprattutto desktop) si scende di un
+// gradino: condivide solo il link; se nemmeno quello è supportato, lo
+// copia negli appunti. Lo stesso link/QR mostrato a più persone non è
+// un problema: il biglietto è di sola lettura, non si "consuma" a
+// guardarlo.
+async function condividiBiglietto(data, token) {
+  const btn = document.getElementById("inoltra-btn");
+  const testoOriginale = btn.querySelector("span").textContent;
+  const url = `${basePageUrl()}biglietto.html?t=${token}`;
+  const titolo = `${data.disciplina ? disciplinaLabelBiglietto(data.disciplina) : DISCIPLINA_FALLBACK} — ${document.getElementById("t-data").textContent} ${document.getElementById("t-orario").textContent}`;
+
+  try {
+    if (navigator.canShare) {
+      const canvas = await disegnaBigliettoCanvas();
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+      const file = new File([blob], `biglietto-${data.bookingCode || "prenotazione"}.png`, { type: "image/png" });
+      if (navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: titolo, text: `${titolo}\n${url}` });
+        return;
+      }
+    }
+    if (navigator.share) {
+      await navigator.share({ title: titolo, text: titolo, url });
+      return;
+    }
+    await navigator.clipboard.writeText(url);
+    btn.querySelector("span").textContent = "Link copiato";
+    setTimeout(() => { btn.querySelector("span").textContent = testoOriginale; }, 2000);
+  } catch (err) {
+    if (err.name === "AbortError") return; // utente ha chiuso il pannello di condivisione, non è un errore
+    try {
+      await navigator.clipboard.writeText(url);
+      btn.querySelector("span").textContent = "Link copiato";
+      setTimeout(() => { btn.querySelector("span").textContent = testoOriginale; }, 2000);
+    } catch {
+      alert("Impossibile condividere automaticamente. Link del biglietto:\n" + url);
+    }
+  }
 }
 
 // Ricevuta come vero PDF (jsPDF, via CDN in biglietto.html) — a differenza
@@ -316,6 +366,7 @@ function aggiungiAlCalendario(data) {
       setTimeout(() => { window.location.href = url; }, 600);
     }
   });
+  document.getElementById("inoltra-btn").addEventListener("click", () => condividiBiglietto(ticketData, token));
   document.getElementById("calendario-btn").addEventListener("click", () => aggiungiAlCalendario(ticketData));
   document.getElementById("ricevuta-btn").addEventListener("click", () => stampaRicevutaBiglietto(ticketData));
 
