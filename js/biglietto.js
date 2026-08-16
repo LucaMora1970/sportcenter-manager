@@ -24,6 +24,7 @@ const ATTESA_TRA_TENTATIVI_MS = 2500;
 const DISCIPLINA_FALLBACK = "Padel";
 
 let ticketData = null;
+let bigliettoSalvato = false; // true dopo il primo salvataggio (vedi salva-btn/torna-prenotazione-link)
 
 function formatDataBreve(dataStr) {
   const [y, m, d] = dataStr.split("-");
@@ -306,6 +307,7 @@ function aggiungiAlCalendario(data) {
   // il download su alcuni browser.
   document.getElementById("salva-btn").addEventListener("click", () => {
     salvaBigliettoPng();
+    bigliettoSalvato = true;
     if (DATI_CENTRO.homepage) {
       const url = /^https?:\/\//i.test(DATI_CENTRO.homepage) ? DATI_CENTRO.homepage : `https://${DATI_CENTRO.homepage}`;
       setTimeout(() => { window.location.href = url; }, 600);
@@ -315,14 +317,22 @@ function aggiungiAlCalendario(data) {
   document.getElementById("ricevuta-btn").addEventListener("click", () => stampaRicevutaBiglietto(ticketData));
 
   // Il biglietto è l'unica prova della prenotazione (nessun account, nessuna
-  // email automatica per ora) — chi torna al tabellone lo salva sempre,
-  // anche se non ha cliccato "Salva biglietto" da solo. Un piccolo ritardo
-  // prima di cambiare pagina: avviare un download e navigare nello stesso
-  // istante può interrompere il download su alcuni browser.
+  // email automatica per ora): chi torna al tabellone senza aver già
+  // cliccato "Salva biglietto" lo salva comunque prima di uscire dalla
+  // pagina. Se l'ha già salvato da solo, si naviga subito — un secondo
+  // download non richiesto sarebbe solo fastidioso. Il ritardo prima di
+  // cambiare pagina (solo nel caso si salvi qui) serve perché avviare un
+  // download e navigare nello stesso istante può interrompere il download
+  // su alcuni browser.
   document.getElementById("torna-prenotazione-link").addEventListener("click", (e) => {
     e.preventDefault();
     const link = e.currentTarget;
+    if (bigliettoSalvato) {
+      window.location.href = link.href;
+      return;
+    }
     salvaBigliettoPng();
+    bigliettoSalvato = true;
     link.textContent = "Biglietto salvato — torno alla prenotazione…";
     setTimeout(() => { window.location.href = link.href; }, 600);
   });

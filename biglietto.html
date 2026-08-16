@@ -43,8 +43,18 @@
   .ticket-powered a { color: inherit; }
   #qr-container { display: flex; justify-content: center; margin: 16px 0; }
   #qr-container img, #qr-container canvas { border-radius: 8px; }
-  .ticket-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
-  .ticket-actions .btn:disabled { opacity: 0.45; cursor: default; }
+  /* Azioni secondarie (calendario, ricevuta, torna alla prenotazione):
+     link piccoli e uniformi, mai in competizione visiva con "Salva
+     biglietto" — quella resta l'unica azione prominente della pagina. */
+  .ticket-secondary-actions { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-top: 22px; }
+  .ticket-secondary-actions button,
+  .ticket-secondary-actions a {
+    background: none; border: none; padding: 0; font-family: inherit;
+    color: var(--chalk-grey); font-size: 0.78rem; cursor: pointer; text-decoration: none;
+  }
+  .ticket-secondary-actions button:hover,
+  .ticket-secondary-actions a:hover { color: var(--line-white); text-decoration: underline; }
+  .ticket-secondary-actions button:disabled { opacity: 0.45; cursor: default; text-decoration: none; }
 
   /* Azione primaria sempre a portata di pollice: il resto del biglietto
      (QR compreso) può essere più alto dello schermo, ma "Salva" deve
@@ -108,14 +118,11 @@
         <div class="ticket-powered">Powered by <a href="https://sport-os.ch" target="_blank" rel="noopener">Sport-OS</a><br>Copyright L.M. 2026</div>
       </div>
 
-      <div class="ticket-actions">
-        <button type="button" class="btn btn-ghost" id="calendario-btn">Aggiungi al calendario</button>
-        <button type="button" class="btn btn-ghost" id="ricevuta-btn">Scarica ricevuta</button>
+      <div class="ticket-secondary-actions">
+        <button type="button" id="calendario-btn">Aggiungi al calendario</button>
+        <button type="button" id="ricevuta-btn">Scarica ricevuta (PDF)</button>
+        <a href="prenota-padel.html" id="torna-prenotazione-link">← Torna a Prenotazione Padel</a>
       </div>
-
-      <p style="text-align:center;margin-top:18px;">
-        <a href="prenota-padel.html" id="torna-prenotazione-link" style="color:var(--chalk-grey);font-size:0.78rem;">← Torna a Prenotazione Padel</a>
-      </p>
     </div>
 
   </main>
