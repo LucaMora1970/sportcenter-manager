@@ -228,13 +228,13 @@ async function render() {
       const nomeCampo = `Campo ${campo.numero}${campo.posizione ? ` (${campo.posizione})` : ""}`;
       let timelineHtml;
       if (campoChiuso(campo, state.data)) {
-        timelineHtml = `<div class="timeline"><div class="seg chiuso">Chiuso</div></div>`;
+        timelineHtml = `<div class="tg-timeline"><div class="tg-seg chiuso">Chiuso</div></div>`;
       } else {
         const segs = segmentiCampo(campo, bookingsGiorno).map(s => {
-          if (s.tipo === "free") return `<div class="seg free" style="flex-grow:${s.durata}"></div>`;
-          return `<div class="seg occ ${s.classe}" style="flex-grow:${s.durata}" title="${escapeHtml(s.testo)}"><span>${escapeHtml(s.testo)}</span></div>`;
+          if (s.tipo === "free") return `<div class="tg-seg free" style="flex-grow:${s.durata}"></div>`;
+          return `<div class="tg-seg occ ${s.classe}" style="flex-grow:${s.durata}" title="${escapeHtml(s.testo)}"><span>${escapeHtml(s.testo)}</span></div>`;
         }).join("");
-        timelineHtml = `<div class="timeline">${segs}</div>`;
+        timelineHtml = `<div class="tg-timeline">${segs}</div>`;
       }
       row.innerHTML = `<div class="court-name">${escapeHtml(nomeCampo)}</div>${timelineHtml}`;
       group.appendChild(row);

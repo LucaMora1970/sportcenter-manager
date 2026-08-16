@@ -52,19 +52,19 @@
     flex: 0 0 130px; display: flex; align-items: center; font-size: 0.82rem; font-weight: 600;
     color: var(--line-white, inherit);
   }
-  .timeline {
+  .tg-timeline {
     flex: 1; display: flex; height: 42px; border-radius: 8px; overflow: hidden;
     background: var(--court-blue-950); border: 1px solid var(--court-blue-700);
   }
-  .seg { display: flex; align-items: center; overflow: hidden; }
-  .seg.free { background: var(--court-blue-950); }
-  .seg.occ {
+  .tg-seg { display: flex; align-items: center; overflow: hidden; }
+  .tg-seg.free { background: var(--court-blue-950); }
+  .tg-seg.occ {
     background: var(--court-blue-800); border-left: 2px solid var(--court-blue-700); border-right: 2px solid var(--court-blue-700);
     padding: 0 8px; font-size: 0.7rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  .seg.occ.tipo-block { background: color-mix(in srgb, var(--danger) 22%, var(--court-blue-800)); }
-  .seg.occ.tipo-exempt { background: color-mix(in srgb, #9e4a7f 30%, var(--court-blue-800)); }
-  .seg.chiuso {
+  .tg-seg.occ.tipo-block { background: color-mix(in srgb, var(--danger) 22%, var(--court-blue-800)); }
+  .tg-seg.occ.tipo-exempt { background: color-mix(in srgb, #9e4a7f 30%, var(--court-blue-800)); }
+  .tg-seg.chiuso {
     flex: 1; display: flex; align-items: center; justify-content: center;
     color: var(--chalk-grey-dim); font-size: 0.76rem; letter-spacing: 0.04em;
   }
@@ -86,7 +86,10 @@
     .court-name { flex-basis: 88px; font-size: 0.72rem; }
     .hour-ticks { margin-left: 98px; }
     .now-line { left: calc(98px + (100% - 98px) * var(--now-pct)); }
-    .seg.occ span { display: none; } /* su schermi stretti solo il colore, niente testo troncato illeggibile */
+    .tg-seg.occ span { display: none; } /* su schermi stretti solo il colore, niente testo troncato illeggibile */
+    /* 15 etichette (08:00-22:00) non ci stanno su un telefono senza
+       accavallarsi — una sì e una no lasciano abbastanza spazio. */
+    .hour-ticks span:nth-child(even) { visibility: hidden; }
   }
 </style>
 </head>
