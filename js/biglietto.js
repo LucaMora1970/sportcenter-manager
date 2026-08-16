@@ -31,6 +31,81 @@ function formatDataBreve(dataStr) {
   return `${d}.${m}.${y}`;
 }
 
+// Stessa tecnica "tenta come UTC, correggi per lo scarto CET/CEST" già
+// usata lato server (functions/index.js) — qui serve solo per mostrare
+// un'anteprima della scadenza: l'autorizzazione vera resta sempre il
+// controllo server-side in annullaPrenotazioneCliente.
+function zurigoAEpoch(dataIso, orario) {
+  const tentativo = new Date(`${dataIso}T${orario}:00Z`).getTime();
+  const parti = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Zurich",
+      year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false
+    }).formatToParts(new Date(tentativo)).map(p => [p.type, p.value])
+  );
+  const comeVisto = new Date(`${parti.year}-${parti.month}-${parti.day}T${parti.hour}:${parti.minute}:00Z`).getTime();
+  return tentativo + (tentativo - comeVisto);
+}
+
+function formatScadenza(epochMs) {
+  const parti = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Zurich",
+      year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false
+    }).formatToParts(new Date(epochMs)).map(p => [p.type, p.value])
+  );
+  return `${parti.day}.${parti.month}.${parti.year} alle ${parti.hour}:${parti.minute}`;
+}
+
+// Mostra il termine di annullamento (discipline/{id}.oreAnnullamento,
+// default 24h) e il pulsante solo se si è ancora in tempo — pura
+// anteprima lato client, il controllo vero è sempre server-side.
+function aggiornaAnnullamento(data) {
+  const rigaEl = document.getElementById("t-annulla-row");
+  const scadenzaEl = document.getElementById("t-annulla-scadenza");
+  const boxEl = document.getElementById("annulla-box");
+
+  if (!data.date || !data.startTime) {
+    rigaEl.classList.add("hidden");
+    boxEl.classList.add("hidden");
+    return;
+  }
+
+  const disc = DISCIPLINE.find(d => d.id === data.disciplina);
+  const oreAnnullamento = (disc && disc.oreAnnullamento != null) ? disc.oreAnnullamento : 24;
+  const scadenzaEpoch = zurigoAEpoch(data.date, data.startTime) - oreAnnullamento * 3600000;
+  const entroTermine = Date.now() < scadenzaEpoch;
+
+  rigaEl.classList.remove("hidden");
+  scadenzaEl.textContent = entroTermine ? formatScadenza(scadenzaEpoch) : "Termine scaduto";
+  boxEl.classList.toggle("hidden", !entroTermine);
+}
+
+async function onAnnullaBiglietto(token) {
+  if (!confirm("Annullare questa prenotazione? Riceverai un credito da usare per una prenotazione futura — l'operazione non è reversibile.")) return;
+
+  const btn = document.getElementById("annulla-btn");
+  const errorEl = document.getElementById("annulla-error");
+  errorEl.textContent = "";
+  btn.disabled = true;
+  btn.textContent = "Annullamento in corso…";
+
+  try {
+    const fn = cloudFunctions().httpsCallable("annullaPrenotazioneCliente");
+    const { data: esito } = await fn({ token });
+    document.getElementById("annulla-box").classList.add("hidden");
+    document.getElementById("ticket-save-bar").classList.add("hidden");
+    document.querySelector(".ticket-status").textContent = "Prenotazione annullata";
+    document.getElementById("annulla-esito-testo").textContent =
+      `Codice credito: ${esito.creditCode} — CHF ${esito.importo.toFixed(2)}. Comunicalo al circolo per usarlo su una prenotazione futura.`;
+    document.getElementById("annulla-esito").classList.remove("hidden");
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+    btn.disabled = false;
+    btn.textContent = "Annulla prenotazione";
+  }
+}
+
 function formatTimestamp(ts) {
   if (!ts || typeof ts.toDate !== "function") return "—";
   const d = ts.toDate();
@@ -314,6 +389,7 @@ function aggiungiAlCalendario(data) {
 (async function init() {
   await loadDatiCentro();
   await loadImpostazioni();
+  await loadDiscipline(); // serve a leggere discipline/{id}.oreAnnullamento per l'anteprima del termine
   document.getElementById("centro-kicker").textContent = DATI_CENTRO.nome;
   document.getElementById("ticket-centro-nome").textContent = DATI_CENTRO.nome;
   document.getElementById("ticket-centro-dettagli").textContent =
@@ -335,6 +411,8 @@ function aggiungiAlCalendario(data) {
 
   ticketData = data;
   renderBiglietto(data, token);
+  aggiornaAnnullamento(data);
+  document.getElementById("annulla-btn").addEventListener("click", () => onAnnullaBiglietto(token));
 
   // Il link "torna alla prenotazione" (ora un'icona, vedi biglietto.html)
   // deve puntare alla pagina giusta: il padel ha ancora la sua pagina

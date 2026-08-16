@@ -282,6 +282,7 @@ function startEditDisciplina(item) {
   document.getElementById("new-disciplina-id").disabled = true;
   document.getElementById("new-disciplina-nome").value = item.nome || "";
   document.getElementById("new-disciplina-ordine").value = item.ordine != null ? item.ordine : "";
+  document.getElementById("new-disciplina-ore-annullamento").value = item.oreAnnullamento != null ? item.oreAnnullamento : "";
   document.getElementById("create-disciplina-btn").textContent = "Salva modifiche";
   document.getElementById("cancel-edit-disciplina-btn").classList.remove("hidden");
   document.getElementById("new-disciplina-form").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -306,14 +307,16 @@ async function onCreateDisciplina(e) {
   const nome = document.getElementById("new-disciplina-nome").value.trim();
   const ordineRaw = document.getElementById("new-disciplina-ordine").value;
   const ordine = ordineRaw !== "" ? parseInt(ordineRaw, 10) : 99;
+  const oreAnnullamentoRaw = document.getElementById("new-disciplina-ore-annullamento").value;
+  const oreAnnullamento = oreAnnullamentoRaw !== "" ? parseInt(oreAnnullamentoRaw, 10) : null;
 
   try {
     if (!nome) throw new Error("Inserisci un nome.");
     if (editingDisciplinaId) {
-      await db.collection("discipline").doc(editingDisciplinaId).update({ nome, ordine });
+      await db.collection("discipline").doc(editingDisciplinaId).update({ nome, ordine, oreAnnullamento });
     } else {
       if (!id) throw new Error("Inserisci un ID disciplina (es. mental-coach).");
-      await db.collection("discipline").doc(id).set({ nome, ordine, attivo: true });
+      await db.collection("discipline").doc(id).set({ nome, ordine, oreAnnullamento, attivo: true });
     }
     cancelEditDisciplina();
     await loadDisciplineList();

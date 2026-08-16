@@ -199,6 +199,26 @@ function oraLocaleZurigo() {
   return { dataIso: `${parti.year}-${parti.month}-${parti.day}`, minuti: parseInt(parti.hour, 10) * 60 + parseInt(parti.minute, 10) };
 }
 
+// Converte una data+ora locale svizzera (dataIso "YYYY-MM-DD", orario
+// "HH:MM") nell'istante UTC corrispondente (CET/CEST) — a differenza di
+// oraLocaleZurigo() (pensata solo per "adesso"), qui serve confrontare
+// "adesso" con l'inizio di una prenotazione che può cadere in un giorno
+// diverso da oggi (termine di annullamento). Tecnica standard "tenta
+// come UTC, guarda che ora locale ne risulterebbe, correggi per lo
+// scarto": un solo giro basta perché lo scarto CET/CEST è un numero
+// intero di ore, mai frazionario.
+function zurigoAEpoch(dataIso, orario) {
+  const tentativo = new Date(`${dataIso}T${orario}:00Z`).getTime();
+  const parti = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Zurich",
+      year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false
+    }).formatToParts(new Date(tentativo)).map(p => [p.type, p.value])
+  );
+  const comeVisto = new Date(`${parti.year}-${parti.month}-${parti.day}T${parti.hour}:${parti.minute}:00Z`).getTime();
+  return tentativo + (tentativo - comeVisto);
+}
+
 // Rifiuta uno slot di oggi già iniziato/passato — mai fidarsi del client,
 // stesso principio già applicato a prezzo e slot.
 function eOrmaiPassato(dataIso, startMin) {
@@ -1017,36 +1037,17 @@ exports.webhookPostFinance = onRequest(
   }
 );
 
-// ---------- 3. Annulla e converti in credito (pannello operatore) ----------
+// ---------- 3. Annulla e converti in credito ----------
 //
-// Solo per chi gestisce le prenotazioni: trasforma una prenotazione
-// confermata in un credito spendibile su una prenotazione futura, invece
-// di un rimborso diretto. L'importo pagato si recupera da "payments"
-// (Admin SDK, bypassa le regole — non serve un riferimento pubblico).
-exports.annullaEConvertiInCredito = onCall(async (request) => {
-  if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
-
-  const userSnap = await db.collection("users").doc(request.auth.uid).get();
-  const userData = userSnap.exists ? userSnap.data() : {};
-  let permessi = [];
-  if (userData.ruoloId) {
-    const roleSnap = await db.collection("roles").doc(userData.ruoloId).get();
-    if (roleSnap.exists) permessi = roleSnap.data().permessi || [];
-  }
-  const autorizzato = permessi.includes("prenotazioni:gestisci") || permessi.includes("*");
-  if (!autorizzato) throw new HttpsError("permission-denied", "Permesso mancante.");
-
-  const { bookingId } = request.data || {};
-  if (!bookingId) throw new HttpsError("invalid-argument", "bookingId mancante.");
-
+// Trasforma una prenotazione confermata in un credito spendibile su una
+// prenotazione futura, invece di un rimborso diretto. L'importo pagato
+// si recupera da "payments" (Admin SDK, bypassa le regole — non serve un
+// riferimento pubblico). Condivisa da due chiamanti: il pannello
+// operatore (senza limiti di tempo, qualunque prenotazione) e
+// l'annullamento self-service del cliente entro il termine di preavviso
+// (che aggiunge il proprio controllo PRIMA di chiamare questa).
+async function emettiCreditoAnnullamento(bookingId) {
   const bookingRef = db.collection("bookings").doc(bookingId);
-  const bookingSnap = await bookingRef.get();
-  if (!bookingSnap.exists) throw new HttpsError("not-found", "Prenotazione non trovata.");
-  const stato = bookingSnap.data().status;
-  if (stato !== "CONFIRMED" && stato !== "COMPLETED") {
-    throw new HttpsError("failed-precondition", `Impossibile convertire in credito una prenotazione in stato ${stato}.`);
-  }
-
   const paymentsSnap = await db.collection("payments").where("bookingId", "==", bookingId).get();
   const importoPagato = paymentsSnap.docs.reduce((somma, d) => somma + (d.data().amount || 0), 0);
   if (importoPagato <= 0) {
@@ -1068,6 +1069,74 @@ exports.annullaEConvertiInCredito = onCall(async (request) => {
   });
 
   return { creditCode, importo: importoPagato };
+}
+
+// Pannello operatore: nessun limite di tempo, chi gestisce le
+// prenotazioni può annullare in qualsiasi momento.
+exports.annullaEConvertiInCredito = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+
+  const userSnap = await db.collection("users").doc(request.auth.uid).get();
+  const userData = userSnap.exists ? userSnap.data() : {};
+  let permessi = [];
+  if (userData.ruoloId) {
+    const roleSnap = await db.collection("roles").doc(userData.ruoloId).get();
+    if (roleSnap.exists) permessi = roleSnap.data().permessi || [];
+  }
+  const autorizzato = permessi.includes("prenotazioni:gestisci") || permessi.includes("*");
+  if (!autorizzato) throw new HttpsError("permission-denied", "Permesso mancante.");
+
+  const { bookingId } = request.data || {};
+  if (!bookingId) throw new HttpsError("invalid-argument", "bookingId mancante.");
+
+  const bookingSnap = await db.collection("bookings").doc(bookingId).get();
+  if (!bookingSnap.exists) throw new HttpsError("not-found", "Prenotazione non trovata.");
+  const stato = bookingSnap.data().status;
+  if (stato !== "CONFIRMED" && stato !== "COMPLETED") {
+    throw new HttpsError("failed-precondition", `Impossibile convertire in credito una prenotazione in stato ${stato}.`);
+  }
+
+  return await emettiCreditoAnnullamento(bookingId);
+});
+
+// Self-service dal biglietto: il cliente conosce il token (stessa
+// autorizzazione implicita già usata per leggere bookingTickets/{token},
+// nessun login) e può annullare da solo SOLO entro il preavviso minimo
+// della disciplina (discipline/{id}.oreAnnullamento, configurabile in
+// Configurazione → Discipline, default 24h se non impostato). Il
+// controllo è sempre server-side: il countdown mostrato sul biglietto è
+// solo un'anteprima, mai l'autorizzazione vera.
+exports.annullaPrenotazioneCliente = onCall(async (request) => {
+  const { token } = request.data || {};
+  if (!token) throw new HttpsError("invalid-argument", "Token mancante.");
+
+  const ticketSnap = await db.collection("bookingTickets").doc(token).get();
+  if (!ticketSnap.exists) throw new HttpsError("not-found", "Biglietto non trovato.");
+  const ticket = ticketSnap.data();
+
+  const bookingSnap = await db.collection("bookings").doc(ticket.bookingId).get();
+  if (!bookingSnap.exists) throw new HttpsError("not-found", "Prenotazione non trovata.");
+  const booking = bookingSnap.data();
+
+  if (booking.type && booking.type !== "CUSTOMER") {
+    throw new HttpsError("failed-precondition", "Questa prenotazione non è annullabile da qui.");
+  }
+  if (booking.status !== "CONFIRMED") {
+    throw new HttpsError("failed-precondition", "Questa prenotazione non è (più) annullabile.");
+  }
+
+  const discSnap = ticket.disciplina ? await db.collection("discipline").doc(ticket.disciplina).get() : null;
+  const oreAnnullamento = (discSnap && discSnap.exists && discSnap.data().oreAnnullamento != null) ? discSnap.data().oreAnnullamento : 24;
+
+  const oreRimanenti = (zurigoAEpoch(booking.date, booking.startTime) - Date.now()) / 3600000;
+  if (oreRimanenti < oreAnnullamento) {
+    throw new HttpsError(
+      "failed-precondition",
+      `Troppo tardi per annullare — serviva farlo entro ${oreAnnullamento} ore prima dell'inizio. Contatta il circolo.`
+    );
+  }
+
+  return await emettiCreditoAnnullamento(ticket.bookingId);
 });
 
 // ---------- 4. Buoni regalo ----------

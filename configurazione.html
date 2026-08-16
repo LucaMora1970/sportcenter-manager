@@ -246,6 +246,11 @@
           <label for="new-disciplina-ordine">Ordine (numero più basso = più in alto nell'elenco)</label>
           <input type="number" id="new-disciplina-ordine" step="1" placeholder="es. 3">
         </div>
+        <div class="field">
+          <label for="new-disciplina-ore-annullamento">Ore minime di preavviso per annullare una prenotazione (facoltativo, default 24)</label>
+          <input type="number" id="new-disciplina-ore-annullamento" min="0" step="1" placeholder="es. 24">
+        </div>
+        <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Vale solo per le discipline prenotabili (tennis, padel, squash) — il cliente può annullare da solo dal biglietto entro questo termine, ottenendo un credito automatico.</p>
         <div class="error-msg" id="new-disciplina-error"></div>
         <button type="submit" class="btn btn-ghost" id="create-disciplina-btn">+ Aggiungi disciplina</button>
         <button type="button" class="btn btn-ghost hidden" id="cancel-edit-disciplina-btn" style="margin-top:10px;">Annulla modifica</button>

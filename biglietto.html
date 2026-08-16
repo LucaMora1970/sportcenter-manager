@@ -129,11 +129,22 @@
           <div class="ticket-row"><span class="k">Campo</span><span class="v" id="t-campo">—</span></div>
           <div class="ticket-row"><span class="k">Orario</span><span class="v" id="t-orario">—</span></div>
           <div class="ticket-row"><span class="k">Pagato</span><span class="v" id="t-prezzo">—</span></div>
+          <div class="ticket-row" id="t-annulla-row"><span class="k">Annullabile fino a</span><span class="v" id="t-annulla-scadenza">—</span></div>
         </div>
         <div class="ticket-code" id="t-codice">—</div>
         <div id="qr-container"></div>
         <div class="ticket-timestamp" id="t-timestamp">—</div>
         <div class="ticket-powered">Powered by <a href="https://sport-os.ch" target="_blank" rel="noopener">Sport-OS</a><br>Copyright L.M. 2026</div>
+      </div>
+
+      <div id="annulla-box" class="hidden" style="text-align:center;margin-top:16px;">
+        <button type="button" class="btn btn-ghost btn-danger" id="annulla-btn" style="width:auto;padding:9px 16px;font-size:0.8rem;">Annulla prenotazione</button>
+        <div class="error-msg" id="annulla-error"></div>
+      </div>
+
+      <div id="annulla-esito" class="hidden empty-state" style="margin-top:16px;">
+        <div class="display">Prenotazione annullata</div>
+        <p id="annulla-esito-testo"></p>
       </div>
     </div>
 
@@ -187,6 +198,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
 <script src="js/firebase-config.js"></script>
 <script src="js/utils.js"></script>
 <script src="js/biglietto.js"></script>
