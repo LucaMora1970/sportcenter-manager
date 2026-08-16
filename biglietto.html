@@ -44,21 +44,36 @@
   #qr-container { display: flex; justify-content: center; margin: 16px 0; }
   #qr-container img, #qr-container canvas { border-radius: 8px; }
   /* Azioni secondarie (calendario, ricevuta, torna alla prenotazione):
-     link piccoli e uniformi, mai in competizione visiva con "Salva
-     biglietto" — quella resta l'unica azione prominente della pagina. */
-  .ticket-secondary-actions { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-top: 22px; }
-  .ticket-secondary-actions button,
-  .ticket-secondary-actions a {
+     dentro la stessa barra sticky di "Salva biglietto" (non più nel
+     flusso della pagina) — sempre visibili insieme al pulsante
+     principale, senza mai competere con lui. Calendario/ricevuta come
+     icone affiancate (più compatte di due righe di testo), "torna alla
+     prenotazione" resta un link testuale sotto perché è di natura
+     diversa (navigazione, non esportazione di un file). */
+  .ticket-secondary-actions { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 12px; }
+  .ticket-secondary-actions > a {
     background: none; border: none; padding: 0; font-family: inherit;
     color: var(--chalk-grey); font-size: 0.78rem; cursor: pointer; text-decoration: none;
   }
-  .ticket-secondary-actions button:hover,
-  .ticket-secondary-actions a:hover { color: var(--line-white); text-decoration: underline; }
-  .ticket-secondary-actions button:disabled { opacity: 0.45; cursor: default; text-decoration: none; }
+  .ticket-secondary-actions > a:hover { color: var(--line-white); text-decoration: underline; }
 
-  /* Azione primaria sempre a portata di pollice: il resto del biglietto
-     (QR compreso) può essere più alto dello schermo, ma "Salva" deve
-     restare visibile senza dover scorrere. */
+  .ticket-icon-actions { display: flex; gap: 36px; }
+  .ticket-icon-actions button {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    background: none; border: none; padding: 0; font-family: inherit; cursor: pointer;
+    color: var(--chalk-grey); font-size: 0.64rem;
+  }
+  .ticket-icon-actions button svg { width: 20px; height: 20px; }
+  .ticket-icon-actions button:hover { color: var(--line-white); }
+  .ticket-icon-actions button:disabled { opacity: 0.45; cursor: default; }
+
+  /* Azione primaria sempre a portata di pollice, con le azioni
+     secondarie subito sotto nella stessa barra: il resto del biglietto
+     (QR compreso) può essere più alto dello schermo, ma "Salva" (e ora
+     anche calendario/ricevuta/torna alla prenotazione) devono restare
+     visibili senza dover scorrere. La barra è più alta di quando
+     conteneva solo il pulsante — vedi il padding-bottom aggiunto a
+     main più sotto, altrimenti coprirebbe il fondo della card. */
   .ticket-save-bar {
     position: fixed;
     left: 50%;
@@ -66,11 +81,17 @@
     transform: translateX(-50%);
     width: 100%;
     max-width: 480px;
-    padding: 12px var(--gap) calc(12px + env(safe-area-inset-bottom));
+    padding: 14px var(--gap) calc(14px + env(safe-area-inset-bottom));
     background: var(--court-blue-950);
     border-top: 1px solid var(--court-blue-700);
     z-index: 10;
   }
+
+  /* Spazio sotto la card pari alla nuova altezza della barra sticky
+     (pulsante + 3 azioni secondarie), invece del 96px generico pensato
+     per la bottom-nav interna — qui altrimenti la barra coprirebbe il
+     fondo del biglietto. */
+  main { padding-bottom: 210px; }
 </style>
 </head>
 <body>
@@ -117,18 +138,35 @@
         <div class="ticket-timestamp" id="t-timestamp">—</div>
         <div class="ticket-powered">Powered by <a href="https://sport-os.ch" target="_blank" rel="noopener">Sport-OS</a><br>Copyright L.M. 2026</div>
       </div>
-
-      <div class="ticket-secondary-actions">
-        <button type="button" id="calendario-btn">Aggiungi al calendario</button>
-        <button type="button" id="ricevuta-btn">Scarica ricevuta (PDF)</button>
-        <a href="prenota-padel.html" id="torna-prenotazione-link">← Torna a Prenotazione Padel</a>
-      </div>
     </div>
 
   </main>
 
   <div class="ticket-save-bar hidden" id="ticket-save-bar">
     <button type="button" class="btn btn-primary" id="salva-btn">Salva biglietto</button>
+    <div class="ticket-secondary-actions">
+      <div class="ticket-icon-actions">
+        <button type="button" id="calendario-btn" aria-label="Aggiungi al calendario">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="5" width="18" height="16" rx="2"></rect>
+            <line x1="3" y1="9" x2="21" y2="9"></line>
+            <line x1="8" y1="3" x2="8" y2="7"></line>
+            <line x1="16" y1="3" x2="16" y2="7"></line>
+          </svg>
+          <span>Calendario</span>
+        </button>
+        <button type="button" id="ricevuta-btn" aria-label="Scarica ricevuta PDF">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"></path>
+            <polyline points="15 2 15 7 20 7"></polyline>
+            <line x1="8" y1="13" x2="16" y2="13"></line>
+            <line x1="8" y1="17" x2="13" y2="17"></line>
+          </svg>
+          <span>Ricevuta PDF</span>
+        </button>
+      </div>
+      <a href="prenota-padel.html" id="torna-prenotazione-link">← Torna a Prenotazione Padel</a>
+    </div>
   </div>
 
 </div>
