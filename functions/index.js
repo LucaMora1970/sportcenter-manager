@@ -29,6 +29,7 @@
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
 const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
+const { setGlobalOptions } = require("firebase-functions/v2");
 const { defineSecret } = require("firebase-functions/params");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
@@ -44,6 +45,15 @@ const {
 // rimosso (o passato a "USE_CONFIGURATION") solo quando si è pronti a
 // incassare pagamenti veri.
 const FORZA_AMBIENTE_TEST = true;
+
+// Migrazione regione (us-central1 → europe-west6, vedi runbook "Migrazione
+// a Zurigo"): ogni funzione v2 viene deployata su ENTRAMBE le regioni
+// finché il client non è passato del tutto alla nuova — verificato con un
+// deploy di prova su richiediResetPassword che questo non cancella nulla
+// di esistente. Quando la migrazione sarà confermata stabile, questo
+// array va ridotto a solo "europe-west6" (fase di pulizia, con conferma
+// esplicita per eliminare le funzioni us-central1 rimaste orfane).
+setGlobalOptions({ region: ["us-central1", "europe-west6"] });
 
 initializeApp();
 const db = getFirestore();
