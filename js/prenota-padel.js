@@ -473,4 +473,12 @@ function render() {
   });
 
   ascoltaPrenotazioniGiorno();
+
+  // Stesso motivo di prenota-campo.js: senza un refresh periodico, chi
+  // lascia la pagina aperta vede ancora come "libero" un orario ormai
+  // passato — render() ricalcola anche l'orario corrente.
+  setInterval(render, 60000);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) render();
+  });
 })();

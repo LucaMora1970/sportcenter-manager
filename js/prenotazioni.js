@@ -1078,6 +1078,17 @@ requireAuth(async (profile) => {
   }
 
   await caricaGiorno();
+
+  // Stesso motivo di prenota-campo.js/prenota-padel.js: senza un refresh
+  // periodico, chi lascia la pagina aperta vede ancora selezionabile nel
+  // picker un orario ormai passato. Solo renderPicker() (ricalcolo
+  // locale con i dati già in state.bookingsMinuti, nessuna nuova lettura
+  // Firestore) — non ricarichiamo l'intera lista del giorno ogni minuto,
+  // quella resta aggiornata al cambio giorno/azione come già oggi.
+  setInterval(renderPicker, 60000);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) renderPicker();
+  });
 });
 
 document.getElementById("logout-link").addEventListener("click", (e) => {

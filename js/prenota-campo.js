@@ -786,4 +786,18 @@ async function caricaProfiliDispositivo() {
   });
 
   ascoltaPrenotazioniGiorno();
+
+  // Senza questo, chi lascia la pagina aperta continua a vedere come
+  // "libero" un orario ormai passato finché non arriva un evento
+  // Firestore (nuova prenotazione) o tocca qualcosa — render() ricalcola
+  // anche l'orario corrente (vedi slotsLiberi), quindi basta richiamarla.
+  // Salta il refresh se un pannello di prenotazione è aperto, per non
+  // cancellare a qualcuno un nome appena digitato.
+  const refreshSePossibile = () => {
+    if (!document.querySelector(".prenota-panel-slot:not(.hidden)")) render();
+  };
+  setInterval(refreshSePossibile, 60000);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) refreshSePossibile();
+  });
 })();
