@@ -164,33 +164,68 @@ async function salvaBigliettoPng() {
   ctx.font = "18px Arial";
   ctx.fillText(document.getElementById("t-timestamp").textContent, W / 2, qrTop + qrSize + 40);
 
+  ctx.fillStyle = "#8a99a3";
+  ctx.font = "15px Arial";
+  ctx.fillText("Powered by Sport-OS", W / 2, qrTop + qrSize + 74);
+  ctx.fillText("Copyright L.M. 2026", W / 2, qrTop + qrSize + 96);
+
   const link = document.createElement("a");
   link.download = `biglietto-${document.getElementById("t-codice").textContent}.png`;
   link.href = canvas.toDataURL("image/png");
   link.click();
 }
 
-// Ricevuta stampabile — stesso schema #print-area + window.print() già
-// usato per le liste corsi (nessuna libreria PDF: "Salva come PDF" del
-// browser). Il circolo non è soggetto IVA: solo la dicitura, niente
-// scorporo/numerazione fiscale.
+// Ricevuta come vero PDF (jsPDF, via CDN in biglietto.html) — a differenza
+// del biglietto (PNG, pensato per essere aperto/mostrato al volo su
+// telefono) questa è un documento contabile da archiviare/inoltrare,
+// dove il formato PDF è quello atteso. Un solo download diretto, niente
+// dialogo di stampa del browser. Il circolo non è soggetto IVA: solo la
+// dicitura, niente scorporo/numerazione fiscale.
 function stampaRicevutaBiglietto(data) {
-  document.getElementById("print-area").innerHTML = `
-    ${intestazioneStampaHtml()}
-    <h2 style="margin:16px 0 10px;">Ricevuta prenotazione</h2>
-    <table>
-      <tbody>
-        <tr><th>Data</th><td>${escapeHtml(formatDataBreve(data.date))}</td></tr>
-        <tr><th>Disciplina</th><td>${escapeHtml(document.getElementById("t-disciplina").textContent)}</td></tr>
-        <tr><th>Campo</th><td>${escapeHtml(document.getElementById("t-campo").textContent)}</td></tr>
-        <tr><th>Orario</th><td>${escapeHtml(document.getElementById("t-orario").textContent)}</td></tr>
-        <tr><th>Codice</th><td>${escapeHtml(data.bookingCode || "—")}</td></tr>
-        <tr><th>Importo</th><td>CHF ${(data.price || 0).toFixed(2)}</td></tr>
-      </tbody>
-    </table>
-    <p style="margin-top:16px;font-size:0.85rem;">Non soggetto ad IVA.</p>
-  `;
-  window.print();
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const marginX = 20;
+  let y = 20;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(14);
+  doc.text(DATI_CENTRO.nome || "", marginX, y);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  Object.values(datiCentroRighe()).filter(Boolean).forEach(riga => {
+    y += 6;
+    doc.text(riga, marginX, y);
+  });
+
+  y += 14;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(16);
+  doc.text("Ricevuta prenotazione", marginX, y);
+
+  const righe = [
+    ["Data", formatDataBreve(data.date)],
+    ["Disciplina", document.getElementById("t-disciplina").textContent],
+    ["Campo", document.getElementById("t-campo").textContent],
+    ["Orario", document.getElementById("t-orario").textContent],
+    ["Codice", data.bookingCode || "—"],
+    ["Importo", `CHF ${(data.price || 0).toFixed(2)}`]
+  ];
+  doc.setFontSize(11);
+  righe.forEach(([k, v]) => {
+    y += 9;
+    doc.setFont("helvetica", "normal");
+    doc.text(k, marginX, y);
+    doc.setFont("helvetica", "bold");
+    doc.text(String(v), marginX + 55, y);
+  });
+
+  y += 14;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.text("Non soggetto ad IVA.", marginX, y);
+
+  doc.save(`ricevuta-${data.bookingCode || "prenotazione"}.pdf`);
 }
 
 function aggiungiAlCalendario(data) {
@@ -262,7 +297,20 @@ function aggiungiAlCalendario(data) {
     tornaLink.textContent = "← Torna a Prenotazione Padel";
   }
 
-  document.getElementById("salva-btn").addEventListener("click", salvaBigliettoPng);
+  // Dopo il salvataggio, si riporta l'utente sul sito vetrina del circolo
+  // (Configurazione → Dati del centro → Homepage) invece di lasciarlo
+  // fermo sul biglietto — se il campo non è compilato, il pulsante si
+  // limita a scaricare come prima. Piccolo ritardo prima di navigare,
+  // stesso motivo del link "torna alla prenotazione" qui sotto: avviare
+  // un download e cambiare pagina nello stesso istante può interrompere
+  // il download su alcuni browser.
+  document.getElementById("salva-btn").addEventListener("click", () => {
+    salvaBigliettoPng();
+    if (DATI_CENTRO.homepage) {
+      const url = /^https?:\/\//i.test(DATI_CENTRO.homepage) ? DATI_CENTRO.homepage : `https://${DATI_CENTRO.homepage}`;
+      setTimeout(() => { window.location.href = url; }, 600);
+    }
+  });
   document.getElementById("calendario-btn").addEventListener("click", () => aggiungiAlCalendario(ticketData));
   document.getElementById("ricevuta-btn").addEventListener("click", () => stampaRicevutaBiglietto(ticketData));
 

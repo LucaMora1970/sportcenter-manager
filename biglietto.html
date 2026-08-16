@@ -39,6 +39,8 @@
   .ticket-row .v { font-weight: 600; text-align: right; }
   .ticket-code { font-family: 'Space Mono', monospace; font-size: 1.6rem; letter-spacing: 0.06em; color: var(--ball); margin: 10px 0; }
   .ticket-timestamp { color: var(--chalk-grey); font-size: 0.72rem; margin-bottom: 16px; }
+  .ticket-powered { color: var(--chalk-grey); font-size: 0.66rem; line-height: 1.6; opacity: 0.75; }
+  .ticket-powered a { color: inherit; }
   #qr-container { display: flex; justify-content: center; margin: 16px 0; }
   #qr-container img, #qr-container canvas { border-radius: 8px; }
   .ticket-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
@@ -103,6 +105,7 @@
         <div class="ticket-code" id="t-codice">—</div>
         <div id="qr-container"></div>
         <div class="ticket-timestamp" id="t-timestamp">—</div>
+        <div class="ticket-powered">Powered by <a href="https://sport-os.ch" target="_blank" rel="noopener">Sport-OS</a><br>Copyright L.M. 2026</div>
       </div>
 
       <div class="ticket-actions">
@@ -123,10 +126,10 @@
 
 </div>
 
-<canvas id="ticket-canvas" width="720" height="1080" class="hidden"></canvas>
-<div id="print-area"></div>
+<canvas id="ticket-canvas" width="720" height="1150" class="hidden"></canvas>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
