@@ -92,6 +92,25 @@
 
       <hr class="court-divider">
 
+      <!-- Credito prepagato -->
+      <div class="section-title"><h2>Credito prepagato</h2></div>
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Un'alternativa alla carta sopra: ricarica un importo in anticipo, i dipendenti lo consumano prenotando finché non si esaurisce (poi tornano a tariffa esterno, come per il tetto mensile — i due si possono usare insieme).</p>
+      <div id="credito-stato" style="margin-bottom:12px;">
+        <div class="empty-state"><div class="display">Caricamento…</div></div>
+      </div>
+      <div class="field">
+        <label for="ricarica-importo">Importo da ricaricare (CHF)</label>
+        <input type="number" id="ricarica-importo" min="50" step="1" placeholder="es. 500">
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;">
+        <button type="button" class="btn btn-primary" id="ricarica-online-btn" style="width:auto;">Paga ora online</button>
+        <button type="button" class="btn btn-ghost" id="ricarica-fattura-btn" style="width:auto;">Richiedi su fattura</button>
+      </div>
+      <div class="error-msg" id="ricarica-error"></div>
+      <div id="ricarica-esito" class="hidden empty-state" style="margin-top:10px;"></div>
+
+      <hr class="court-divider">
+
       <!-- Report periodo -->
       <div class="section-title"><h2>Report periodo</h2></div>
       <form id="report-form" class="row2">

@@ -1081,7 +1081,60 @@ function aziendaMeta(it) {
   if (it.referenteNome) parts.push(`Referente: ${it.referenteNome}`);
   parts.push(it.tettoMensileAzienda != null ? `Tetto azienda: CHF ${Number(it.tettoMensileAzienda).toFixed(2)}/mese` : "Nessun tetto azienda");
   parts.push(it.tettoDefaultPerUtente != null ? `Tetto dipendente: CHF ${Number(it.tettoDefaultPerUtente).toFixed(2)}/mese` : "Nessun tetto dipendente");
+  if (it.creditoResiduo != null) parts.push(`Credito prepagato: CHF ${Number(it.creditoResiduo).toFixed(2)}`);
   return parts.join(" · ");
+}
+
+// Richieste di ricarica su fattura in attesa di conferma dello staff —
+// il pagamento online invece si accredita da solo (webhook), non
+// richiede nessuna azione qui. Elenco vuoto = blocco nascosto, non un
+// riquadro "nessuna richiesta" che occuperebbe spazio inutilmente ogni
+// giorno che non ce n'è.
+async function loadRicaricheAzienda() {
+  const listEl = document.getElementById("ricariche-azienda-list");
+  if (!listEl) return;
+  try {
+    const snap = await db.collection("ricaricheAzienda").where("stato", "==", "IN_ATTESA").get();
+    const richieste = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => r.metodo === "fattura");
+    if (richieste.length === 0) {
+      listEl.innerHTML = "";
+      return;
+    }
+    listEl.innerHTML = `<div class="section-title" style="margin-top:18px;"><h3 style="font-size:0.9rem;">Richieste di ricarica su fattura in attesa</h3></div>`
+      + richieste.map(r => {
+        const azienda = aziendeCache.find(a => a.id === r.aziendaId);
+        const data = r.createdAt && typeof r.createdAt.toDate === "function" ? r.createdAt.toDate().toLocaleDateString("it-CH") : "—";
+        return `
+          <div class="entry-card" data-id="${r.id}">
+            <div class="entry-main">
+              <div class="entry-tipo">${escapeHtml(azienda ? azienda.nome : r.aziendaId)}</div>
+              <div class="entry-meta">CHF ${Number(r.importo).toFixed(2)} — richiesta il ${data}</div>
+            </div>
+            <button type="button" class="btn btn-primary conferma-ricarica-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${r.id}">Conferma pagamento ricevuto</button>
+          </div>
+        `;
+      }).join("");
+    listEl.querySelectorAll(".conferma-ricarica-btn").forEach(btn => btn.addEventListener("click", onConfermaRicarica));
+  } catch (err) {
+    console.error("loadRicaricheAzienda:", err.message);
+  }
+}
+
+async function onConfermaRicarica(e) {
+  const btn = e.currentTarget;
+  const ricaricaId = btn.dataset.id;
+  if (!confirm("Confermare che il pagamento è stato ricevuto? Il credito verrà attivato subito e non si può annullare da qui.")) return;
+  btn.disabled = true;
+  btn.textContent = "Conferma in corso…";
+  try {
+    const fn = cloudFunctions().httpsCallable("confermaRicaricaSuFattura");
+    await fn({ ricaricaId });
+    await loadAziende(); // ricarica anche loadRicaricheAzienda al suo interno
+  } catch (err) {
+    alert("Errore: " + err.message);
+    btn.disabled = false;
+    btn.textContent = "Conferma pagamento ricevuto";
+  }
 }
 
 async function loadAziende() {
@@ -1091,6 +1144,7 @@ async function loadAziende() {
   renderSimpleList("aziende-list", aziendeCache, aziendaLabel, aziendaMeta, "aziende", loadAziende, startEditAzienda);
   sincronizzaSelectCategorie();
   aggiungiPulsantiInvito();
+  await loadRicaricheAzienda();
 }
 
 // Link fisso, uguale per ogni azienda (la tariffa convenzionata si applica

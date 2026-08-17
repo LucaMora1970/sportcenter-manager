@@ -969,6 +969,20 @@ exports.webhookPostFinance = onRequest(
         await db.collection("aziende").doc(meta.aziendaId).update({
           "ultimoAddebito.stato": successo ? "PAGATO" : "FALLITO"
         });
+      } else if (meta.tipoTransazione === "ricarica_credito_azienda" && meta.ricaricaId) {
+        // Ricarica online del credito prepagato azienda — il documento
+        // "ricaricheAzienda" esiste già in stato IN_ATTESA (creato da
+        // avviaRicaricaCreditoAzienda), qui si aggiorna solo l'esito e,
+        // se riuscita, si accredita davvero il saldo.
+        await db.collection("ricaricheAzienda").doc(meta.ricaricaId).update({
+          stato: successo ? "PAGATO" : "FALLITO"
+        });
+        if (successo) {
+          const importo = parseFloat(meta.importo || "0");
+          await db.collection("aziende").doc(meta.aziendaId).update({
+            creditoResiduo: FieldValue.increment(importo)
+          });
+        }
       } else if (meta.tipoTransazione === "voucher" && meta.token) {
         // Buono regalo acquistato dalla pagina pubblica — nessun documento
         // esiste prima del successo (a differenza delle prenotazioni non
@@ -1654,33 +1668,50 @@ async function consumoMensileAzienda(aziendaId, socioIds) {
 
 // Se una categoria corrisponde a un'azienda convenzionata attiva (id di
 // "aziende"), verifica il tetto di spesa mensile (personale e aziendale)
-// PRIMA di accettare quel prezzo: se lo supererebbe, ricalcola l'intera
-// quota di quel giocatore con categoria "esterno" invece — nessuna
-// prenotazione bloccata, solo tariffa piena per quella parte, come da
-// richiesta. Chiamata sia da creaPrenotazionePubblica (padel) che da
-// creaPrenotazioneCampo (tennis/squash), una volta per giocatore — due
-// compagni possono appartenere ad aziende diverse, ognuno verificato per
-// conto proprio. Ritorna {categoria, prezzo} invariati se non è
-// un'azienda, se non ha nessun tetto configurato, o se rientra nei tetti.
+// E il credito prepagato residuo (i due possono coesistere, vedi
+// "Credito prepagato azienda" più sotto) PRIMA di accettare quel prezzo:
+// se uno dei due non basta, ricalcola l'intera quota di quel giocatore
+// con categoria "esterno" invece — nessuna prenotazione bloccata, solo
+// tariffa piena per quella parte, come da richiesta. Chiamata sia da
+// creaPrenotazionePubblica (padel) che da creaPrenotazioneCampo (tennis/
+// squash), una volta per giocatore — due compagni possono appartenere ad
+// aziende diverse, ognuno verificato per conto proprio. Ritorna
+// {categoria, prezzo} invariati se non è un'azienda, se non ha nessun
+// tetto/credito configurato, o se rientra in entrambi.
 async function applicaTettoAzienda({ categoria, socioId, prezzo, disciplina, posizione, dataIso, startTime, durataMinuti, festivi }) {
   if (!socioId) return { categoria, prezzo };
-  const aziendaSnap = await db.collection("aziende").doc(categoria).get();
+  const aziendaRef = db.collection("aziende").doc(categoria);
+  const aziendaSnap = await aziendaRef.get();
   if (!aziendaSnap.exists || aziendaSnap.data().attivo === false) return { categoria, prezzo };
   const azienda = aziendaSnap.data();
-  if (azienda.tettoMensileAzienda == null && azienda.tettoDefaultPerUtente == null) return { categoria, prezzo };
+  const usaCredito = azienda.creditoResiduo != null;
+  if (azienda.tettoMensileAzienda == null && azienda.tettoDefaultPerUtente == null && !usaCredito) {
+    return { categoria, prezzo };
+  }
 
-  const socioSnap = await db.collection("soci").doc(socioId).get();
-  const tettoSocio = (socioSnap.exists ? socioSnap.data().tettoPersonalizzato : null) ?? azienda.tettoDefaultPerUtente;
+  let superaTetto = false;
+  if (azienda.tettoMensileAzienda != null || azienda.tettoDefaultPerUtente != null) {
+    const socioSnap = await db.collection("soci").doc(socioId).get();
+    const tettoSocio = (socioSnap.exists ? socioSnap.data().tettoPersonalizzato : null) ?? azienda.tettoDefaultPerUtente;
 
-  const { perSocioId, totaleAzienda } = await consumoMensileAzienda(categoria, [socioId]);
-  const consumoSocio = perSocioId[socioId] || 0;
+    const { perSocioId, totaleAzienda } = await consumoMensileAzienda(categoria, [socioId]);
+    const consumoSocio = perSocioId[socioId] || 0;
 
-  const superaTettoSocio = tettoSocio != null && (consumoSocio + prezzo) > tettoSocio;
-  const superaTettoAzienda = azienda.tettoMensileAzienda != null && (totaleAzienda + prezzo) > azienda.tettoMensileAzienda;
-  if (!superaTettoSocio && !superaTettoAzienda) return { categoria, prezzo };
+    const superaTettoSocio = tettoSocio != null && (consumoSocio + prezzo) > tettoSocio;
+    const superaTettoAzienda = azienda.tettoMensileAzienda != null && (totaleAzienda + prezzo) > azienda.tettoMensileAzienda;
+    superaTetto = superaTettoSocio || superaTettoAzienda;
+  }
+  const creditoInsufficiente = usaCredito && azienda.creditoResiduo < prezzo;
 
-  const prezzoEsterno = await quotaCategoria({ disciplina, posizione, categoria: "esterno", dataIso, startTime, durataMinuti, festivi });
-  return { categoria: "esterno", prezzo: prezzoEsterno != null ? prezzoEsterno : prezzo };
+  if (superaTetto || creditoInsufficiente) {
+    const prezzoEsterno = await quotaCategoria({ disciplina, posizione, categoria: "esterno", dataIso, startTime, durataMinuti, festivi });
+    return { categoria: "esterno", prezzo: prezzoEsterno != null ? prezzoEsterno : prezzo };
+  }
+
+  if (usaCredito) {
+    await aziendaRef.update({ creditoResiduo: FieldValue.increment(-prezzo) });
+  }
+  return { categoria, prezzo };
 }
 
 // Unico punto che collega un'azienda a un account referente (o la
@@ -1811,7 +1842,8 @@ exports.listaSociAzienda = onCall(async (request) => {
       tettoMensileAzienda: azienda.tettoMensileAzienda ?? null,
       tettoDefaultPerUtente: azienda.tettoDefaultPerUtente ?? null,
       tokenStato: azienda.tokenStato ?? null,
-      ultimoAddebito: azienda.ultimoAddebito ?? null
+      ultimoAddebito: azienda.ultimoAddebito ?? null,
+      creditoResiduo: azienda.creditoResiduo ?? null
     },
     consumoTotaleAzienda: totaleAzienda,
     dipendenti: soci.map(s => ({
@@ -2142,6 +2174,166 @@ exports.addebitaAzienda = onCall(
     }
   }
 );
+
+// ---------- Credito prepagato azienda ----------
+//
+// Alternativa (non sostituzione, vedi applicaTettoAzienda) al modello a
+// tetto+addebito posticipato sopra: l'azienda paga un importo in
+// anticipo, i dipendenti lo consumano prenotando. Due modi di ricaricare:
+// - online (avviaRicaricaCreditoAzienda): pagamento singolo PostFinance,
+//   stesso schema di acquistaBuonoRegalo, credito accreditato dal
+//   webhook non appena confermato — nessun intervento dello staff.
+// - su fattura (richiediRicaricaSuFattura + confermaRicaricaSuFattura):
+//   il referente registra solo l'intenzione, lo staff conferma a mano
+//   quando vede arrivare il bonifico — il credito esiste solo da quel
+//   momento, mai prima.
+const IMPORTO_RICARICA_AZIENDA_MIN = 50;
+const IMPORTO_RICARICA_AZIENDA_MAX = 20000;
+
+exports.avviaRicaricaCreditoAzienda = onCall(
+  { secrets: [POSTFINANCE_SPACE_ID, POSTFINANCE_USER_ID, POSTFINANCE_APP_KEY] },
+  async (request) => {
+    const aziendaId = await verificaReferenteAzienda(request.auth);
+    const { importo } = request.data || {};
+    if (typeof importo !== "number" || !isFinite(importo) || importo < IMPORTO_RICARICA_AZIENDA_MIN || importo > IMPORTO_RICARICA_AZIENDA_MAX) {
+      throw new HttpsError("invalid-argument", `Inserisci un importo tra CHF ${IMPORTO_RICARICA_AZIENDA_MIN} e CHF ${IMPORTO_RICARICA_AZIENDA_MAX}.`);
+    }
+
+    const aziendaSnap = await db.collection("aziende").doc(aziendaId).get();
+    if (!aziendaSnap.exists) throw new HttpsError("not-found", "Azienda non trovata.");
+    const azienda = aziendaSnap.data();
+
+    const ricaricaRef = await db.collection("ricaricheAzienda").add({
+      aziendaId, importo, metodo: "online", stato: "IN_ATTESA", createdAt: FieldValue.serverTimestamp()
+    });
+
+    const spaceId = parseInt(POSTFINANCE_SPACE_ID.value(), 10);
+    const service = transactionsService();
+    try {
+      const transaction = await service.postPaymentTransactions({
+        space: spaceId,
+        transactionCreate: {
+          currency: "CHF",
+          merchantReference: ricaricaRef.id,
+          successUrl: `${APP_URL}azienda.html?ricarica=esito`,
+          failedUrl: `${APP_URL}azienda.html?ricarica=esito`,
+          lineItems: [{
+            uniqueId: ricaricaRef.id,
+            name: `${azienda.nome} — ricarica credito CHF ${importo.toFixed(2)}`,
+            quantity: 1,
+            amountIncludingTax: importo,
+            type: LineItemType.Product
+          }],
+          metaData: { tipoTransazione: "ricarica_credito_azienda", aziendaId, ricaricaId: ricaricaRef.id, importo: String(importo) },
+          environmentSelectionStrategy: FORZA_AMBIENTE_TEST
+            ? TransactionEnvironmentSelectionStrategy.ForceTestEnvironment
+            : TransactionEnvironmentSelectionStrategy.UseConfiguration
+        }
+      });
+
+      const paymentPageUrl = await service.getPaymentTransactionsIdPaymentPageUrl({
+        id: transaction.id,
+        space: spaceId
+      });
+
+      return { paymentPageUrl };
+    } catch (err) {
+      console.error("avviaRicaricaCreditoAzienda: errore PostFinance:", err);
+      await ricaricaRef.update({ stato: "FALLITO" });
+      throw new HttpsError("internal", "Errore nella creazione del pagamento. Riprova.");
+    }
+  }
+);
+
+// Solo l'intenzione: nessun soldo si muove qui. Avvisa lo staff (email
+// del centro, stessa configurata in Configurazione → Dati del centro)
+// che è in arrivo un bonifico da riscontrare a mano.
+exports.richiediRicaricaSuFattura = onCall({ secrets: MAIL_SECRETS }, async (request) => {
+  const aziendaId = await verificaReferenteAzienda(request.auth);
+  const { importo } = request.data || {};
+  if (typeof importo !== "number" || !isFinite(importo) || importo < IMPORTO_RICARICA_AZIENDA_MIN || importo > IMPORTO_RICARICA_AZIENDA_MAX) {
+    throw new HttpsError("invalid-argument", `Inserisci un importo tra CHF ${IMPORTO_RICARICA_AZIENDA_MIN} e CHF ${IMPORTO_RICARICA_AZIENDA_MAX}.`);
+  }
+
+  const aziendaSnap = await db.collection("aziende").doc(aziendaId).get();
+  if (!aziendaSnap.exists) throw new HttpsError("not-found", "Azienda non trovata.");
+  const azienda = aziendaSnap.data();
+
+  await db.collection("ricaricheAzienda").add({
+    aziendaId, importo, metodo: "fattura", stato: "IN_ATTESA", createdAt: FieldValue.serverTimestamp()
+  });
+
+  const centroSnap = await db.collection("impostazioni").doc("centro").get();
+  const centro = centroSnap.exists ? centroSnap.data() : {};
+  if (centro.email) {
+    try {
+      await inviaEmail({
+        to: centro.email,
+        subject: `Richiesta ricarica su fattura — ${azienda.nome}`,
+        html: `<p><strong>${azienda.nome}</strong> ha richiesto una ricarica di credito da CHF ${importo.toFixed(2)}, da pagare su fattura.</p>`
+          + `<p>Attendere il bonifico, poi confermare la ricarica dal pannello Configurazione → Aziende per attivare il credito.</p>`
+      });
+    } catch (err) {
+      console.error("richiediRicaricaSuFattura: invio email fallito:", err);
+    }
+  }
+
+  return { ok: true };
+});
+
+// Conferma dello staff che il bonifico è arrivato: solo da qui il
+// credito diventa reale. Mai automatico, mai fidarsi di un importo
+// diverso da quello già registrato nella richiesta.
+exports.confermaRicaricaSuFattura = onCall({ secrets: MAIL_SECRETS }, async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+  const { permessi, isAdmin, userData: staffData } = await permessiUtente(request.auth.uid);
+  if (!isAdmin && !permessi.includes("config:gestisci") && !permessi.includes("users:gestisci")) {
+    throw new HttpsError("permission-denied", "Permesso mancante.");
+  }
+
+  const { ricaricaId } = request.data || {};
+  if (!ricaricaId) throw new HttpsError("invalid-argument", "ricaricaId mancante.");
+
+  const ricaricaRef = db.collection("ricaricheAzienda").doc(ricaricaId);
+  const ricaricaSnap = await ricaricaRef.get();
+  if (!ricaricaSnap.exists) throw new HttpsError("not-found", "Richiesta di ricarica non trovata.");
+  const ricarica = ricaricaSnap.data();
+  if (ricarica.stato !== "IN_ATTESA") {
+    throw new HttpsError("failed-precondition", "Questa richiesta è già stata gestita.");
+  }
+
+  const aziendaRef = db.collection("aziende").doc(ricarica.aziendaId);
+  const aziendaSnap = await aziendaRef.get();
+  if (!aziendaSnap.exists) throw new HttpsError("not-found", "Azienda non trovata.");
+  const azienda = aziendaSnap.data();
+
+  await aziendaRef.update({ creditoResiduo: FieldValue.increment(ricarica.importo) });
+  await ricaricaRef.update({
+    stato: "PAGATO", confermatoDaUid: request.auth.uid,
+    confermatoDaNome: (staffData && staffData.nome) || "—", confermatoAt: FieldValue.serverTimestamp()
+  });
+
+  if (azienda.referenteUid) {
+    const referenteSnap = await db.collection("users").doc(azienda.referenteUid).get();
+    const referenteEmail = referenteSnap.exists ? referenteSnap.data().email : null;
+    if (referenteEmail) {
+      const centroSnap = await db.collection("impostazioni").doc("centro").get();
+      const nomeCentro = (centroSnap.exists && centroSnap.data().nome) || "Tennis Club Mendrisio";
+      try {
+        await inviaEmail({
+          to: referenteEmail,
+          subject: `Credito attivato — ${nomeCentro}`,
+          html: `<p>Il tuo credito di <strong>CHF ${ricarica.importo.toFixed(2)}</strong> è ora attivo e pronto per essere usato dai dipendenti.</p>`
+            + `<p>Puoi verificare il saldo residuo in qualsiasi momento dal tuo portale aziendale.</p>`
+        });
+      } catch (err) {
+        console.error("confermaRicaricaSuFattura: invio email fallito:", err);
+      }
+    }
+  }
+
+  return { ok: true };
+});
 
 // Ricerca del secondo giocatore/compagni (tennis/padel), pubblica come
 // cercaSociStaff (pannello operatore) ma più prudente nell'esposizione dato

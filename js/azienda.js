@@ -99,6 +99,52 @@ async function onRimuoviCarta() {
   }
 }
 
+function renderCredito() {
+  const el = document.getElementById("credito-stato");
+  const credito = datiAzienda.azienda.creditoResiduo;
+  el.innerHTML = credito == null
+    ? `<p style="color:var(--chalk-grey);font-size:0.82rem;">Nessun credito prepagato attivo — ricaricane uno qui sotto quando vuoi.</p>`
+    : `<p style="font-size:1.1rem;"><strong style="color:var(--line-white);">${formatCHF(credito)}</strong> <span style="color:var(--chalk-grey);font-size:0.82rem;">di credito residuo</span></p>`;
+}
+
+async function onRicaricaOnline() {
+  const btn = document.getElementById("ricarica-online-btn");
+  const errorEl = document.getElementById("ricarica-error");
+  errorEl.textContent = "";
+  const importo = parseFloat(document.getElementById("ricarica-importo").value);
+  if (!importo || importo <= 0) { showError(errorEl, "Inserisci un importo valido."); return; }
+  btn.disabled = true;
+  try {
+    const fn = cloudFunctions().httpsCallable("avviaRicaricaCreditoAzienda");
+    const { data } = await fn({ importo });
+    window.location.href = data.paymentPageUrl;
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+    btn.disabled = false;
+  }
+}
+
+async function onRichiediRicaricaFattura() {
+  const btn = document.getElementById("ricarica-fattura-btn");
+  const errorEl = document.getElementById("ricarica-error");
+  const esitoEl = document.getElementById("ricarica-esito");
+  errorEl.textContent = "";
+  const importo = parseFloat(document.getElementById("ricarica-importo").value);
+  if (!importo || importo <= 0) { showError(errorEl, "Inserisci un importo valido."); return; }
+  btn.disabled = true;
+  try {
+    const fn = cloudFunctions().httpsCallable("richiediRicaricaSuFattura");
+    await fn({ importo });
+    esitoEl.innerHTML = `<div class="display">Richiesta inviata</div><p>Il circolo attiverà il credito di ${formatCHF(importo)} non appena riceve il bonifico.</p>`;
+    esitoEl.classList.remove("hidden");
+    document.getElementById("ricarica-importo").value = "";
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function caricaDatiAzienda() {
   const riepilogoEl = document.getElementById("riepilogo-azienda");
   const listEl = document.getElementById("dipendenti-list");
@@ -110,6 +156,7 @@ async function caricaDatiAzienda() {
     document.getElementById("azienda-titolo").textContent = data.azienda.nome;
     riepilogoEl.innerHTML = barraConsumo(data.consumoTotaleAzienda, data.azienda.tettoMensileAzienda);
     renderCartaStato();
+    renderCredito();
 
     if (data.dipendenti.length === 0) {
       listEl.innerHTML = `<div class="empty-state"><div class="display">Nessun dipendente</div><p>Aggiungine uno dal form qui sotto.</p></div>`;
@@ -354,6 +401,8 @@ requireAuth(async (profile) => {
 
   document.getElementById("new-dipendente-form").addEventListener("submit", onCreateDipendente);
   document.getElementById("genera-report-btn").addEventListener("click", onGeneraReport);
+  document.getElementById("ricarica-online-btn").addEventListener("click", onRicaricaOnline);
+  document.getElementById("ricarica-fattura-btn").addEventListener("click", onRichiediRicaricaFattura);
 
   const oggi = toISO(new Date());
   document.getElementById("report-dal").value = oggi.slice(0, 7) + "-01";
