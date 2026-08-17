@@ -1065,7 +1065,12 @@ async function emettiCreditoAnnullamento(bookingId) {
   const paymentsSnap = await db.collection("payments").where("bookingId", "==", bookingId).get();
   const importoPagato = paymentsSnap.docs.reduce((somma, d) => somma + (d.data().amount || 0), 0);
   if (importoPagato <= 0) {
-    throw new HttpsError("failed-precondition", "Nessun pagamento trovato per questa prenotazione (es. era esente).");
+    // Prenotazione esente (forfait stagionale, maestro esente, credito
+    // aziendale a copertura totale...): nulla da rimborsare, si libera
+    // solo lo slot — stesso trattamento delle settimane di abbonamento
+    // fisso cancellate (vedi annullaSettimanaAbbonamento).
+    await bookingRef.update({ status: "CANCELLED" });
+    return { creditCode: null, importo: 0 };
   }
 
   const creditCode = generaCodiceCredito();
@@ -1139,8 +1144,16 @@ exports.annullaPrenotazioneCliente = onCall(async (request) => {
     throw new HttpsError("failed-precondition", "Questa prenotazione non è (più) annullabile.");
   }
 
-  const discSnap = ticket.disciplina ? await db.collection("discipline").doc(ticket.disciplina).get() : null;
-  const oreAnnullamento = (discSnap && discSnap.exists && discSnap.data().oreAnnullamento != null) ? discSnap.data().oreAnnullamento : 24;
+  let oreAnnullamento;
+  if (booking.forfaitSocioIds && booking.forfaitSocioIds.length > 0) {
+    // Prenotazione della stagione forfettaria tennis: preavviso proprio,
+    // non quello generico della disciplina (qui non c'è nulla da
+    // rimborsare, vedi emettiCreditoAnnullamento).
+    ({ oreAnnullamento } = await impostazioniForfaitTennis());
+  } else {
+    const discSnap = ticket.disciplina ? await db.collection("discipline").doc(ticket.disciplina).get() : null;
+    oreAnnullamento = (discSnap && discSnap.exists && discSnap.data().oreAnnullamento != null) ? discSnap.data().oreAnnullamento : 24;
+  }
 
   const oreRimanenti = (zurigoAEpoch(booking.date, booking.startTime) - Date.now()) / 3600000;
   if (oreRimanenti < oreAnnullamento) {
@@ -2733,6 +2746,55 @@ async function quotaCategoria({ disciplina, posizione, categoria, dataIso, start
   return candidates.length > 0 ? candidates[0].prezzo : null;
 }
 
+// Vero solo se il forfait stagionale azzera il prezzo per questa
+// combinazione — non se il prezzo è 0 per altri motivi (tetto azienda,
+// esenzione staff). Stessa query di quotaCategoria qui sopra, duplicata
+// apposta invece di far tornare il flag da lì: quotaCategoria è già usata
+// da 5 punti diversi (padel incluso), cambiarne la forma di ritorno
+// avrebbe richiesto toccare percorsi che il tetto forfettario tennis (vedi
+// sotto) non riguarda.
+async function forfaitAttivoPer({ disciplina, posizione, categoria, dataIso }) {
+  const forfaitSnap = await db.collection("forfaitCampi")
+    .where("disciplina", "==", disciplina)
+    .where("posizione", "==", posizione ?? null)
+    .get();
+  return forfaitSnap.docs.some(d => {
+    const f = d.data();
+    return dataIso >= f.periodoInizio && dataIso <= f.periodoFine && (f.categorie || []).includes(categoria);
+  });
+}
+
+// Impostazioni della stagione forfettaria tennis (Configurazione →
+// Stagione forfettaria tennis): quante ore future non ancora giocate un
+// socio può avere in sospeso, e con quanto preavviso può annullarle da
+// solo — separato dal preavviso generico di discipline/{id}.oreAnnullamento,
+// perché durante il forfait non c'è nulla da rimborsare.
+async function impostazioniForfaitTennis() {
+  const snap = await db.collection("impostazioni").doc("generale").get();
+  const g = snap.exists ? snap.data() : {};
+  return {
+    oreMassimePendenti: g.forfaitTennisOreMassimePendenti ?? 3,
+    oreAnnullamento: g.forfaitTennisOreAnnullamento ?? 24
+  };
+}
+
+// Somma le ore (interno+esterno insieme) delle prenotazioni tennis
+// forfettarie di un socio non ancora giocate — bookings.forfaitSocioIds
+// (array-contains) è valorizzato solo alla creazione, vedi
+// creaPrenotazioneCampo più sotto.
+async function oreForfaitPendenti(socioId, oggiIso) {
+  const snap = await db.collection("bookings")
+    .where("forfaitSocioIds", "array-contains", socioId)
+    .where("date", ">=", oggiIso)
+    .get();
+  const minuti = snap.docs
+    .map(d => d.data())
+    .filter(b => !pendingScaduto(b) && (b.status === "PENDING_PAYMENT" || b.status === "CONFIRMED"))
+    .filter(b => !eOrmaiPassato(b.date, orarioToMin(b.startTime)))
+    .reduce((somma, b) => somma + (orarioToMin(b.endTime) - orarioToMin(b.startTime)), 0);
+  return minuti / 60;
+}
+
 // Chi prenota: un maestro/responsabile loggato (ha un documento "users",
 // controllo con priorità perché lo staff non ha mai un profilo in "soci")
 // paga come "maestro" ed è esente se soggettoQuotaCampo (come lo
@@ -2903,6 +2965,37 @@ exports.creaPrenotazioneCampo = onCall(
       prezzoDettaglio[0].importo = 0;
     }
 
+    // Tetto ore pendenti della stagione forfettaria (tennis, solo): senza
+    // un limite chi gioca gratis potrebbe occupare tutti gli slot futuri.
+    // Si applica a ciascun socio coinvolto (prenotante e, nel tennis, il
+    // secondo giocatore) la cui categoria/data rientra in un forfait
+    // attivo — non a chi paga tariffa piena o è esente per altri motivi
+    // (tetto azienda, maestro). Il conteggio somma le ore non ancora
+    // giocate (interno+esterno insieme) di quel socio, si libera da solo
+    // quando lo slot passa o viene annullato in tempo (vedi
+    // annullaPrenotazioneCliente).
+    const forfaitSocioIds = [];
+    if (disciplina === "tennis") {
+      if (prenotante.socioId && await forfaitAttivoPer({ disciplina, posizione, categoria: categoria1, dataIso: date })) {
+        forfaitSocioIds.push(prenotante.socioId);
+      }
+      if (giocatore2SocioIdVerificato && await forfaitAttivoPer({ disciplina, posizione, categoria: giocatore2Categoria, dataIso: date })) {
+        forfaitSocioIds.push(giocatore2SocioIdVerificato);
+      }
+    }
+    if (forfaitSocioIds.length > 0) {
+      const { oreMassimePendenti } = await impostazioniForfaitTennis();
+      for (const socioId of forfaitSocioIds) {
+        const orePendenti = await oreForfaitPendenti(socioId, oggiIso);
+        if (orePendenti + durataMinuti / 60 > oreMassimePendenti) {
+          throw new HttpsError(
+            "failed-precondition",
+            `Hai già ${orePendenti} ore prenotate nella stagione forfettaria (massimo ${oreMassimePendenti}) — aspetta che una di queste sia giocata prima di prenotarne un'altra.`
+          );
+        }
+      }
+    }
+
     const token = generaToken();
     const bookingRef = db.collection("bookings").doc();
     await db.runTransaction(async (tx) => {
@@ -2923,6 +3016,7 @@ exports.creaPrenotazioneCampo = onCall(
       tx.set(bookingRef, {
         courtId, date, startTime, endTime, status: "PENDING_PAYMENT", type: "CUSTOMER",
         authUid: prenotante.authUid || null,
+        forfaitSocioIds,
         createdAt: FieldValue.serverTimestamp()
       });
       tx.set(db.collection("bookingDettagli").doc(bookingRef.id), {

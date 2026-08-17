@@ -95,7 +95,7 @@
       <a href="#discipline">Discipline</a><span class="sep">·</span>
       <a href="#campi">Campi</a><span class="sep">·</span>
       <a href="#tariffe">Tariffe campi</a><span class="sep">·</span>
-      <a href="#forfait">Forfait campi</a><span class="sep">·</span>
+      <a href="#forfait">Forfait stagionale</a><span class="sep">·</span>
       <a href="#quote">Quote campo</a><span class="sep">·</span>
       <a href="#chiusure">Chiusure centro</a><span class="sep">·</span>
       <a href="#prenotazioni">Impostazioni prenotazioni</a><span class="sep">·</span>
@@ -167,9 +167,9 @@
       </div>
 
       <div class="voce">
-        <span class="dove">Configurazione → Discipline</span>
-        <div class="cosa">Ore minime di preavviso per annullare</div>
-        <div class="come">Per disciplina (tennis/padel/squash possono avere valori diversi). Entro queste ore prima dell'inizio, chi ha prenotato può annullare da solo dal biglietto e ricevere un credito automatico. Default 24h se lasciato vuoto. Vedi anche <a href="#biglietto">Biglietto</a>.</div>
+        <span class="dove">Configurazione → Discipline → modifica una disciplina → "Ore minime di preavviso per annullare una prenotazione"</span>
+        <div class="cosa">Entro quanto tempo una prenotazione è annullabile gratuitamente</div>
+        <div class="come">Un valore per disciplina (tennis/padel/squash possono averne uno diverso). Fino a quel numero di ore prima dell'inizio, chi ha prenotato può annullare da solo dal biglietto e riceve subito un credito automatico. Campo vuoto = default 24 ore. Passata la soglia, l'annullo self-service dal biglietto non è più possibile: serve contattare il centro. Vedi anche <a href="#biglietto">Biglietto</a>.</div>
       </div>
 
     </div>
@@ -209,15 +209,27 @@
     </div>
     </details>
 
-    <!-- ===================== Forfait campi ===================== -->
+    <!-- ===================== Forfait stagionale ===================== -->
     <details class="config-section" id="forfait">
-    <summary><h2>Forfait campi</h2></summary>
+    <summary><h2>Forfait stagionale</h2></summary>
     <div class="config-section-body">
 
       <div class="voce">
-        <span class="dove">Configurazione → Forfait campi</span>
+        <span class="dove">Configurazione → Forfait stagionale</span>
         <div class="cosa">Periodo + categorie incluse → prezzo CHF 0</div>
-        <div class="come">Se una categoria ha un forfait attivo per quella data/disciplina/posizione, il prezzo diventa gratuito indipendentemente dalle tariffe orarie sopra — controllato prima di tutto il resto nel calcolo prezzo.</div>
+        <div class="come">Se una categoria ha un forfait attivo per quella data/disciplina/posizione, il prezzo diventa gratuito indipendentemente dalle tariffe orarie sopra — controllato prima di tutto il resto nel calcolo prezzo. Vale per tennis e squash.</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove">Configurazione → Forfait stagionale → "Solo per il tennis" (in cima alla sezione)</span>
+        <div class="cosa">Ore future prenotabili in anticipo, non ancora giocate (solo tennis)</div>
+        <div class="come">Durante il periodo forfettario non c'è un tetto di partite totali, ma un socio non può avere più di queste ore — interno ed esterno sommati insieme — ancora da giocare in un dato momento. Appena una prenotazione passa (o viene annullata in tempo), il conteggio scende e può prenotarne un'altra. Default 3 ore se non impostato. Chi supera il tetto non può prenotare oltre, punto: nessuna tariffa piena di ripiego.</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove">Configurazione → Forfait stagionale → "Ore minime di preavviso per annullare" (in cima alla sezione)</span>
+        <div class="cosa">Preavviso di annullamento self-service, specifico per il forfait tennis</div>
+        <div class="come">Separato dal preavviso generico di <a href="#discipline">Discipline</a>: durante il forfait non c'è nulla da rimborsare (il socio non ha pagato nulla), quindi l'annullamento libera solo lo slot, senza credito. Default 24 ore se non impostato.</div>
       </div>
 
     </div>

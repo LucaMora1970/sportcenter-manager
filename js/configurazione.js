@@ -1626,6 +1626,34 @@ const STATO_ABB_LABEL = { IN_ATTESA_PAGAMENTO: "In attesa di pagamento", ATTIVO:
 let abbonamentoSocioSelezionato = null; // { id, nome }
 let abbCercaTimeout = null;
 
+async function loadForfaitTennisImpostazioni() {
+  const snap = await db.collection("impostazioni").doc("generale").get();
+  const g = snap.exists ? snap.data() : {};
+  document.getElementById("ft-ore-massime-pendenti").value = g.forfaitTennisOreMassimePendenti ?? 3;
+  document.getElementById("ft-ore-annullamento").value = g.forfaitTennisOreAnnullamento ?? 24;
+}
+
+async function onSaveForfaitTennisImpostazioni(e) {
+  e.preventDefault();
+  const btn = document.getElementById("salva-forfaittennis-impostazioni-btn");
+  const errorEl = document.getElementById("forfaittennis-impostazioni-error");
+  errorEl.textContent = "";
+  btn.disabled = true;
+  try {
+    const forfaitTennisOreMassimePendenti = parseInt(document.getElementById("ft-ore-massime-pendenti").value, 10);
+    const forfaitTennisOreAnnullamento = parseInt(document.getElementById("ft-ore-annullamento").value, 10);
+    if (!forfaitTennisOreMassimePendenti || forfaitTennisOreMassimePendenti < 1) throw new Error("Inserisci un numero di ore valido.");
+    if (isNaN(forfaitTennisOreAnnullamento) || forfaitTennisOreAnnullamento < 0) throw new Error("Inserisci un preavviso valido.");
+    await db.collection("impostazioni").doc("generale").set(
+      { forfaitTennisOreMassimePendenti, forfaitTennisOreAnnullamento }, { merge: true }
+    );
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function loadAbbonamentoImpostazioni() {
   const snap = await db.collection("impostazioni").doc("generale").get();
   const g = snap.exists ? snap.data() : {};
@@ -1889,6 +1917,8 @@ requireAuth(async (profile) => {
   document.getElementById("new-tariffacampo-disciplina").addEventListener("change", syncTariffaCampoPadelFields);
   syncTariffaCampoPadelFields();
   document.getElementById("new-forfaitcampo-form").addEventListener("submit", onCreateForfaitCampo);
+  document.getElementById("forfaittennis-impostazioni-form").addEventListener("submit", onSaveForfaitTennisImpostazioni);
+  await loadForfaitTennisImpostazioni();
   document.getElementById("new-chiusuracentro-form").addEventListener("submit", onCreateChiusuraCentro);
   document.getElementById("prenotazionicampi-form").addEventListener("submit", onSavePrenotazioniCampi);
   document.getElementById("abbonamento-impostazioni-form").addEventListener("submit", onSaveAbbonamentoImpostazioni);
