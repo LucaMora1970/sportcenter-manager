@@ -65,6 +65,21 @@ function formatGiornoEsteso(dataIso) {
 
 // ---------- Caricamento campi ----------
 
+// Il campo "Numero" in Configurazione è testo libero (es. "4 Leda Polli",
+// il circolo ci mette anche il nome di uno sponsor/dedica) — non un
+// intero pulito. Separa la parte numerica iniziale (per ordinare ed
+// etichettare "Campo N") dal resto (mostrato come dedica sulla riga
+// sotto, vedi render()).
+function parseNumeroCampo(numero) {
+  const testo = String(numero || "").trim();
+  const match = testo.match(/^(\d+)\s*(.*)$/);
+  return match ? { numero: match[1], dedica: match[2].trim() || null } : { numero: testo, dedica: null };
+}
+function numeroOrdinabile(numero) {
+  const match = String(numero || "").match(/^\d+/);
+  return match ? parseInt(match[0], 10) : Infinity; // non numerici in fondo, non spariscono
+}
+
 async function loadCampi() {
   const snap = await db.collection("campi").where("attivo", "==", true).get();
   const tutti = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -77,7 +92,7 @@ async function loadCampi() {
   const padelReale = tutti.find(c => c.disciplina === "padel");
   const padel = { id: "1", numero: (padelReale && padelReale.numero) || "1", disciplina: "padel", posizione: null };
 
-  CAMPI = [...tennisSquash, padel];
+  CAMPI = [...tennisSquash, padel].sort((a, b) => numeroOrdinabile(a.numero) - numeroOrdinabile(b.numero));
 }
 
 async function loadChiusure(dataIso) {
@@ -225,7 +240,8 @@ async function render() {
     campi.forEach(campo => {
       const row = document.createElement("div");
       row.className = "court-row";
-      const nomeCampo = `Campo ${campo.numero}${campo.posizione ? ` (${campo.posizione})` : ""}`;
+      const { numero, dedica } = parseNumeroCampo(campo.numero);
+      const nomeCampo = `Campo ${numero}${campo.posizione ? ` (${campo.posizione})` : ""}`;
       let timelineHtml;
       if (campoChiuso(campo, state.data)) {
         timelineHtml = `<div class="tg-timeline"><div class="tg-seg chiuso">Chiuso</div></div>`;
@@ -236,7 +252,8 @@ async function render() {
         }).join("");
         timelineHtml = `<div class="tg-timeline">${segs}</div>`;
       }
-      row.innerHTML = `<div class="court-name">${escapeHtml(nomeCampo)}</div>${timelineHtml}`;
+      const dedicaHtml = dedica ? `<span class="dedica">${escapeHtml(dedica)}</span>` : "";
+      row.innerHTML = `<div class="court-name"><span>${escapeHtml(nomeCampo)}</span>${dedicaHtml}</div>${timelineHtml}`;
       group.appendChild(row);
     });
     board.appendChild(group);
