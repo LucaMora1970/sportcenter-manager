@@ -1977,7 +1977,16 @@ async function consumoMensileAzienda(aziendaId, socioIds) {
 // aziende diverse, ognuno verificato per conto proprio. Ritorna
 // {categoria, prezzo} invariati se non è un'azienda, se non ha nessun
 // tetto/credito configurato, o se rientra in entrambi.
-async function applicaTettoAzienda({ categoria, socioId, prezzo, disciplina, posizione, dataIso, startTime, durataMinuti, festivi }) {
+// fattoreCondivisione (default 1) è la quota del prezzo pieno realmente
+// attribuibile a QUESTO giocatore — nel tennis (0.5, chiamato dal caller)
+// il campo si divide tra due, quindi tetto/credito devono essere
+// verificati/scalati sulla vera metà, non sulla tariffa intera per
+// categoria. Padel/squash (default 1) restano invariati: lì "prezzo" È
+// già il vero contributo del giocatore. Non cambia cosa la funzione
+// ritorna (sempre valori pieni, non scalati): a scalare per la propria
+// quota ci pensa il chiamante, qui si scala solo il confronto/addebito
+// interno verso l'azienda.
+async function applicaTettoAzienda({ categoria, socioId, prezzo, disciplina, posizione, dataIso, startTime, durataMinuti, festivi, fattoreCondivisione = 1 }) {
   if (!socioId) return { categoria, prezzo };
   const aziendaRef = db.collection("aziende").doc(categoria);
   const aziendaSnap = await aziendaRef.get();
@@ -1987,6 +1996,7 @@ async function applicaTettoAzienda({ categoria, socioId, prezzo, disciplina, pos
   if (azienda.tettoMensileAzienda == null && azienda.tettoDefaultPerUtente == null && !usaCredito) {
     return { categoria, prezzo };
   }
+  const prezzoAttribuito = prezzo * fattoreCondivisione;
 
   let superaTetto = false;
   if (azienda.tettoMensileAzienda != null || azienda.tettoDefaultPerUtente != null) {
@@ -1996,11 +2006,11 @@ async function applicaTettoAzienda({ categoria, socioId, prezzo, disciplina, pos
     const { perSocioId, totaleAzienda } = await consumoMensileAzienda(categoria, [socioId]);
     const consumoSocio = perSocioId[socioId] || 0;
 
-    const superaTettoSocio = tettoSocio != null && (consumoSocio + prezzo) > tettoSocio;
-    const superaTettoAzienda = azienda.tettoMensileAzienda != null && (totaleAzienda + prezzo) > azienda.tettoMensileAzienda;
+    const superaTettoSocio = tettoSocio != null && (consumoSocio + prezzoAttribuito) > tettoSocio;
+    const superaTettoAzienda = azienda.tettoMensileAzienda != null && (totaleAzienda + prezzoAttribuito) > azienda.tettoMensileAzienda;
     superaTetto = superaTettoSocio || superaTettoAzienda;
   }
-  const creditoInsufficiente = usaCredito && azienda.creditoResiduo < prezzo;
+  const creditoInsufficiente = usaCredito && azienda.creditoResiduo < prezzoAttribuito;
 
   if (superaTetto || creditoInsufficiente) {
     const prezzoEsterno = await quotaCategoria({ disciplina, posizione, categoria: "esterno", dataIso, startTime, durataMinuti, festivi });
@@ -2008,7 +2018,7 @@ async function applicaTettoAzienda({ categoria, socioId, prezzo, disciplina, pos
   }
 
   if (usaCredito) {
-    await aziendaRef.update({ creditoResiduo: FieldValue.increment(-prezzo) });
+    await aziendaRef.update({ creditoResiduo: FieldValue.increment(-prezzoAttribuito) });
   }
   return { categoria, prezzo };
 }
@@ -2940,7 +2950,8 @@ exports.creaPrenotazioneCampo = onCall(
     let categoria1 = prenotante.categoria;
     ({ categoria: categoria1, prezzo: quota1 } = await applicaTettoAzienda({
       categoria: categoria1, socioId: prenotante.socioId || null, prezzo: quota1,
-      disciplina, posizione, dataIso: date, startTime, durataMinuti, festivi
+      disciplina, posizione, dataIso: date, startTime, durataMinuti, festivi,
+      fattoreCondivisione: disciplina === "tennis" ? 0.5 : 1
     }));
     let prezzo = quota1;
     const prezzoDettaglio = [{ ruolo: "prenotante", categoria: categoria1, importo: quota1, socioId: prenotante.socioId || null }];
@@ -2951,17 +2962,27 @@ exports.creaPrenotazioneCampo = onCall(
       let categoria2 = giocatore2Categoria;
       ({ categoria: categoria2, prezzo: quota2 } = await applicaTettoAzienda({
         categoria: categoria2, socioId: giocatore2SocioIdVerificato, prezzo: quota2,
-        disciplina, posizione, dataIso: date, startTime, durataMinuti, festivi
+        disciplina, posizione, dataIso: date, startTime, durataMinuti, festivi,
+        fattoreCondivisione: 0.5
       }));
-      prezzo += quota2;
-      prezzoDettaglio.push({ ruolo: "secondo giocatore", categoria: categoria2, importo: quota2, socioId: giocatore2SocioIdVerificato });
+      // La tariffa configurata (Tariffe campi) è già il prezzo dell'intero
+      // slot, non a testa — con due giocatori si divide a metà ciascuno,
+      // MAI si somma (altrimenti un tennis tra due esterni costerebbe il
+      // doppio della tariffa configurata). Categorie miste: ognuno paga
+      // metà della propria tariffa — socio+socio resta la tariffa socio
+      // intera, non raddoppiata.
+      prezzo = quota1 / 2 + quota2 / 2;
+      prezzoDettaglio[0].importo = quota1 / 2;
+      prezzoDettaglio.push({ ruolo: "secondo giocatore", categoria: categoria2, importo: quota2 / 2, socioId: giocatore2SocioIdVerificato });
     }
 
     // Un maestro soggetto a quota campo (come per il padel STAFF_EXEMPT)
     // non paga qui la propria quota: è già fatturata nella lezione via
-    // richiediPagamentoDiario, non due volte.
+    // richiediPagamentoDiario, non due volte. Sottrae quanto già
+    // attribuito al prenotante in prezzoDettaglio[0] (mai il quota1
+    // "pieno": nel tennis è già stato dimezzato qui sopra).
     if (prenotante.isStaff && prenotante.soggettoQuotaCampo) {
-      prezzo -= quota1;
+      prezzo -= prezzoDettaglio[0].importo;
       prezzoDettaglio[0].importo = 0;
     }
 

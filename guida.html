@@ -96,6 +96,7 @@
       <a href="#campi">Campi</a><span class="sep">·</span>
       <a href="#tariffe">Tariffe campi</a><span class="sep">·</span>
       <a href="#forfait">Forfait stagionale</a><span class="sep">·</span>
+      <a href="#tipiattivita">Tipi attività</a><span class="sep">·</span>
       <a href="#quote">Quote campo</a><span class="sep">·</span>
       <a href="#chiusure">Chiusure centro</a><span class="sep">·</span>
       <a href="#prenotazioni">Impostazioni prenotazioni</a><span class="sep">·</span>
@@ -203,7 +204,7 @@
       <div class="voce">
         <span class="dove">Configurazione → Tariffe campi</span>
         <div class="cosa">Prezzo per disciplina + posizione + categoria + periodo + giorni + orario</div>
-        <div class="come">Il motore prezzi di ogni prenotazione singola (non degli <a href="#abbonamenti">abbonamenti fissi</a>, che hanno un prezzo di stagione a parte). Nel tennis il prezzo dello slot è la somma delle tariffe dei due giocatori, ognuno con la propria categoria.</div>
+        <div class="come">Il motore prezzi di ogni prenotazione singola (non degli <a href="#abbonamenti">abbonamenti fissi</a>, che hanno un prezzo di stagione a parte). La tariffa configurata è sempre il prezzo dell'intero slot, mai a testa. Nel tennis, dove si gioca in due, ciascun giocatore paga metà della tariffa della propria categoria: stessa categoria per entrambi = tariffa intera invariata (es. due soci = tariffa socio, non raddoppiata); categorie miste = media tra le due tariffe.</div>
       </div>
 
     </div>
@@ -230,6 +231,38 @@
         <span class="dove">Configurazione → Forfait stagionale → "Ore minime di preavviso per annullare" (in cima alla sezione)</span>
         <div class="cosa">Preavviso di annullamento self-service, specifico per il forfait tennis</div>
         <div class="come">Separato dal preavviso generico di <a href="#discipline">Discipline</a>: durante il forfait non c'è nulla da rimborsare (il socio non ha pagato nulla), quindi l'annullamento libera solo lo slot, senza credito. Default 24 ore se non impostato.</div>
+      </div>
+
+    </div>
+    </details>
+
+    <!-- ===================== Tipi attività ===================== -->
+    <details class="config-section" id="tipiattivita">
+    <summary><h2>Tipi attività</h2></summary>
+    <div class="config-section-body">
+
+      <div class="voce">
+        <span class="dove">Configurazione → Tipi attività</span>
+        <div class="cosa">Le voci selezionabili nel Diario</div>
+        <div class="come">Ogni tipo ha una disciplina e un ordine di visualizzazione. Le tariffe opzionali (per tipo utenza e periodo) alimentano il compenso al collaboratore in Resoconto, se "Retribuito al collaboratore" è attivo.</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove">Configurazione → Tipi attività → modifica un tipo → "Durata fissa in minuti"</span>
+        <div class="cosa">Calcolo automatico dell'ora di fine</div>
+        <div class="come">Se impostata, in Diario basta scegliere l'ora di inizio — utile per attività a durata standard (es. lezione padel 60', sessione squash 45'). Lasciata vuota, l'ora di fine va scelta a mano.</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove">Configurazione → Tipi attività → modifica un tipo → "Richiede la scelta del campo"</span>
+        <div class="cosa">Se il campo è obbligatorio nella voce diario</div>
+        <div class="come">Attivo di default. Disattivalo per attività che non si svolgono su un campo (es. Amministrazione) — il campo sparisce dall'obbligo nel form del Diario per quel tipo attività, restando comunque disponibile per gli altri.</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove">Configurazione → Tipi attività → modifica un tipo → "Soggetto a quota campo" / "Retribuito al collaboratore" / "Richiede nome allievo"</span>
+        <div class="cosa">Gli altri tre flag del tipo attività</div>
+        <div class="come">"Soggetto a quota campo" si combina con lo stesso flag sull'utente (vedi <a href="#utenti">Utenti</a>) per decidere la quota dovuta. "Retribuito al collaboratore" attiva il compenso da tariffa in Resoconto. "Richiede nome allievo" serve per la fatturazione (es. Sparring).</div>
       </div>
 
     </div>
@@ -343,7 +376,7 @@
       <div class="voce">
         <span class="dove">Configurazione → Aziende convenzionate</span>
         <div class="cosa">Tetto mensile (azienda e/o per dipendente)</div>
-        <div class="come">Modello posticipato: oltre il tetto, la prenotazione passa da sola a tariffa esterno (mai bloccata). Il referente addebita quanto dovuto a fine periodo dal proprio portale, con una carta salvata lì.</div>
+        <div class="come">Modello posticipato: oltre il tetto, la prenotazione passa da sola a tariffa esterno (mai bloccata). Il referente addebita quanto dovuto a fine periodo dal proprio portale, con una carta salvata lì. Nel tennis il tetto/credito conta solo la vera metà attribuita al dipendente (vedi <a href="#tariffe">Tariffe campi</a>), non l'intera tariffa della sua categoria.</div>
       </div>
 
       <div class="voce">

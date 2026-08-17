@@ -246,6 +246,37 @@ function quotaCategoriaClient(disciplina, posizione, categoria, dataIso, startTi
   return candidati.length > 0 ? candidati[0].prezzo : null;
 }
 
+// Etichetta prezzo per il tennis, mostrata prima di sapere chi sarà il
+// secondo giocatore: il prezzo reale (metà tariffa a testa, vedi
+// creaPrenotazioneCampo) dipende dalla sua categoria, non ancora nota qui.
+// Mostra l'intervallo tra la tariffa "esterno" (Utenti, il massimo
+// possibile) e la più bassa tra le categorie socio configurate per questo
+// slot — se ce n'è solo una delle due, mostra quel singolo valore
+// (privilegiando quello più alto se per qualche motivo servisse un solo
+// numero, mai promettere meno di quanto si potrebbe davvero pagare).
+function prezzoLabelTennis(disciplina, posizione, dataIso, startTime, durataMinuti) {
+  const posNorm = posizione ?? null;
+  const categorieCoinvolte = [...new Set(
+    TARIFFE_CAMPI.filter(t => t.disciplina === disciplina && t.posizione === posNorm).map(t => t.categoria)
+  )];
+  let esterno = null;
+  let socioMin = null;
+  categorieCoinvolte.forEach(cat => {
+    const prezzo = quotaCategoriaClient(disciplina, posizione, cat, dataIso, startTime, durataMinuti);
+    if (prezzo == null) return;
+    if (cat === "esterno") { esterno = prezzo; return; }
+    if (cat === "maestro") return;
+    socioMin = socioMin == null ? prezzo : Math.min(socioMin, prezzo);
+  });
+
+  if (socioMin != null && esterno != null && socioMin !== esterno) {
+    return `da CHF ${socioMin.toFixed(2)} (soci) a CHF ${esterno.toFixed(2)} (non soci)`;
+  }
+  const unico = esterno ?? socioMin;
+  if (unico == null) return "—";
+  return unico === 0 ? "Incluso" : `CHF ${unico.toFixed(2)}`;
+}
+
 // ---------- Gruppi/campi ----------
 
 // Ordine fisso delle schede (non alfabetico, deciso esplicitamente):
@@ -486,15 +517,20 @@ function render() {
   const categoria = categoriaCorrente();
   el.innerHTML = liberi.map((s, i) => {
     const durataMinuti = gruppo.disciplina === "padel" ? state.durataPadel : orarioToMin(s.fine) - orarioToMin(s.inizio);
-    const prezzo = quotaCategoriaClient(gruppo.disciplina, gruppo.posizione, categoria, state.data, s.inizio, durataMinuti);
-    const prezzoLabel = prezzo == null ? "—" : (prezzo === 0 ? "Incluso" : `CHF ${prezzo.toFixed(2)}`);
+    let prezzoLabel;
+    if (gruppo.disciplina === "tennis") {
+      prezzoLabel = prezzoLabelTennis(gruppo.disciplina, gruppo.posizione, state.data, s.inizio, durataMinuti);
+    } else {
+      const prezzo = quotaCategoriaClient(gruppo.disciplina, gruppo.posizione, categoria, state.data, s.inizio, durataMinuti);
+      prezzoLabel = prezzo == null ? "—" : (prezzo === 0 ? "Incluso" : `CHF ${prezzo.toFixed(2)}`);
+    }
     return `
       <div class="slot-row">
         <div class="si">
           <span class="st">${s.inizio}–${s.fine}</span>
           <span class="sc">${escapeHtml(disciplinaLabel(gruppo.disciplina))} · Campo ${escapeHtml(s.campo.numero)}</span>
         </div>
-        <span class="sp">${prezzoLabel}${gruppo.disciplina === "tennis" ? " · a testa" : ""}</span>
+        <span class="sp">${prezzoLabel}</span>
         <button type="button" class="btn btn-ghost apri-prenota-btn" style="width:auto;padding:8px 14px;font-size:0.76rem;" data-idx="${i}">Prenota</button>
       </div>
       <div class="prenota-panel-slot hidden" data-idx="${i}"></div>
@@ -518,9 +554,12 @@ function wireDurataPadel() {
 // ---------- Pannello di conferma prenotazione ----------
 //
 // Numero di campi "altro giocatore" mostrati, per disciplina: 1 per il
-// tennis (il prezzo è per giocatore, si gioca sempre in due), 3 per il
-// padel (fino a 4 nominativi, solo per il tabellone — il prezzo è per il
-// campo, non cambia in base a chi/quanti giocano), nessuno per lo squash.
+// tennis (la tariffa configurata è per l'intero slot, divisa a metà tra i
+// due giocatori — ognuno la propria metà, secondo la propria categoria:
+// stessa categoria per entrambi = tariffa intera invariata, categorie
+// miste = media delle due), 3 per il padel (fino a 4 nominativi, solo per
+// il tabellone — il prezzo è per il campo, non cambia in base a chi/quanti
+// giocano), nessuno per lo squash.
 function numeroCampiGiocatore(disciplina) {
   if (disciplina === "tennis") return 1;
   if (disciplina === "padel") return 3;
@@ -540,6 +579,8 @@ function apriPannelloPrenota(slot, idx) {
   const etichetta = slot.campo.disciplina === "tennis" ? "Nome del secondo giocatore" : "Nome giocatore";
   const introPadel = nCampi > 0 && slot.campo.disciplina === "padel"
     ? `<p style="color:var(--chalk-grey);font-size:0.78rem;margin:0 0 10px;">Chi gioca con te? (facoltativo — il prezzo è per il campo, non cambia in base al numero di giocatori).</p>` : "";
+  const introTennis = slot.campo.disciplina === "tennis"
+    ? `<p style="color:var(--chalk-grey);font-size:0.78rem;margin:0 0 10px;">Il prezzo mostrato è indicativo: se il secondo giocatore ha una categoria diversa dalla tua, la tariffa finale si adegua di conseguenza.</p>` : "";
 
   panel.innerHTML = `
     <div class="prenota-panel">
@@ -547,6 +588,7 @@ function apriPannelloPrenota(slot, idx) {
         <button type="button" class="btn btn-ghost chiudi-prenota-btn" style="width:auto;padding:4px 10px;font-size:0.9rem;line-height:1;" aria-label="Chiudi">✕</button>
       </div>
       ${introPadel}
+      ${introTennis}
       ${Array.from({ length: nCampi }).map((_, n) => `
         <div class="field" id="g-campo-${idx}-${n}">
           <label for="g-nome-${idx}-${n}">${etichetta}${nCampi > 1 ? " " + (n + 2) : ""}</label>
