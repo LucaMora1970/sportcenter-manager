@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Guida amministratore — Sport-OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script>if(localStorage.getItem("sportos-tema")==="light")document.documentElement.setAttribute("data-theme","light");</script>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d1f30">
+<style>
+  details.config-section {
+    border-bottom: 1px solid var(--court-blue-700);
+  }
+  details.config-section:first-of-type {
+    border-top: 1px solid var(--court-blue-700);
+  }
+  details.config-section > summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 16px 2px;
+  }
+  details.config-section > summary::-webkit-details-marker { display: none; }
+  details.config-section > summary h2 { margin: 0; }
+  details.config-section > summary::after {
+    content: "+";
+    flex: 0 0 auto;
+    font-size: 1.3rem;
+    line-height: 1;
+    color: var(--chalk-grey);
+  }
+  details.config-section[open] > summary::after { content: "\2212"; }
+  details.config-section > .config-section-body {
+    padding: 0 2px 22px;
+  }
+  .guida-intro { color: var(--chalk-grey); font-size: 0.85rem; line-height: 1.6; margin: -6px 0 20px; }
+  .sommario { display: flex; flex-wrap: wrap; gap: 6px 10px; margin-bottom: 24px; }
+  .sommario a {
+    font-size: 0.74rem; color: var(--chalk-grey); text-decoration: none; padding: 4px 0;
+    border-bottom: 1px dashed transparent;
+  }
+  .sommario a:hover { color: var(--ball); border-bottom-color: var(--ball); }
+  .sommario .sep { color: var(--chalk-grey-dim); }
+  .voce { margin-bottom: 16px; }
+  .voce:last-child { margin-bottom: 0; }
+  .voce .dove {
+    font-family: 'Space Mono', monospace; font-size: 0.72rem; color: var(--ball); text-transform: none;
+    display: block; margin-bottom: 4px;
+  }
+  :root[data-theme="light"] .voce .dove { color: var(--ball-dim); }
+  .voce .cosa { font-weight: 600; font-size: 0.9rem; margin-bottom: 3px; }
+  .voce .come { color: var(--chalk-grey); font-size: 0.84rem; line-height: 1.55; }
+  .voce .come code {
+    font-family: 'Space Mono', monospace; font-size: 0.82em; background: var(--court-blue-800);
+    padding: 1px 5px; border-radius: 3px;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <h1>Guida amministratore</h1>
+    <div class="user-chip" id="user-chip">—</div>
+    <div class="topbar-actions">
+      <button type="button" class="topbar-link" id="theme-toggle-btn">Tema chiaro</button>
+      <a href="password.html" class="topbar-link">Password</a>
+      <a href="configurazione.html" class="topbar-link">Configurazione</a>
+    </div>
+  </div>
+
+  <main>
+
+    <div id="access-denied" class="empty-state hidden">
+      <div class="display">Accesso non consentito</div>
+      <p>Questa pagina è riservata a chi gestisce la configurazione.</p>
+    </div>
+
+    <div id="guida-content">
+
+    <p class="guida-intro">Dove trovare e come impostare ogni parametro dell'app — aggiornata mano a mano che si aggiungono funzionalità. Ogni voce dice <strong>dove</strong> si trova il campo e <strong>cosa</strong> succede quando lo si cambia.</p>
+
+    <div class="sommario">
+      <a href="#centro">Dati del centro</a><span class="sep">·</span>
+      <a href="#generali">Impostazioni generali</a><span class="sep">·</span>
+      <a href="#discipline">Discipline</a><span class="sep">·</span>
+      <a href="#campi">Campi</a><span class="sep">·</span>
+      <a href="#tariffe">Tariffe campi</a><span class="sep">·</span>
+      <a href="#forfait">Forfait campi</a><span class="sep">·</span>
+      <a href="#quote">Quote campo</a><span class="sep">·</span>
+      <a href="#chiusure">Chiusure centro</a><span class="sep">·</span>
+      <a href="#prenotazioni">Impostazioni prenotazioni</a><span class="sep">·</span>
+      <a href="#abbonamenti">Abbonamenti fissi</a><span class="sep">·</span>
+      <a href="#soci">Soci e categorie</a><span class="sep">·</span>
+      <a href="#aziende">Aziende convenzionate</a><span class="sep">·</span>
+      <a href="#utenti">Utenti e ruoli</a><span class="sep">·</span>
+      <a href="#corsi">Corsi</a><span class="sep">·</span>
+      <a href="#buoni">Buoni regalo</a><span class="sep">·</span>
+      <a href="#tabellone">Tabellone generale</a><span class="sep">·</span>
+      <a href="#biglietto">Biglietto</a>
+    </div>
+
+    <!-- ===================== Dati del centro ===================== -->
+    <details class="config-section" id="centro" open>
+    <summary><h2>Dati del centro</h2></summary>
+    <div class="config-section-body">
+
+      <div class="voce">
+        <span class="dove">Configurazione → Dati del centro</span>
+        <div class="cosa">Nome, indirizzo, contatti, homepage</div>
+        <div class="come">Usati ovunque nell'app appaia l'intestazione del centro: biglietti, ricevute stampate/PDF, email automatiche. <strong>Homepage</strong> è il sito ufficiale del circolo, mostrato nell'intestazione — <em>diverso</em> dal "Link dopo Salva biglietto" (vedi <a href="#biglietto">Biglietto</a>), che può puntare a qualsiasi pagina.</div>
+      </div>
+
+    </div>
+    </details>
+
+    <!-- ===================== Impostazioni generali ===================== -->
+    <details class="config-section" id="generali">
+    <summary><h2>Impostazioni generali</h2></summary>
+    <div class="config-section-body">
+
+      <div class="voce">
+        <span class="dove">Configurazione → Impostazioni generali</span>
+        <div class="cosa">Minuti per eliminare una voce diario</div>
+        <div class="come">Un collaboratore può cancellare una propria voce diario solo entro questi minuti da quando l'ha creata. Oltre, serve il permesso "Diario: modificare/cancellare le voci di tutti".</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove">Configurazione → Impostazioni generali</span>
+        <div class="cosa">Giorni festivi</div>
+        <div class="come">Una data per riga (<code>AAAA-MM-GG</code>). Un festivo conta come domenica per le tariffe campi e accorcia l'orario come nel weekend, qualunque giorno della settimana sia davvero.</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove">Configurazione → Impostazioni generali</span>
+        <div class="cosa">Orario di chiusura sabato/domenica/festivi</div>
+        <div class="come">Vale per tennis, squash e padel insieme — un solo orario per tutte le discipline. Nei giorni feriali il centro chiude sempre alle 23:00 (non configurabile).</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove">Configurazione → Impostazioni generali</span>
+        <div class="cosa">Link dopo "Salva biglietto"</div>
+        <div class="come">Dove finisce chi ha appena scaricato il biglietto — può essere qualsiasi pagina, non necessariamente il sito del circolo. Vuoto = resta sul biglietto.</div>
+      </div>
+
+    </div>
+    </details>
+
+    <!-- ===================== Discipline ===================== -->
+    <details class="config-section" id="discipline">
+    <summary><h2>Discipline</h2></summary>
+    <div class="config-section-body">
+
+      <div class="voce">
+        <span class="dove">Configurazione → Discipline</span>
+        <div class="cosa">Ordine</div>
+        <div class="come">Numero più basso = più in alto. Decide l'ordine di visualizzazione in Diario, Corsi e nel <a href="#tabellone">Tabellone generale</a>. Nessun'altra impostazione serve per l'ordine del tabellone: legge direttamente da qui.</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove">Configurazione → Discipline</span>
+        <div class="cosa">Ore minime di preavviso per annullare</div>
+        <div class="come">Per disciplina (tennis/padel/squash possono avere valori diversi). Entro queste ore prima dell'inizio, chi ha prenotato può annullare da solo dal biglietto e ricevere un credito automatico. Default 24h se lasciato vuoto. Vedi anche <a href="#biglietto">Biglietto</a>.</div>
+      </div>
+
+    </div>
+    </details>
+
+    <!-- ===================== Campi ===================== -->
+    <details class="config-section" id="campi">
+    <summary><h2>Campi</h2></summary>
+    <div class="config-section-body">
+
+      <div class="voce">
+        <span class="dove">Configurazione → Campi</span>
+        <div class="cosa">Numero campo</div>
+        <div class="come">Testo libero, non solo un numero — si può scrivere anche una dedica/sponsor (es. <code>4 Leda Polli</code>). Il <a href="#tabellone">Tabellone generale</a> estrae da solo la parte numerica per ordinare i campi e mostra il resto come dedica sotto.</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove">Configurazione → Campi</span>
+        <div class="cosa">Disciplina e posizione (interno/esterno)</div>
+        <div class="come">Decidono su quali tariffe (vedi sotto) e quali pagine di prenotazione il campo compare. Il padel non ha un vero campo qui — è fisso a livello di codice, un'eventuale voce serve solo per l'etichetta.</div>
+      </div>
+
+    </div>
+    </details>
+
+    <!-- ===================== Tariffe campi ===================== -->
+    <details class="config-section" id="tariffe">
+    <summary><h2>Tariffe campi</h2></summary>
+    <div class="config-section-body">
+
+      <div class="voce">
+        <span class="dove">Configurazione → Tariffe campi</span>
+        <div class="cosa">Prezzo per disciplina + posizione + categoria + periodo + giorni + orario</div>
+        <div class="come">Il motore prezzi di ogni prenotazione singola (non degli <a href="#abbonamenti">abbonamenti fissi</a>, che hanno un prezzo di stagione a parte). Nel tennis il prezzo dello slot è la somma delle tariffe dei due giocatori, ognuno con la propria categoria.</div>
+      </div>
+
+    </div>
+    </details>
+
+    <!-- ===================== Forfait campi ===================== -->
+    <details class="config-section" id="forfait">
+    <summary><h2>Forfait campi</h2></summary>
+    <div class="config-section-body">
+
+      <div class="voce">
+        <span class="dove">Configurazione → Forfait campi</span>
+        <div class="cosa">Periodo + categorie incluse → prezzo CHF 0</div>
+        <div class="come">Se una categoria ha un forfait attivo per quella data/disciplina/posizione, il prezzo diventa gratuito indipendentemente dalle tariffe orarie sopra — controllato prima di tutto il resto nel calcolo prezzo.</div>
+      </div>
+
+    </div>
+    </details>
+
+    <!-- ===================== Quote campo ===================== -->
+    <details class="config-section" id="quote">
+    <summary><h2>Quote campo</h2></summary>
+    <div class="config-section-body">
+
+      <div class="voce">
+        <span class="dove">Configurazione → Quote campo</span>
+        <div class="cosa">Quota dovuta dal collaboratore al circolo</div>
+        <div class="come">Si applica solo se sia l'utente (checkbox "soggetto a quota campo" in Utenti) sia il tipo attività (stesso checkbox in Tipi attività) hanno il flag attivo. Calcolata nel Resoconto, non scalata automaticamente da nessuna parte.</div>
+      </div>
+
+    </div>
+    </details>
+
+    <!-- ===================== Chiusure centro ===================== -->
+    <details class="config-section" id="chiusure">
+    <summary><h2>Chiusure centro</h2></summary>
+    <div class="config-section-body">
+
+      <div class="voce">
+        <span class="dove">Configurazione → Chiusure centro (tennis/squash) e pannello Prenotazioni (padel, sezione dedicata)</span>
+        <div class="cosa">Giorni di chiusura totale, per data</div>
+        <div class="come">Diverso dall'orario weekend (che accorcia solo l'orario): qui il campo non è prenotabile da nessuno in quella data, nemmeno per blocchi/prenotazioni esenti. Si può limitare a discipline specifiche o applicare a tutte.</div>
+      </div>
+
+    </div>
+    </details>
+
+    <!-- ===================== Impostazioni prenotazioni ===================== -->
+    <details class="config-section" id="prenotazioni">
+    <summary><h2>Impostazioni prenotazioni campi</h2></summary>
+    <div class="config-section-body">
+
+      <div class="voce">
+        <span class="dove">Configurazione → Impostazioni prenotazioni campi</span>
+        <div class="cosa">Prenotazioni attive massime per persona</div>
+        <div class="come">Solo per chi è riconosciuto (dispositivo attivato) — un utente esterno anonimo non ha un'identità stabile su cui contarlo, quindi non è limitato.</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove">Configurazione → Impostazioni prenotazioni campi</span>
+        <div class="cosa">Giorni di anticipo per categoria</div>
+        <div class="come">Un campo per ciascuna categoria socio — quanti giorni prima ciascuna può prenotare. Priorità ai soci decisa qui, non altrove. 7 giorni di default per chi non ha un valore specifico.</div>
+      </div>
+
+    </div>
+    </details>
+
+    <!-- ===================== Abbonamenti fissi ===================== -->
+    <details class="config-section" id="abbonamenti">
+    <summary><h2>Abbonamenti fissi (tennis)</h2></summary>
+    <div class="config-section-body">
+
+      <div class="voce">
+        <span class="dove">Configurazione → Abbonamenti fissi (tennis)</span>
+        <div class="cosa">Numero di settimane (default), prezzo/settimana socio ed esterno</div>
+        <div class="come">Prezzo di stagione, indipendente dalle Tariffe campi. Il numero di settimane è solo il default proposto in fase di creazione — ogni abbonamento può avere il proprio numero (utile per chi aderisce a stagione già iniziata).</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove">Configurazione → Abbonamenti fissi (tennis)</span>
+        <div class="cosa">Creare e attivare un abbonamento</div>
+        <div class="come">1) Si crea la richiesta (cerca socio, campo, giorno, orario, categoria) — il sistema controlla da solo che lo slot sia libero per tutte le settimane, saltando le date di chiusura senza farle contare. 2) Si avvisa il socio del pagamento <em>fuori dall'app</em>. 3) Solo dopo aver verificato il pagamento, "Conferma pagamento e attiva" — da lì nascono tutte le prenotazioni vere insieme, non prima.</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove">Pagina pubblica <code>abbonamento.html</code> (dispositivo riconosciuto)</span>
+        <div class="cosa">Il socio vede e cancella le proprie settimane</div>
+        <div class="come">Nessun rimborso automatico alla cancellazione — libera solo lo slot. Se un rimborso è dovuto, lo valuta la segreteria a parte (es. tramite <a href="#buoni">un buono/credito</a> emesso a mano).</div>
+      </div>
+
+    </div>
+    </details>
+
+    <!-- ===================== Soci e categorie ===================== -->
+    <details class="config-section" id="soci">
+    <summary><h2>Soci e categorie</h2></summary>
+    <div class="config-section-body">
+
+      <div class="voce">
+        <span class="dove">Configurazione → Categorie socio</span>
+        <div class="cosa">Le categorie disponibili (Attivi, Famiglia, Junior…)</div>
+        <div class="come">Usate ovunque si scelga una "categoria" per un socio: tariffe campi, tetti azienda, anticipo prenotazione. Eliminarne una non tocca i soci già assegnati a quella categoria (il valore resta salvato, solo non più selezionabile per i nuovi).</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove">Configurazione → sezione import soci</span>
+        <div class="cosa">Import in blocco</div>
+        <div class="come">Una riga per socio: <code>Nome;Cognome;Email;Categoria;Telefono;Tessera</code>. Email obbligatoria (righe senza vengono scartate e contate). Categoria deve corrispondere a un id già configurato sopra. Un'email già esistente aggiorna il socio invece di duplicarlo.</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove">Nessuna configurazione — è già pronto</span>
+        <div class="cosa">Attivazione del socio (collegare il dispositivo)</div>
+        <div class="come">Self-service: il socio va su <code>attiva-socio.html</code> e inserisce l'email importata sopra, riceve un link di attivazione via email. In alternativa, dal pannello Prenotazioni lo staff cerca il socio e genera un QR da fargli scansionare di persona.</div>
+      </div>
+
+    </div>
+    </details>
+
+    <!-- ===================== Aziende convenzionate ===================== -->
+    <details class="config-section" id="aziende">
+    <summary><h2>Aziende convenzionate</h2></summary>
+    <div class="config-section-body">
+
+      <div class="voce">
+        <span class="dove">Configurazione → Aziende convenzionate</span>
+        <div class="cosa">Tetto mensile (azienda e/o per dipendente)</div>
+        <div class="come">Modello posticipato: oltre il tetto, la prenotazione passa da sola a tariffa esterno (mai bloccata). Il referente addebita quanto dovuto a fine periodo dal proprio portale, con una carta salvata lì.</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove">Portale azienda (self-service referente) → sezione Credito prepagato; conferme su fattura in Configurazione → Aziende</span>
+        <div class="cosa">Credito prepagato</div>
+        <div class="come">Alternativa/complemento al tetto (possono coesistere): l'azienda ricarica un importo — online (subito) o su fattura (attivato dallo staff solo dopo aver verificato il bonifico). Ogni prenotazione dei dipendenti scala dal credito; se il credito non basta, tariffa piena.</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove">Portale azienda → Dipendenti</span>
+        <div class="cosa">Aggiungere/disattivare dipendenti, tetto personalizzato</div>
+        <div class="come">Gestito dal referente stesso, non serve lo staff. Ogni dipendente si attiva come un socio normale (QR o email), con la categoria dell'azienda.</div>
+      </div>
+
+    </div>
+    </details>
+
+    <!-- ===================== Utenti e ruoli ===================== -->
+    <details class="config-section" id="utenti">
+    <summary><h2>Utenti e ruoli (Team)</h2></summary>
+    <div class="config-section-body">
+
+      <div class="voce">
+        <span class="dove">Utenti → Ruoli</span>
+        <div class="cosa">Permessi per ruolo</div>
+        <div class="come">Un ruolo con <code>*</code> è amministratore (accesso completo, anche dove serve esplicitamente "solo il vero admin"). Includono, tra gli altri: <code>prenotazioni:gestisci</code>/<code>prenotazioni:proprie</code>, <code>config:gestisci</code>, <code>azienda:propria</code> (referente), <code>diario:gestisci_tutti</code>.</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove">Utenti → creazione collaboratore</span>
+        <div class="cosa">Tariffe orarie per disciplina, "soggetto a quota campo"</div>
+        <div class="come">Le tariffe alimentano il compenso in Resoconto (se il tipo attività ha "retribuito al collaboratore"). "Soggetto a quota campo" combinato col tipo attività decide se paga la quota campo (vedi sopra).</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove">Utenti → scheda utente</span>
+        <div class="cosa">Reset password</div>
+        <div class="come">"Prepara email reset password" apre il client di posta di chi gestisce con un link già pronto — invio manuale, voluto (mittente riconoscibile, meno filtrato come spam). Il collaboratore può anche recuperarla da solo dal login ("Password dimenticata?").</div>
+      </div>
+
+    </div>
+    </details>
+
+    <!-- ===================== Corsi ===================== -->
+    <details class="config-section" id="corsi">
+    <summary><h2>Corsi</h2></summary>
+    <div class="config-section-body">
+
+      <div class="voce">
+        <span class="dove">Corsi → creazione (permesso <code>corsi:gestisci</code>)</span>
+        <div class="cosa">Un corso è una proposta, non uno slot fisso</div>
+        <div class="come">Giorni/orari proposti per singolo giorno, campi proposti, costi (istruttori/campo/materiale) e "prezzo richiesto" (libero, non derivato dal calcolo costi). Va approvato (permesso <code>corsi:approva</code>, separato apposta) prima di apparire nel modulo pubblico.</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove"><code>iscrizione-corso.html</code> — pagina pubblica, nessun login</span>
+        <div class="cosa">Modulo di iscrizione</div>
+        <div class="come">Mostra solo i corsi approvati con termine iscrizione non scaduto. Ogni iscrizione parte "in attesa" — la conferma con assegnazione di giorno/orario è manuale, dal permesso <code>iscrizioni:gestisci</code>.</div>
+      </div>
+
+    </div>
+    </details>
+
+    <!-- ===================== Buoni regalo ===================== -->
+    <details class="config-section" id="buoni">
+    <summary><h2>Buoni regalo</h2></summary>
+    <div class="config-section-body">
+
+      <div class="voce">
+        <span class="dove"><code>buono-regalo.html</code> — pubblico, nessuna configurazione</span>
+        <div class="cosa">Acquisto pubblico</div>
+        <div class="come">Vale come credito per qualunque prenotazione futura (tennis, padel o squash) — non solo padel nonostante il nome storico delle pagine. Nessuna scadenza.</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove">Pannello Prenotazioni → "Emetti buono omaggio" (permesso <code>prenotazioni:gestisci</code>)</span>
+        <div class="cosa">Emissione omaggio dallo staff</div>
+        <div class="come">Stesso identico credito di un buono acquistato, ma senza pagamento — utile anche per un rimborso manuale (es. una settimana di <a href="#abbonamenti">abbonamento fisso</a> cancellata, vedi sopra).</div>
+      </div>
+
+    </div>
+    </details>
+
+    <!-- ===================== Tabellone generale ===================== -->
+    <details class="config-section" id="tabellone">
+    <summary><h2>Tabellone generale</h2></summary>
+    <div class="config-section-body">
+
+      <div class="voce">
+        <span class="dove"><code>tabellone-generale.html</code> — pubblico, nessun login richiesto</span>
+        <div class="cosa">Vista di tutti i campi, tutta la giornata</div>
+        <div class="come">Pensata per un monitor sempre acceso in reception (nessun nome mostrato) e per il desktop della direzione: se aperta da una sessione staff con permesso <code>prenotazioni:gestisci</code>/<code>prenotazioni:proprie</code>, mostra anche i nomi. L'ordine delle discipline segue <a href="#discipline">Configurazione → Discipline → Ordine</a> — nessun'altra impostazione.</div>
+      </div>
+
+    </div>
+    </details>
+
+    <!-- ===================== Biglietto ===================== -->
+    <details class="config-section" id="biglietto">
+    <summary><h2>Biglietto</h2></summary>
+    <div class="config-section-body">
+
+      <div class="voce">
+        <span class="dove">Nessuna configurazione — comportamento fisso</span>
+        <div class="cosa">Salva (PNG), Inoltra (condivisione nativa), Ricevuta (PDF)</div>
+        <div class="come">Il biglietto resta un'immagine (adatta a telefono/WhatsApp); la ricevuta è un PDF vero (documento contabile). "Inoltra" usa il selettore di condivisione del telefono — chiunque riceva il link può anche annullare la prenotazione (stessa autorizzazione della lettura), non solo chi ha pagato.</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove">Vedi <a href="#discipline">Discipline → Ore minime di preavviso</a> e <a href="#generali">Impostazioni generali → Link dopo Salva biglietto</a></span>
+        <div class="cosa">Le due impostazioni che lo riguardano</div>
+        <div class="come">Tutto il resto del comportamento del biglietto è fisso nel codice, non configurabile da qui.</div>
+      </div>
+
+    </div>
+    </details>
+
+    </div>
+
+  </main>
+
+  <nav class="bottom-nav">
+    <a href="diario.html">Diario</a>
+    <a href="resoconto.html">Resoconto</a>
+    <a href="cassa.html">Cassa</a>
+    <a href="corsi.html">Corsi</a>
+    <a href="prenotazioni.html">Prenotazioni</a>
+    <a href="#" title="In arrivo">Camp</a>
+    <a href="utenti.html">Team</a>
+    <a href="configurazione.html">Config</a>
+    <a href="#" id="logout-link">Esci</a>
+  </nav>
+
+  <script>
+    document.querySelector(".bottom-nav a.active")?.scrollIntoView({ inline: "center", block: "nearest" });
+  </script>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/guida.js"></script>
+</body>
+</html>
