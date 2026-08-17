@@ -179,6 +179,17 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Abbonamenti fissi (ora settimanale ripetuta, tennis): lettura per
+    // lo staff che li gestisce; il socio non legge questa collection
+    // direttamente (niente regola per lui) — la vede tramite la Cloud
+    // Function ilMioAbbonamento, che applica il proprio controllo
+    // "dispositivo riconosciuto" invece di questa regola. Scrittura
+    // sempre e solo dalle Cloud Function dedicate (Admin SDK).
+    match /abbonamentiFissi/{id} {
+      allow get, list: if hasPermission("config:gestisci") || hasPermission("prenotazioni:gestisci");
+      allow write: if false;
+    }
+
     // Lettura pubblica (non isSignedIn() come le altre voci di questo
     // gruppo): prenota-campo.html e chi-in-campo.html, pagine senza
     // login, devono poter leggere quali campi esistono. Non sono dati

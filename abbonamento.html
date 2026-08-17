@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Il mio abbonamento — Tennis Club Mendrisio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script>if(localStorage.getItem("sportos-tema")==="light")document.documentElement.setAttribute("data-theme","light");</script>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest-cliente.json">
+<meta name="theme-color" content="#0d1f30">
+<style>
+  .abb-card {
+    background: var(--court-blue-900); border: 1px solid var(--court-blue-700);
+    border-radius: var(--radius); padding: 18px var(--gap); margin-bottom: 18px;
+  }
+  .abb-card .titolo { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 1.05rem; margin-bottom: 4px; }
+  .abb-card .meta { color: var(--chalk-grey); font-size: 0.84rem; margin-bottom: 14px; }
+  .settimana-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 10px 0; border-bottom: 1px dashed var(--court-blue-700);
+  }
+  .settimana-row:last-child { border-bottom: none; }
+  .settimana-row .data { font-family: 'Space Mono', monospace; font-size: 0.86rem; }
+  .settimana-row .stato-cancellata { color: var(--chalk-grey-dim); font-size: 0.76rem; text-decoration: line-through; }
+  .settimana-row button {
+    background: none; border: 1px solid var(--danger); color: var(--danger); border-radius: 7px;
+    padding: 6px 12px; font-size: 0.72rem; cursor: pointer; flex: none;
+  }
+  .settimana-row button:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
+  .settimana-row button:disabled { opacity: 0.4; cursor: default; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <div>
+      <div class="topbar-kicker" id="centro-kicker">Tennis Club Mendrisio</div>
+      <h1>Il mio abbonamento</h1>
+    </div>
+    <div></div>
+    <button type="button" class="topbar-link" id="theme-toggle-btn">Tema chiaro</button>
+  </div>
+
+  <main>
+
+    <div id="stato-caricamento" class="empty-state">
+      <div class="display">Verifica in corso…</div>
+    </div>
+
+    <div id="stato-non-riconosciuto" class="empty-state hidden">
+      <div class="display">Dispositivo non riconosciuto</div>
+      <p>Per vedere il tuo abbonamento, attiva prima questo dispositivo.</p>
+      <a href="attiva-socio.html" class="btn btn-primary" style="margin-top:14px;display:inline-block;">Attiva dispositivo</a>
+    </div>
+
+    <div id="stato-vuoto" class="empty-state hidden">
+      <div class="display">Nessun abbonamento attivo</div>
+      <p>Non risulta nessun abbonamento fisso collegato al tuo profilo. Contatta la segreteria per attivarne uno.</p>
+    </div>
+
+    <div id="abbonamenti-container" class="hidden"></div>
+
+    <div class="error-msg" id="abbonamento-error"></div>
+
+  </main>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/abbonamento.js"></script>
+</body>
+</html>

@@ -1153,6 +1153,292 @@ exports.annullaPrenotazioneCliente = onCall(async (request) => {
   return await emettiCreditoAnnullamento(ticket.bookingId);
 });
 
+// ---------- 3b. Abbonamenti fissi (tennis) ----------
+//
+// Un'ora fissa alla settimana per N settimane, prezzo di stagione (non
+// le tariffe dinamiche di tariffeCampi — è un prodotto diverso), sempre
+// tennis per ora. Mai attivato in automatico: lo staff crea la richiesta
+// (stato IN_ATTESA_PAGAMENTO), avvisa il socio fuori dall'app, e solo
+// dopo aver verificato il pagamento preme "conferma" — solo lì nascono
+// le prenotazioni vere. Le settimane su un giorno di chiusura non
+// contano: generaDateAbbonamento le salta e ne aggiunge un'altra in
+// fondo, così chi aderisce ottiene sempre N settimane davvero giocabili.
+// L'eventuale rimborso di una settimana cancellata resta manuale (lo
+// valuta la segreteria), qui si libera solo lo slot.
+const GIORNO_JS_DAY_ABB = { dom: 0, lun: 1, mar: 2, mer: 3, gio: 4, ven: 5, sab: 6 };
+
+function addGiorniIso(dataIso, n) {
+  const d = new Date(dataIso + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+async function impostazioniAbbonamento() {
+  const snap = await db.collection("impostazioni").doc("generale").get();
+  const g = snap.exists ? snap.data() : {};
+  return {
+    numeroSettimaneDefault: g.numeroSettimaneAbbonamentoDefault ?? 30,
+    prezzoSocio: g.prezzoAbbonamentoSocio ?? 0,
+    prezzoEsterno: g.prezzoAbbonamentoEsterno ?? 0
+  };
+}
+
+async function generaDateAbbonamento({ dataInizio, orarioInizio, orarioFine, numeroSettimane }) {
+  const generaleSnap = await db.collection("impostazioni").doc("generale").get();
+  const { festivi, chiusuraWeekendMin } = festiviEChiusuraWeekend(generaleSnap);
+
+  const date = [];
+  let cursore = dataInizio;
+  let iterazioni = 0;
+  const maxIterazioni = numeroSettimane * 6 + 20; // tetto di sicurezza, evita un loop infinito
+  while (date.length < numeroSettimane) {
+    iterazioni++;
+    if (iterazioni > maxIterazioni) {
+      throw new HttpsError("failed-precondition", "Questa combinazione di giorno/orario non è mai disponibile — controlla l'orario di chiusura weekend.");
+    }
+    const chiusoSnap = await db.collection("chiusureCentro").doc(cursore).get();
+    const centroChiuso = chiusoSnap.exists && (!(chiusoSnap.data().discipline || []).length || chiusoSnap.data().discipline.includes("tennis"));
+    const slotValido = slotFissiDisciplina("tennis", cursore, festivi, chiusuraWeekendMin).some(s => s.inizio === orarioInizio);
+    if (!centroChiuso && slotValido) date.push(cursore);
+    cursore = addGiorniIso(cursore, 7);
+  }
+  return date;
+}
+
+// Uno slot già occupato in un giorno APERTO è un errore da segnalare,
+// diverso da una chiusura (quella si salta in silenzio, vedi sopra) —
+// non si crea/attiva nulla finché non è tutto libero. Riusata sia alla
+// creazione sia (di nuovo, per sicurezza) alla conferma pagamento, che
+// può arrivare giorni dopo la richiesta.
+async function trovaConflittiAbbonamento(courtId, date, orarioInizio, orarioFine) {
+  const conflitti = [];
+  for (const d of date) {
+    const bookingsSnap = await db.collection("bookings").where("date", "==", d).where("courtId", "==", courtId).get();
+    const occupato = bookingsSnap.docs
+      .filter(doc => !pendingScaduto(doc.data()))
+      .map(doc => doc.data())
+      .filter(b => b.status === "PENDING_PAYMENT" || b.status === "CONFIRMED" || b.status === "COMPLETED")
+      .some(b => sovrapposto(orarioInizio, orarioFine, b.startTime, b.endTime));
+    if (occupato) conflitti.push(d);
+  }
+  return conflitti;
+}
+
+exports.creaAbbonamentoFisso = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+  const { permessi, isAdmin } = await permessiUtente(request.auth.uid);
+  if (!isAdmin && !permessi.includes("config:gestisci") && !permessi.includes("prenotazioni:gestisci")) {
+    throw new HttpsError("permission-denied", "Permesso mancante.");
+  }
+
+  const { socioId, compagnoNome, courtId, giornoSettimana, orarioInizio, categoria, numeroSettimane, dataInizio } = request.data || {};
+  if (!socioId || !courtId || !giornoSettimana || !orarioInizio || !categoria || !dataInizio) {
+    throw new HttpsError("invalid-argument", "Dati mancanti.");
+  }
+  if (categoria !== "socio" && categoria !== "esterno") {
+    throw new HttpsError("invalid-argument", "Categoria non valida.");
+  }
+  if (GIORNO_JS_DAY_ABB[giornoSettimana] == null) {
+    throw new HttpsError("invalid-argument", "Giorno della settimana non valido.");
+  }
+  if (new Date(dataInizio + "T00:00:00Z").getUTCDay() !== GIORNO_JS_DAY_ABB[giornoSettimana]) {
+    throw new HttpsError("invalid-argument", "La data di inizio non cade nel giorno della settimana scelto.");
+  }
+
+  const socioSnap = await db.collection("soci").doc(socioId).get();
+  if (!socioSnap.exists) throw new HttpsError("not-found", "Socio non trovato.");
+  const socio = socioSnap.data();
+
+  const campoSnap = await db.collection("campi").doc(courtId).get();
+  if (!campoSnap.exists || campoSnap.data().disciplina !== "tennis") {
+    throw new HttpsError("invalid-argument", "Gli abbonamenti fissi valgono solo per campi da tennis.");
+  }
+
+  const slot = SLOT_TENNIS.find(([inizio]) => inizio === orarioInizio);
+  if (!slot) throw new HttpsError("invalid-argument", "Orario non valido per il tennis.");
+  const orarioFine = slot[1];
+
+  const impostazioni = await impostazioniAbbonamento();
+  const nSettimane = numeroSettimane != null ? parseInt(numeroSettimane, 10) : impostazioni.numeroSettimaneDefault;
+  if (!nSettimane || nSettimane < 1) throw new HttpsError("invalid-argument", "Numero di settimane non valido.");
+
+  // Se il giorno scelto cade sempre nel weekend, verifica subito che
+  // l'orario stia dentro la chiusura weekend — altrimenti la ricerca
+  // delle date valide qui sotto non troverebbe mai nulla (nessuna
+  // occorrenza di quel giorno sarebbe mai valida, non solo qualcuna).
+  if (GIORNO_JS_DAY_ABB[giornoSettimana] === 0 || GIORNO_JS_DAY_ABB[giornoSettimana] === 6) {
+    const generaleSnap = await db.collection("impostazioni").doc("generale").get();
+    const { chiusuraWeekendMin } = festiviEChiusuraWeekend(generaleSnap);
+    if (orarioToMin(orarioFine) > chiusuraWeekendMin) {
+      throw new HttpsError("failed-precondition", `Questo orario non è disponibile di sabato/domenica — il centro chiude alle ${minutiToOrario(chiusuraWeekendMin)}.`);
+    }
+  }
+
+  const date = await generaDateAbbonamento({ dataInizio, orarioInizio, orarioFine, numeroSettimane: nSettimane });
+  const conflitti = await trovaConflittiAbbonamento(courtId, date, orarioInizio, orarioFine);
+  if (conflitti.length > 0) {
+    throw new HttpsError("failed-precondition", `Slot già occupato in queste date: ${conflitti.join(", ")}. Scegli un altro giorno/orario o risolvi prima i conflitti.`);
+  }
+
+  const prezzoSettimana = categoria === "socio" ? impostazioni.prezzoSocio : impostazioni.prezzoEsterno;
+  const abbRef = await db.collection("abbonamentiFissi").add({
+    socioId, socioNome: socio.nome, socioCognome: socio.cognome,
+    compagnoNome: compagnoNome || null,
+    courtId, disciplina: "tennis", giornoSettimana, orarioInizio, orarioFine,
+    categoria, numeroSettimane: nSettimane, prezzoSettimana, prezzoTotale: prezzoSettimana * nSettimane,
+    dataInizio, dateGenerate: date, bookingIds: [],
+    stato: "IN_ATTESA_PAGAMENTO",
+    createdByUid: request.auth.uid, createdAt: FieldValue.serverTimestamp()
+  });
+
+  return { id: abbRef.id, date, prezzoTotale: prezzoSettimana * nSettimane };
+});
+
+exports.confermaPagamentoAbbonamento = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+  const { permessi, isAdmin, userData } = await permessiUtente(request.auth.uid);
+  if (!isAdmin && !permessi.includes("config:gestisci") && !permessi.includes("prenotazioni:gestisci")) {
+    throw new HttpsError("permission-denied", "Permesso mancante.");
+  }
+
+  const { abbonamentoId } = request.data || {};
+  if (!abbonamentoId) throw new HttpsError("invalid-argument", "abbonamentoId mancante.");
+
+  const abbRef = db.collection("abbonamentiFissi").doc(abbonamentoId);
+  const abbSnap = await abbRef.get();
+  if (!abbSnap.exists) throw new HttpsError("not-found", "Abbonamento non trovato.");
+  const abb = abbSnap.data();
+  if (abb.stato !== "IN_ATTESA_PAGAMENTO") {
+    throw new HttpsError("failed-precondition", "Questo abbonamento è già stato gestito.");
+  }
+
+  // Ricontrolla i conflitti al momento dell'attivazione vera (può essere
+  // passato del tempo dalla richiesta): se qualcosa si è occupato nel
+  // frattempo, non si attiva silenziosamente su uno slot sbagliato.
+  const conflitti = await trovaConflittiAbbonamento(abb.courtId, abb.dateGenerate, abb.orarioInizio, abb.orarioFine);
+  if (conflitti.length > 0) {
+    throw new HttpsError("failed-precondition", `Non più libero in queste date: ${conflitti.join(", ")}. Contatta il socio per rivedere l'abbonamento.`);
+  }
+
+  // Un unico batch per tutte le settimane + l'attivazione dell'abbonamento:
+  // o va tutto a buon fine insieme, o niente — con 30+ scritture separate
+  // un crash a metà avrebbe lasciato prenotazioni orfane senza che
+  // l'abbonamento risultasse mai attivo.
+  const batch = db.batch();
+  const bookingIds = [];
+  abb.dateGenerate.forEach(d => {
+    const bookingRef = db.collection("bookings").doc();
+    batch.set(bookingRef, {
+      courtId: abb.courtId, date: d, startTime: abb.orarioInizio, endTime: abb.orarioFine,
+      status: "CONFIRMED", type: "ABBONAMENTO", abbonamentoId,
+      authUid: null, createdAt: FieldValue.serverTimestamp()
+    });
+    batch.set(db.collection("bookingDettagli").doc(bookingRef.id), {
+      prenotanteNome: `${abb.socioNome} ${abb.socioCognome}`,
+      giocatore2Nome: abb.compagnoNome || null,
+      prezzoDettaglio: [{ ruolo: "abbonamento", categoria: abb.categoria, importo: abb.prezzoSettimana, socioId: abb.socioId }]
+    });
+    bookingIds.push(bookingRef.id);
+  });
+
+  batch.update(abbRef, {
+    stato: "ATTIVO", bookingIds,
+    attivatoDaUid: request.auth.uid, attivatoDaNome: (userData && userData.nome) || "—",
+    attivatoAt: FieldValue.serverTimestamp()
+  });
+  await batch.commit();
+
+  return { ok: true, prenotazioniCreate: bookingIds.length };
+});
+
+// Solo per richieste non ancora attivate (es. il socio ha rinunciato
+// prima di pagare) — un abbonamento già ATTIVO ha prenotazioni vere
+// dietro, non si elimina da qui.
+exports.eliminaAbbonamentoFisso = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+  const { permessi, isAdmin } = await permessiUtente(request.auth.uid);
+  if (!isAdmin && !permessi.includes("config:gestisci") && !permessi.includes("prenotazioni:gestisci")) {
+    throw new HttpsError("permission-denied", "Permesso mancante.");
+  }
+  const { abbonamentoId } = request.data || {};
+  if (!abbonamentoId) throw new HttpsError("invalid-argument", "abbonamentoId mancante.");
+  const abbRef = db.collection("abbonamentiFissi").doc(abbonamentoId);
+  const abbSnap = await abbRef.get();
+  if (!abbSnap.exists) throw new HttpsError("not-found", "Abbonamento non trovato.");
+  if (abbSnap.data().stato === "ATTIVO") {
+    throw new HttpsError("failed-precondition", "Un abbonamento già attivo non si elimina da qui — cancella le singole settimane.");
+  }
+  await abbRef.delete();
+  return { ok: true };
+});
+
+// ---------- Abbonamenti fissi: lato socio (dispositivo riconosciuto) ----------
+
+exports.ilMioAbbonamento = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+  const deviceSnap = await db.collection("sociDevices").doc(request.auth.uid).get();
+  const profili = deviceSnap.exists ? (deviceSnap.data().profili || []) : [];
+  const socioIds = profili.map(p => p.socioId);
+  if (socioIds.length === 0) return { abbonamenti: [] };
+
+  const abbSnap = await db.collection("abbonamentiFissi")
+    .where("socioId", "in", socioIds.slice(0, 10))
+    .where("stato", "==", "ATTIVO")
+    .get();
+
+  const oggi = oraLocaleZurigo().dataIso;
+  const abbonamenti = await Promise.all(abbSnap.docs.map(async doc => {
+    const abb = doc.data();
+    const bookingsSnap = await Promise.all(abb.bookingIds.map(id => db.collection("bookings").doc(id).get()));
+    const settimane = bookingsSnap
+      .filter(s => s.exists)
+      .map(s => ({ bookingId: s.id, date: s.data().date, startTime: s.data().startTime, endTime: s.data().endTime, status: s.data().status }))
+      .filter(s => s.date >= oggi)
+      .sort((a, b) => a.date.localeCompare(b.date));
+    return {
+      id: doc.id, courtId: abb.courtId, giornoSettimana: abb.giornoSettimana,
+      orarioInizio: abb.orarioInizio, orarioFine: abb.orarioFine, compagnoNome: abb.compagnoNome,
+      settimane
+    };
+  }));
+
+  return { abbonamenti };
+});
+
+// Nessun rimborso automatico: se dovuto, lo valuta la segreteria a parte
+// — questa funzione libera solo lo slot di quella singola settimana.
+exports.annullaSettimanaAbbonamento = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+  const { bookingId } = request.data || {};
+  if (!bookingId) throw new HttpsError("invalid-argument", "bookingId mancante.");
+
+  const bookingSnap = await db.collection("bookings").doc(bookingId).get();
+  if (!bookingSnap.exists) throw new HttpsError("not-found", "Prenotazione non trovata.");
+  const booking = bookingSnap.data();
+  if (booking.type !== "ABBONAMENTO" || !booking.abbonamentoId) {
+    throw new HttpsError("failed-precondition", "Questa prenotazione non fa parte di un abbonamento.");
+  }
+  if (booking.status !== "CONFIRMED") {
+    throw new HttpsError("failed-precondition", "Questa settimana non è (più) annullabile.");
+  }
+
+  const abbSnap = await db.collection("abbonamentiFissi").doc(booking.abbonamentoId).get();
+  if (!abbSnap.exists) throw new HttpsError("not-found", "Abbonamento non trovato.");
+  const abb = abbSnap.data();
+
+  const deviceSnap = await db.collection("sociDevices").doc(request.auth.uid).get();
+  const profili = deviceSnap.exists ? (deviceSnap.data().profili || []) : [];
+  const possiede = profili.some(p => p.socioId === abb.socioId);
+  if (!possiede) throw new HttpsError("permission-denied", "Questo abbonamento non è collegato a questo dispositivo.");
+
+  if (eOrmaiPassato(booking.date, orarioToMin(booking.startTime))) {
+    throw new HttpsError("failed-precondition", "Questa settimana è già iniziata o passata.");
+  }
+
+  await db.collection("bookings").doc(bookingId).update({ status: "CANCELLED" });
+  return { ok: true };
+});
+
 // ---------- 4. Buoni regalo ----------
 //
 // Un buono regalo è, sotto il cofano, esattamente un "credito" (stessa

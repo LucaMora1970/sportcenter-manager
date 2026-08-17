@@ -1619,6 +1619,208 @@ async function onSavePrenotazioniCampi(e) {
   }
 }
 
+// ---------- Abbonamenti fissi (tennis) ----------
+
+const GIORNO_LABEL_ABB = { lun: "Lunedì", mar: "Martedì", mer: "Mercoledì", gio: "Giovedì", ven: "Venerdì", sab: "Sabato", dom: "Domenica" };
+const STATO_ABB_LABEL = { IN_ATTESA_PAGAMENTO: "In attesa di pagamento", ATTIVO: "Attivo" };
+let abbonamentoSocioSelezionato = null; // { id, nome }
+let abbCercaTimeout = null;
+
+async function loadAbbonamentoImpostazioni() {
+  const snap = await db.collection("impostazioni").doc("generale").get();
+  const g = snap.exists ? snap.data() : {};
+  document.getElementById("abb-settimane-default").value = g.numeroSettimaneAbbonamentoDefault ?? 30;
+  document.getElementById("abb-prezzo-socio").value = g.prezzoAbbonamentoSocio ?? "";
+  document.getElementById("abb-prezzo-esterno").value = g.prezzoAbbonamentoEsterno ?? "";
+}
+
+async function onSaveAbbonamentoImpostazioni(e) {
+  e.preventDefault();
+  const btn = document.getElementById("salva-abbonamento-impostazioni-btn");
+  const errorEl = document.getElementById("abbonamento-impostazioni-error");
+  errorEl.textContent = "";
+  btn.disabled = true;
+  try {
+    const numeroSettimaneAbbonamentoDefault = parseInt(document.getElementById("abb-settimane-default").value, 10);
+    const prezzoAbbonamentoSocio = parseFloat(document.getElementById("abb-prezzo-socio").value) || 0;
+    const prezzoAbbonamentoEsterno = parseFloat(document.getElementById("abb-prezzo-esterno").value) || 0;
+    if (!numeroSettimaneAbbonamentoDefault || numeroSettimaneAbbonamentoDefault < 1) throw new Error("Inserisci un numero di settimane valido.");
+    await db.collection("impostazioni").doc("generale").set(
+      { numeroSettimaneAbbonamentoDefault, prezzoAbbonamentoSocio, prezzoAbbonamentoEsterno }, { merge: true }
+    );
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function popolaAbbonamentoSelects() {
+  const campoSelect = document.getElementById("abb-campo");
+  const snap = await db.collection("campi").where("disciplina", "==", "tennis").where("attivo", "==", true).get();
+  const campi = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  campi.sort((a, b) => String(a.numero || "").localeCompare(String(b.numero || ""), undefined, { numeric: true }));
+  campoSelect.innerHTML = campi.map(c => `<option value="${c.id}">Campo ${escapeHtml(c.numero)}${c.posizione ? ` (${escapeHtml(posizioneLabel(c.posizione))})` : ""}</option>`).join("");
+
+  const orarioSelect = document.getElementById("abb-orario");
+  orarioSelect.innerHTML = SLOT_TENNIS.map(([inizio, fine]) => `<option value="${inizio}">${inizio}–${fine}</option>`).join("");
+}
+
+function abbonamentoRigaHtml(a) {
+  const giorno = GIORNO_LABEL_ABB[a.giornoSettimana] || a.giornoSettimana;
+  const azioni = a.stato === "IN_ATTESA_PAGAMENTO"
+    ? `<button type="button" class="btn btn-primary conferma-abbonamento-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${a.id}">Conferma pagamento e attiva</button>
+       <button type="button" class="btn btn-danger elimina-abbonamento-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${a.id}">Elimina richiesta</button>`
+    : "";
+  return `
+    <div class="entry-card" data-id="${a.id}">
+      <div class="entry-main">
+        <div class="entry-tipo">${escapeHtml(a.socioNome)} ${escapeHtml(a.socioCognome)}${a.compagnoNome ? " + " + escapeHtml(a.compagnoNome) : ""}</div>
+        <div class="entry-meta">${giorno} ${escapeHtml(a.orarioInizio)}–${escapeHtml(a.orarioFine)} · ${a.numeroSettimane} settimane · ${a.categoria === "socio" ? "Socio" : "Esterno"} · CHF ${Number(a.prezzoTotale).toFixed(2)}</div>
+        <div class="entry-meta">${STATO_ABB_LABEL[a.stato] || a.stato}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;">${azioni}</div>
+    </div>
+  `;
+}
+
+async function loadAbbonamenti() {
+  const listEl = document.getElementById("abbonamenti-list");
+  try {
+    const snap = await db.collection("abbonamentiFissi").get();
+    const abbonamenti = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.stato === b.stato ? 0 : a.stato === "IN_ATTESA_PAGAMENTO" ? -1 : 1));
+    if (abbonamenti.length === 0) {
+      listEl.innerHTML = `<div class="empty-state"><div class="display">Nessun abbonamento</div></div>`;
+      return;
+    }
+    listEl.innerHTML = abbonamenti.map(abbonamentoRigaHtml).join("");
+    listEl.querySelectorAll(".conferma-abbonamento-btn").forEach(btn => btn.addEventListener("click", onConfermaAbbonamento));
+    listEl.querySelectorAll(".elimina-abbonamento-btn").forEach(btn => btn.addEventListener("click", onEliminaAbbonamento));
+  } catch (err) {
+    listEl.innerHTML = `<div class="empty-state"><div class="display">Errore</div><p>${escapeHtml(err.message)}</p></div>`;
+  }
+}
+
+async function onConfermaAbbonamento(e) {
+  const btn = e.currentTarget;
+  if (!confirm("Confermare che il pagamento è stato ricevuto? Verranno create tutte le prenotazioni della stagione, l'operazione non è reversibile da qui.")) return;
+  btn.disabled = true;
+  btn.textContent = "Attivazione in corso…";
+  try {
+    const fn = cloudFunctions().httpsCallable("confermaPagamentoAbbonamento");
+    await fn({ abbonamentoId: btn.dataset.id });
+    await loadAbbonamenti();
+  } catch (err) {
+    alert("Errore: " + err.message);
+    btn.disabled = false;
+    btn.textContent = "Conferma pagamento e attiva";
+  }
+}
+
+async function onEliminaAbbonamento(e) {
+  const btn = e.currentTarget;
+  if (!confirm("Eliminare questa richiesta di abbonamento? Non è reversibile.")) return;
+  btn.disabled = true;
+  try {
+    const fn = cloudFunctions().httpsCallable("eliminaAbbonamentoFisso");
+    await fn({ abbonamentoId: btn.dataset.id });
+    await loadAbbonamenti();
+  } catch (err) {
+    alert("Errore: " + err.message);
+    btn.disabled = false;
+  }
+}
+
+function wireCercaSocioAbbonamento() {
+  document.getElementById("abb-cerca-socio").addEventListener("input", (e) => {
+    clearTimeout(abbCercaTimeout);
+    const testo = e.target.value.trim();
+    if (testo.length < 2) {
+      document.getElementById("abb-cerca-risultati").innerHTML = "";
+      return;
+    }
+    abbCercaTimeout = setTimeout(() => cercaSocioAbbonamento(testo), 400);
+  });
+  document.getElementById("abb-socio-cambia-btn").addEventListener("click", () => {
+    abbonamentoSocioSelezionato = null;
+    document.getElementById("abb-socio-selezionato").classList.add("hidden");
+    document.getElementById("abb-cerca-socio").value = "";
+    document.getElementById("abb-cerca-socio").classList.remove("hidden");
+  });
+}
+
+async function cercaSocioAbbonamento(testo) {
+  const risultatiEl = document.getElementById("abb-cerca-risultati");
+  const errorEl = document.getElementById("abb-cerca-error");
+  errorEl.textContent = "";
+  risultatiEl.innerHTML = `<div class="empty-state"><div class="display">Ricerca…</div></div>`;
+  try {
+    const fn = cloudFunctions().httpsCallable("cercaSociStaff");
+    const { data } = await fn({ testo });
+    if (data.risultati.length === 0) {
+      risultatiEl.innerHTML = `<div class="empty-state"><div class="display">Nessun risultato</div></div>`;
+      return;
+    }
+    risultatiEl.innerHTML = data.risultati.map(s => `
+      <div class="entry-card" data-id="${s.id}">
+        <div class="entry-main">
+          <div class="entry-tipo">${escapeHtml(s.nome)} ${escapeHtml(s.cognome)}</div>
+          <div class="entry-meta">${escapeHtml(s.categoria)}${s.tessera ? " · " + escapeHtml(s.tessera) : ""}</div>
+        </div>
+        <button type="button" class="btn btn-ghost seleziona-socio-abb-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;"
+          data-id="${s.id}" data-nome="${escapeHtml(s.nome)} ${escapeHtml(s.cognome)}">Seleziona</button>
+      </div>
+    `).join("");
+    risultatiEl.querySelectorAll(".seleziona-socio-abb-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        abbonamentoSocioSelezionato = { id: btn.dataset.id, nome: btn.dataset.nome };
+        document.getElementById("abb-socio-nome").textContent = btn.dataset.nome;
+        document.getElementById("abb-socio-selezionato").classList.remove("hidden");
+        document.getElementById("abb-cerca-socio").classList.add("hidden");
+        risultatiEl.innerHTML = "";
+      });
+    });
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+    risultatiEl.innerHTML = "";
+  }
+}
+
+async function onCreateAbbonamento(e) {
+  e.preventDefault();
+  const btn = document.getElementById("create-abbonamento-btn");
+  const errorEl = document.getElementById("new-abbonamento-error");
+  errorEl.textContent = "";
+
+  if (!abbonamentoSocioSelezionato) { showError(errorEl, "Cerca e seleziona prima un socio."); return; }
+
+  btn.disabled = true;
+  try {
+    const fn = cloudFunctions().httpsCallable("creaAbbonamentoFisso");
+    const { data } = await fn({
+      socioId: abbonamentoSocioSelezionato.id,
+      compagnoNome: document.getElementById("abb-compagno").value.trim() || null,
+      courtId: document.getElementById("abb-campo").value,
+      giornoSettimana: document.getElementById("abb-giorno").value,
+      orarioInizio: document.getElementById("abb-orario").value,
+      categoria: document.getElementById("abb-categoria").value,
+      numeroSettimane: document.getElementById("abb-numero-settimane").value || null,
+      dataInizio: document.getElementById("abb-data-inizio").value
+    });
+    alert(`Richiesta creata: ${data.date.length} settimane, totale CHF ${data.prezzoTotale.toFixed(2)}. Avvisa il socio del pagamento, poi conferma dall'elenco qui sopra.`);
+    document.getElementById("new-abbonamento-form").reset();
+    abbonamentoSocioSelezionato = null;
+    document.getElementById("abb-socio-selezionato").classList.add("hidden");
+    document.getElementById("abb-cerca-socio").classList.remove("hidden");
+    await loadAbbonamenti();
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // ---------- Init ----------
 
 requireAuth(async (profile) => {
@@ -1689,6 +1891,12 @@ requireAuth(async (profile) => {
   document.getElementById("new-forfaitcampo-form").addEventListener("submit", onCreateForfaitCampo);
   document.getElementById("new-chiusuracentro-form").addEventListener("submit", onCreateChiusuraCentro);
   document.getElementById("prenotazionicampi-form").addEventListener("submit", onSavePrenotazioniCampi);
+  document.getElementById("abbonamento-impostazioni-form").addEventListener("submit", onSaveAbbonamentoImpostazioni);
+  document.getElementById("new-abbonamento-form").addEventListener("submit", onCreateAbbonamento);
+  wireCercaSocioAbbonamento();
+  await popolaAbbonamentoSelects();
+  await loadAbbonamentoImpostazioni();
+  await loadAbbonamenti();
 
   await loadImpostazioniForm();
   await loadDatiCentroForm();

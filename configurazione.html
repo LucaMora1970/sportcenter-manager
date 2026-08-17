@@ -722,6 +722,105 @@
       </details>
 
       <details class="config-section">
+      <summary><h2>Abbonamenti fissi (tennis)</h2></summary>
+      <div class="config-section-body">
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Un'ora fissa alla settimana per un intero periodo, prezzo di stagione (non le tariffe orarie di "Tariffe campi"). Mai attivato in automatico: si crea la richiesta, si avvisa il socio fuori dall'app, e solo dopo aver verificato il pagamento si preme "Conferma e attiva" — solo lì nascono le prenotazioni vere, per tutte le settimane. Le settimane su un giorno di chiusura non contano: se ne aggiunge una in fondo, così il socio ottiene sempre le settimane pagate.</p>
+
+      <form id="abbonamento-impostazioni-form">
+        <div class="row2">
+          <div class="field">
+            <label for="abb-settimane-default">Numero di settimane (default)</label>
+            <input type="number" id="abb-settimane-default" min="1" step="1" placeholder="es. 30">
+          </div>
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label for="abb-prezzo-socio">Prezzo/settimana socio (CHF)</label>
+            <input type="number" id="abb-prezzo-socio" min="0" step="0.5" placeholder="es. 25">
+          </div>
+          <div class="field">
+            <label for="abb-prezzo-esterno">Prezzo/settimana esterno (CHF)</label>
+            <input type="number" id="abb-prezzo-esterno" min="0" step="0.5" placeholder="es. 40">
+          </div>
+        </div>
+        <div class="error-msg" id="abbonamento-impostazioni-error"></div>
+        <button type="submit" class="btn btn-ghost" id="salva-abbonamento-impostazioni-btn">Salva impostazioni</button>
+      </form>
+
+      <hr class="court-divider">
+
+      <div class="section-title"><h3 style="font-size:0.95rem;">Abbonamenti</h3></div>
+      <div id="abbonamenti-list">
+        <div class="empty-state"><div class="display">Caricamento…</div></div>
+      </div>
+
+      <hr class="court-divider">
+
+      <div class="section-title"><h3 style="font-size:0.95rem;">Nuovo abbonamento</h3></div>
+      <div class="field">
+        <label for="abb-cerca-socio">Cerca socio</label>
+        <input type="text" id="abb-cerca-socio" placeholder="Nome o cognome...">
+      </div>
+      <div class="error-msg" id="abb-cerca-error"></div>
+      <div id="abb-cerca-risultati"></div>
+      <div id="abb-socio-selezionato" class="hidden entry-card" style="margin-bottom:14px;">
+        <div class="entry-main"><div class="entry-tipo" id="abb-socio-nome">—</div></div>
+        <button type="button" class="btn btn-ghost" id="abb-socio-cambia-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;">Cambia</button>
+      </div>
+
+      <form id="new-abbonamento-form">
+        <div class="field">
+          <label for="abb-compagno">Nome compagno di gioco (facoltativo)</label>
+          <input type="text" id="abb-compagno" placeholder="es. Mario Rossi">
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label for="abb-campo">Campo</label>
+            <select id="abb-campo" required></select>
+          </div>
+          <div class="field">
+            <label for="abb-giorno">Giorno della settimana</label>
+            <select id="abb-giorno" required>
+              <option value="lun">Lunedì</option>
+              <option value="mar">Martedì</option>
+              <option value="mer">Mercoledì</option>
+              <option value="gio">Giovedì</option>
+              <option value="ven">Venerdì</option>
+              <option value="sab">Sabato</option>
+              <option value="dom">Domenica</option>
+            </select>
+          </div>
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label for="abb-orario">Orario</label>
+            <select id="abb-orario" required></select>
+          </div>
+          <div class="field">
+            <label for="abb-categoria">Categoria prezzo</label>
+            <select id="abb-categoria" required>
+              <option value="socio">Socio</option>
+              <option value="esterno">Esterno</option>
+            </select>
+          </div>
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label for="abb-data-inizio">Prima data (deve cadere nel giorno scelto sopra)</label>
+            <input type="date" id="abb-data-inizio" required>
+          </div>
+          <div class="field">
+            <label for="abb-numero-settimane">Numero di settimane</label>
+            <input type="number" id="abb-numero-settimane" min="1" step="1" placeholder="default da impostazioni">
+          </div>
+        </div>
+        <div class="error-msg" id="new-abbonamento-error"></div>
+        <button type="submit" class="btn btn-primary" id="create-abbonamento-btn">Crea richiesta abbonamento</button>
+      </form>
+      </div>
+      </details>
+
+      <details class="config-section">
       <summary><h2>Articoli (Cassa)</h2></summary>
       <div class="config-section-body">
       <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Catalogo articoli in vendita alla Cassa (palline, noleggi, ore campo, tornei...), con prezzo di default modificabile al momento della vendita.</p>
