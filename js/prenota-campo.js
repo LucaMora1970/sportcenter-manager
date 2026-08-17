@@ -246,37 +246,6 @@ function quotaCategoriaClient(disciplina, posizione, categoria, dataIso, startTi
   return candidati.length > 0 ? candidati[0].prezzo : null;
 }
 
-// Etichetta prezzo per il tennis, mostrata prima di sapere chi sarà il
-// secondo giocatore: il prezzo reale (metà tariffa a testa, vedi
-// creaPrenotazioneCampo) dipende dalla sua categoria, non ancora nota qui.
-// Mostra l'intervallo tra la tariffa "esterno" (Utenti, il massimo
-// possibile) e la più bassa tra le categorie socio configurate per questo
-// slot — se ce n'è solo una delle due, mostra quel singolo valore
-// (privilegiando quello più alto se per qualche motivo servisse un solo
-// numero, mai promettere meno di quanto si potrebbe davvero pagare).
-function prezzoLabelTennis(disciplina, posizione, dataIso, startTime, durataMinuti) {
-  const posNorm = posizione ?? null;
-  const categorieCoinvolte = [...new Set(
-    TARIFFE_CAMPI.filter(t => t.disciplina === disciplina && t.posizione === posNorm).map(t => t.categoria)
-  )];
-  let esterno = null;
-  let socioMin = null;
-  categorieCoinvolte.forEach(cat => {
-    const prezzo = quotaCategoriaClient(disciplina, posizione, cat, dataIso, startTime, durataMinuti);
-    if (prezzo == null) return;
-    if (cat === "esterno") { esterno = prezzo; return; }
-    if (cat === "maestro") return;
-    socioMin = socioMin == null ? prezzo : Math.min(socioMin, prezzo);
-  });
-
-  if (socioMin != null && esterno != null && socioMin !== esterno) {
-    return `da CHF ${socioMin.toFixed(2)} (soci) a CHF ${esterno.toFixed(2)} (non soci)`;
-  }
-  const unico = esterno ?? socioMin;
-  if (unico == null) return "—";
-  return unico === 0 ? "Incluso" : `CHF ${unico.toFixed(2)}`;
-}
-
 // ---------- Gruppi/campi ----------
 
 // Ordine fisso delle schede (non alfabetico, deciso esplicitamente):
@@ -517,13 +486,8 @@ function render() {
   const categoria = categoriaCorrente();
   el.innerHTML = liberi.map((s, i) => {
     const durataMinuti = gruppo.disciplina === "padel" ? state.durataPadel : orarioToMin(s.fine) - orarioToMin(s.inizio);
-    let prezzoLabel;
-    if (gruppo.disciplina === "tennis") {
-      prezzoLabel = prezzoLabelTennis(gruppo.disciplina, gruppo.posizione, state.data, s.inizio, durataMinuti);
-    } else {
-      const prezzo = quotaCategoriaClient(gruppo.disciplina, gruppo.posizione, categoria, state.data, s.inizio, durataMinuti);
-      prezzoLabel = prezzo == null ? "—" : (prezzo === 0 ? "Incluso" : `CHF ${prezzo.toFixed(2)}`);
-    }
+    const prezzo = quotaCategoriaClient(gruppo.disciplina, gruppo.posizione, categoria, state.data, s.inizio, durataMinuti);
+    const prezzoLabel = prezzo == null ? "—" : (prezzo === 0 ? "Incluso" : `CHF ${prezzo.toFixed(2)}`);
     return `
       <div class="slot-row">
         <div class="si">
