@@ -91,6 +91,28 @@
        accavallarsi — una sì e una no lasciano abbastanza spazio. */
     .hour-ticks span:nth-child(even) { visibility: hidden; }
   }
+
+  /* Desktop/monitor grande: il resto dell'app è mobile-first (.app ha
+     max-width:480px ovunque, css/style.css) ma questa pagina è pensata
+     apposta anche per un monitor di reception o il desktop della
+     direzione — qui si rompe deliberatamente quel vincolo invece di
+     restare incollati a una colonna larga come un telefono. Testo ed
+     elementi anche più grandi, non solo il contenitore: un monitor si
+     guarda da lontano, non da 30cm come un telefono. */
+  @media (min-width: 900px) {
+    .app { max-width: 1600px; }
+    .court-name { flex-basis: 220px; font-size: 1rem; }
+    .tg-timeline { height: 56px; border-radius: 10px; }
+    .tg-seg.occ { font-size: 0.86rem; padding: 0 12px; }
+    .tg-seg.chiuso { font-size: 0.9rem; }
+    .hour-ticks { margin-left: 230px; }
+    .hour-ticks span { font-size: 0.8rem; }
+    .now-line { left: calc(230px + (100% - 230px) * var(--now-pct)); }
+    .disc-label { font-size: 1.05rem; margin-bottom: 14px; }
+    .disc-group { margin-bottom: 34px; }
+    .giorno-label .data { font-size: 1.5rem; }
+    .modo-indicatore { font-size: 0.85rem; }
+  }
 </style>
 </head>
 <body>
