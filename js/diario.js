@@ -432,6 +432,82 @@ function selectedLabel(selectEl) {
   return opt ? opt.textContent : "";
 }
 
+// Legge una riga del form (nuova voce o riga di modifica, stessa
+// struttura — vedi rowHtml) e ne ricava l'oggetto voce diario pronto per
+// Firestore. Usata sia da onSubmitEntry (creazione, più righe insieme)
+// sia da onSalvaModificaVoce (un'amministrazione che corregge una voce
+// prima di approvarla, vedi apriModificaVoce) — stessa validazione in
+// entrambi i casi, un solo posto da tenere allineato.
+async function estraiEntryDaRiga(rowEl, dataVal) {
+  const disciplina = rowEl.querySelector(".row-disciplina").value;
+  const tipoAttivitaSel = rowEl.querySelector(".row-tipoattivita");
+  const campoSel = rowEl.querySelector(".row-campo");
+  const gruppoSel = rowEl.querySelector(".row-gruppo");
+  const { oraInizio, oraFine } = orarioRiga(rowEl);
+  const nrOreRaw = rowEl.querySelector(".row-nrore").value;
+  const note = rowEl.querySelector(".row-note").value.trim();
+
+  let ore;
+  if (nrOreRaw) {
+    ore = parseFloat(nrOreRaw);
+  } else if (oraInizio && oraFine) {
+    ore = calcOre(oraInizio, oraFine);
+  } else {
+    throw new Error("Per ogni riga inserisci il numero di ore oppure ora inizio e ora fine.");
+  }
+
+  const entry = {
+    userId: currentProfile.uid,
+    userNome: currentProfile.nome,
+    data: dataVal,
+    disciplina,
+    tipoAttivitaId: tipoAttivitaSel.value,
+    tipoAttivitaNome: selectedLabel(tipoAttivitaSel),
+    ore,
+    note,
+    approvato: false,
+    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+  };
+
+  if (oraInizio) entry.oraInizio = oraInizio;
+  if (oraFine) entry.oraFine = oraFine;
+  if (campoSel.value) entry.campoNumero = campoSel.value;
+  if (disciplina === "padel" && gruppoSel && gruppoSel.value) {
+    entry.tipoGruppoId = gruppoSel.value;
+    entry.tipoGruppoNome = selectedLabel(gruppoSel);
+  }
+
+  const tipo = tipiAttivitaCache.find(t => t.id === tipoAttivitaSel.value);
+  if (tipo && tipo.richiedeAllievo) {
+    const allievoIds = [];
+    const allievoNomi = [];
+    const items = rowEl.querySelectorAll(".row-allievo-item");
+    for (const item of items) {
+      const sel = item.querySelector(".row-allievo-select");
+      if (sel.value === "__new__") {
+        const nomeNuovo = item.querySelector(".row-allievo-nuovo").value.trim();
+        if (!nomeNuovo) throw new Error("Inserisci il nome del nuovo allievo.");
+        const ref = await db.collection("allievi").add({ nome: nomeNuovo, attivo: true });
+        allieviCache.push({ id: ref.id, nome: nomeNuovo, attivo: true });
+        allievoIds.push(ref.id);
+        allievoNomi.push(nomeNuovo);
+      } else if (sel.value) {
+        allievoIds.push(sel.value);
+        allievoNomi.push(selectedLabel(sel));
+      }
+    }
+    if (allievoIds.length === 0) throw new Error("Seleziona o inserisci almeno un allievo.");
+    entry.allievoIds = allievoIds;
+    entry.allievoNomi = allievoNomi;
+    // Campi singolari mantenuti per compatibilità con voci/report che
+    // leggono ancora "il primo" allievo di una voce.
+    entry.allievoId = allievoIds[0];
+    entry.allievoNome = allievoNomi[0];
+  }
+
+  return entry;
+}
+
 async function onSubmitEntry(e) {
   e.preventDefault();
   const btn = document.getElementById("save-btn");
@@ -447,73 +523,7 @@ async function onSubmitEntry(e) {
   try {
     const entries = [];
     for (const rowEl of rows) {
-      const disciplina = rowEl.querySelector(".row-disciplina").value;
-      const tipoAttivitaSel = rowEl.querySelector(".row-tipoattivita");
-      const campoSel = rowEl.querySelector(".row-campo");
-      const gruppoSel = rowEl.querySelector(".row-gruppo");
-      const { oraInizio, oraFine } = orarioRiga(rowEl);
-      const nrOreRaw = rowEl.querySelector(".row-nrore").value;
-      const note = rowEl.querySelector(".row-note").value.trim();
-
-      let ore;
-      if (nrOreRaw) {
-        ore = parseFloat(nrOreRaw);
-      } else if (oraInizio && oraFine) {
-        ore = calcOre(oraInizio, oraFine);
-      } else {
-        throw new Error("Per ogni riga inserisci il numero di ore oppure ora inizio e ora fine.");
-      }
-
-      const entry = {
-        userId: currentProfile.uid,
-        userNome: currentProfile.nome,
-        data: dataVal,
-        disciplina,
-        tipoAttivitaId: tipoAttivitaSel.value,
-        tipoAttivitaNome: selectedLabel(tipoAttivitaSel),
-        ore,
-        note,
-        approvato: false,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-      };
-
-      if (oraInizio) entry.oraInizio = oraInizio;
-      if (oraFine) entry.oraFine = oraFine;
-      if (campoSel.value) entry.campoNumero = campoSel.value;
-      if (disciplina === "padel" && gruppoSel && gruppoSel.value) {
-        entry.tipoGruppoId = gruppoSel.value;
-        entry.tipoGruppoNome = selectedLabel(gruppoSel);
-      }
-
-      const tipo = tipiAttivitaCache.find(t => t.id === tipoAttivitaSel.value);
-      if (tipo && tipo.richiedeAllievo) {
-        const allievoIds = [];
-        const allievoNomi = [];
-        const items = rowEl.querySelectorAll(".row-allievo-item");
-        for (const item of items) {
-          const sel = item.querySelector(".row-allievo-select");
-          if (sel.value === "__new__") {
-            const nomeNuovo = item.querySelector(".row-allievo-nuovo").value.trim();
-            if (!nomeNuovo) throw new Error("Inserisci il nome del nuovo allievo.");
-            const ref = await db.collection("allievi").add({ nome: nomeNuovo, attivo: true });
-            allieviCache.push({ id: ref.id, nome: nomeNuovo, attivo: true });
-            allievoIds.push(ref.id);
-            allievoNomi.push(nomeNuovo);
-          } else if (sel.value) {
-            allievoIds.push(sel.value);
-            allievoNomi.push(selectedLabel(sel));
-          }
-        }
-        if (allievoIds.length === 0) throw new Error("Seleziona o inserisci almeno un allievo.");
-        entry.allievoIds = allievoIds;
-        entry.allievoNomi = allievoNomi;
-        // Campi singolari mantenuti per compatibilità con voci/report che
-        // leggono ancora "il primo" allievo di una voce.
-        entry.allievoId = allievoIds[0];
-        entry.allievoNome = allievoNomi[0];
-      }
-
-      entries.push(entry);
+      entries.push(await estraiEntryDaRiga(rowEl, dataVal));
     }
 
     // Verifica sovrapposizioni di campo/orario tra le righe appena inserite...
@@ -677,6 +687,7 @@ function renderEntries(entries) {
             <div class="entry-meta">${escapeHtml(metaParts.join(" · "))}</div>
             <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">
               <span class="chip-audit">Inserito da ${escapeHtml(en.userNome || "—")} · ${formatTimestamp(en.createdAt)}</span>
+              ${en.modificatoDaNome ? `<span class="chip-audit">Modificato da ${escapeHtml(en.modificatoDaNome)} · ${formatTimestamp(en.modificatoAt)}</span>` : ""}
               ${en.approvato ? `<span class="chip-audit approvato">Approvato da ${escapeHtml(en.approvatoDaNome || "—")} · ${formatTimestamp(en.approvatoAt)}</span>` : ""}
               ${en.pagamentoOnlineStato === "PAID" ? `<span class="chip-audit approvato">Pagato online CHF ${(en.pagamentoOnlineImporto || 0).toFixed(2)} · ${formatTimestamp(en.pagamentoOnlinePagatoAt)}</span>` : ""}
               ${en.pagamentoOnlineStato === "PENDING" ? `<span class="chip-audit">In attesa di pagamento · CHF ${(en.pagamentoOnlineImporto || 0).toFixed(2)}</span>` : ""}
@@ -784,15 +795,18 @@ function renderVociDaApprovare(entries) {
           <div class="entry-meta">${escapeHtml(metaParts.join(" · "))}</div>
           <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">
             <span class="chip-audit">Inserito da ${escapeHtml(en.userNome || "—")} · ${formatTimestamp(en.createdAt)}</span>
+            ${en.modificatoDaNome ? `<span class="chip-audit">Modificato da ${escapeHtml(en.modificatoDaNome)} · ${formatTimestamp(en.modificatoAt)}</span>` : ""}
             ${en.pagamentoOnlineStato === "PAID" ? `<span class="chip-audit approvato">Pagato online CHF ${(en.pagamentoOnlineImporto || 0).toFixed(2)} · ${formatTimestamp(en.pagamentoOnlinePagatoAt)}</span>` : ""}
             ${en.pagamentoOnlineStato === "PENDING" ? `<span class="chip-audit">In attesa di pagamento · CHF ${(en.pagamentoOnlineImporto || 0).toFixed(2)}</span>` : ""}
           </div>
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
           <div class="entry-ore">${(en.ore || 0).toFixed(1)}h</div>
+          <button type="button" class="btn btn-ghost modifica-voce-btn" style="width:auto;padding:6px 10px;font-size:0.65rem;" data-id="${en.id}">Modifica</button>
           <button type="button" class="btn btn-primary approva-voce-btn" style="width:auto;padding:6px 10px;font-size:0.65rem;" data-id="${en.id}">Approva</button>
         </div>
       </div>
+      <div class="modifica-container hidden" data-modifica-id="${en.id}" style="margin:-4px 0 14px;"></div>
     `;
   }).join("");
 
@@ -801,6 +815,153 @@ function renderVociDaApprovare(entries) {
   list.querySelectorAll(".approva-voce-btn").forEach(btn => {
     btn.addEventListener("click", () => approvaVoci([btn.dataset.id], btn));
   });
+  list.querySelectorAll(".modifica-voce-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const en = ultimeVociDaApprovare.find(e => e.id === btn.dataset.id);
+      if (en) toggleModificaVoce(en);
+    });
+  });
+}
+
+// ---------- Modifica di una voce da approvare (permesso diario:approva) ----------
+//
+// Riusa la stessa riga del form di inserimento (rowHtml/populateRowDependents/
+// estraiEntryDaRiga già visti sopra) invece di un form dedicato — stessa
+// validazione, un solo posto da tenere allineato se cambia qualcosa nei
+// campi del diario. Non tocca userId/userNome/createdAt/approvato: la voce
+// resta attribuita a chi l'ha inserita, si aggiunge solo il chip di chi
+// l'ha corretta.
+function toggleModificaVoce(en) {
+  const container = document.querySelector(`.modifica-container[data-modifica-id="${en.id}"]`);
+  if (!container) return;
+
+  if (!container.classList.contains("hidden")) {
+    container.classList.add("hidden");
+    container.innerHTML = "";
+    return;
+  }
+
+  rowCounter++;
+  const rowId = rowCounter;
+  container.innerHTML = rowHtml(rowId) + `
+    <div class="error-msg modifica-error"></div>
+    <button type="button" class="btn btn-primary salva-modifica-btn" style="width:auto;padding:8px 14px;font-size:0.76rem;margin-top:6px;">Salva modifica</button>
+  `;
+  container.classList.remove("hidden");
+
+  const rowEl = container.querySelector(`[data-row-id="${rowId}"]`);
+  // Nascosto (non rimosso dal DOM): updateRemoveButtons(), chiamata dal
+  // form di creazione più sopra, interroga ".row-remove" su OGNI
+  // ".entry-row" della pagina — rimuoverlo del tutto la farebbe fallire
+  // se questa riga di modifica è aperta mentre si usa anche quel form.
+  rowEl.querySelector(".row-remove").classList.add("hidden");
+
+  populateSelect(rowEl.querySelector(".row-disciplina"), DISCIPLINE);
+  rowEl.querySelector(".row-disciplina").value = en.disciplina;
+  populateRowDependents(rowEl);
+  precompilaRigaModifica(rowEl, en);
+
+  rowEl.querySelector(".row-disciplina").addEventListener("change", () => {
+    populateRowDependents(rowEl);
+    syncAllievoField(rowEl);
+  });
+  rowEl.querySelector(".row-tipoattivita").addEventListener("change", () => {
+    syncAllievoField(rowEl);
+    syncOrarioAuto(rowEl);
+    syncCampoField(rowEl);
+  });
+  rowEl.querySelector(".row-orainizio-auto").addEventListener("change", () => aggiornaOraFineAuto(rowEl));
+  rowEl.querySelector(".row-add-allievo-btn").addEventListener("click", () => addAllievoItem(rowEl));
+
+  container.querySelector(".salva-modifica-btn").addEventListener("click", (e) => onSalvaModificaVoce(en, rowEl, e.currentTarget));
+}
+
+// Precompila la riga con i valori esistenti della voce, DOPO che
+// populateRowDependents ha già riempito i select in base alla disciplina.
+function precompilaRigaModifica(rowEl, en) {
+  rowEl.querySelector(".row-tipoattivita").value = en.tipoAttivitaId;
+  syncCampoField(rowEl);
+  syncOrarioAuto(rowEl);
+  syncAllievoField(rowEl);
+
+  if (en.campoNumero) rowEl.querySelector(".row-campo").value = en.campoNumero;
+  if (en.tipoGruppoId) {
+    const gruppoSel = rowEl.querySelector(".row-gruppo");
+    if (gruppoSel) gruppoSel.value = en.tipoGruppoId;
+  }
+  rowEl.querySelector(".row-note").value = en.note || "";
+
+  // Orario: quale dei tre input mostrare dipende da disciplina/tipo
+  // attività scelti sopra (slot tennis, auto con durata fissa, o libero) —
+  // si valorizza solo quello effettivamente visibile per questa riga.
+  const slotField = rowEl.querySelector(".row-slot-field");
+  const inizioAuto = rowEl.querySelector(".row-orainizio-auto");
+  if (en.oraInizio && en.oraFine && !slotField.classList.contains("hidden")) {
+    const slotSelect = rowEl.querySelector(".row-slot");
+    const valore = `${en.oraInizio}|${en.oraFine}`;
+    if ([...slotSelect.options].some(o => o.value === valore)) slotSelect.value = valore;
+  } else if (en.oraInizio && !inizioAuto.classList.contains("hidden")) {
+    inizioAuto.value = en.oraInizio;
+    aggiornaOraFineAuto(rowEl);
+  } else {
+    if (en.oraInizio) rowEl.querySelector(".row-orainizio-libera").value = en.oraInizio;
+    if (en.oraFine) rowEl.querySelector(".row-orafine-libera").value = en.oraFine;
+  }
+  if (!en.oraInizio && en.ore) rowEl.querySelector(".row-nrore").value = en.ore;
+
+  // Allievi: un elemento per ciascuno già associato alla voce, al posto
+  // di quello vuoto creato di default da syncAllievoField.
+  if (en.allievoIds && en.allievoIds.length > 0) {
+    const list = rowEl.querySelector(".row-allievo-list");
+    list.innerHTML = "";
+    en.allievoIds.forEach((id, i) => {
+      addAllievoItem(rowEl);
+      const item = list.lastElementChild;
+      const sel = item.querySelector(".row-allievo-select");
+      if ([...sel.options].some(o => o.value === id)) sel.value = id;
+    });
+  }
+}
+
+async function onSalvaModificaVoce(en, rowEl, btn) {
+  const errorEl = rowEl.closest(".modifica-container").querySelector(".modifica-error");
+  errorEl.textContent = "";
+  btn.disabled = true;
+  btn.textContent = "Salvataggio…";
+  try {
+    const aggiornata = await estraiEntryDaRiga(rowEl, en.data);
+    // userId/userNome/createdAt/approvato restano quelli originali: la
+    // voce resta attribuita a chi l'ha inserita, qui si aggiornano solo i
+    // contenuti + il chip di chi l'ha corretta.
+    const { userId, userNome, createdAt, approvato, ...contenuto } = aggiornata;
+
+    // Sovrapposizioni con le altre voci dello stesso utente/giorno (esclusa questa).
+    const esistentiSnap = await db.collection("diario")
+      .where("userId", "==", en.userId)
+      .where("data", "==", en.data)
+      .get();
+    const conflitto = esistentiSnap.docs
+      .filter(d => d.id !== en.id)
+      .map(d => d.data())
+      .find(altra => vociSiSovrappongono(contenuto, altra));
+    if (conflitto) {
+      throw new Error(`Questa modifica si sovrappone a un'altra voce su Campo ${conflitto.campoNumero} (${conflitto.oraInizio}–${conflitto.oraFine}).`);
+    }
+
+    await db.collection("diario").doc(en.id).update({
+      ...contenuto,
+      modificatoDaUid: currentProfile.uid,
+      modificatoDaNome: currentProfile.nome,
+      modificatoAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    Object.assign(en, contenuto, { modificatoDaNome: currentProfile.nome });
+    renderVociDaApprovare(ultimeVociDaApprovare);
+  } catch (err) {
+    showError(errorEl, "Errore nel salvataggio: " + err.message);
+    btn.disabled = false;
+    btn.textContent = "Salva modifica";
+  }
 }
 
 async function approvaVoci(ids, btn) {
