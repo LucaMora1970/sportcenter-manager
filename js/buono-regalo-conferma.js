@@ -86,7 +86,7 @@ function salvaVoucherPng(data) {
   wrapText(ctx, "Da usare come credito in fase di prenotazione — senza scadenza.", W / 2, 560, W - 160, 28);
 
   const link = document.createElement("a");
-  link.download = `buono-regalo-${data.creditCode || "padel"}.png`;
+  link.download = `buono-regalo-${data.creditCode || "campo"}.png`;
   link.href = canvas.toDataURL("image/png");
   link.click();
 }

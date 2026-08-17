@@ -1,5 +1,5 @@
 // ============================================================
-// buono-regalo.js — acquisto pubblico di un buono regalo padel, senza
+// buono-regalo.js — acquisto pubblico di un buono regalo campo, senza
 // login. Chiama la Cloud Function acquistaBuonoRegalo (nessun controllo
 // request.auth: chiunque può comprare un buono), che crea la transazione
 // PostFinance e restituisce l'URL di pagamento — stesso schema di

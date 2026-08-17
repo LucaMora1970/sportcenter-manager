@@ -1188,7 +1188,7 @@ exports.acquistaBuonoRegalo = onCall(
           failedUrl: `${APP_URL}buono-regalo.html?pagamento=fallito`,
           lineItems: [{
             uniqueId: token,
-            name: `Buono regalo padel CHF ${importo.toFixed(2)}`,
+            name: `Buono regalo campo CHF ${importo.toFixed(2)}`,
             quantity: 1,
             amountIncludingTax: importo,
             type: LineItemType.Product
