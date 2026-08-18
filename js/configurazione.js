@@ -93,9 +93,9 @@ async function onSaveDatiCentro(e) {
 async function loadImpostazioniForm() {
   await loadImpostazioni();
   document.getElementById("minuti-eliminazione-diario").value = IMPOSTAZIONI.minutiEliminazioneDiario;
-  document.getElementById("impostazioni-festivi").value = (IMPOSTAZIONI.festivi || []).join("\n");
   document.getElementById("chiusura-weekend").value = IMPOSTAZIONI.chiusuraWeekend || "20:30";
   document.getElementById("link-dopo-salva-biglietto").value = IMPOSTAZIONI.linkDopoSalvaBiglietto || "";
+  renderFestivi();
 }
 
 async function onSaveImpostazioni(e) {
@@ -106,18 +106,14 @@ async function onSaveImpostazioni(e) {
   btn.disabled = true;
 
   const minuti = parseInt(document.getElementById("minuti-eliminazione-diario").value, 10);
-  const festivi = document.getElementById("impostazioni-festivi").value
-    .split("\n").map(r => r.trim()).filter(Boolean);
   const chiusuraWeekend = document.getElementById("chiusura-weekend").value;
   const linkDopoSalvaBiglietto = document.getElementById("link-dopo-salva-biglietto").value.trim();
 
   try {
     if (isNaN(minuti) || minuti < 0) throw new Error("Inserisci un numero di minuti valido.");
-    if (festivi.some(d => !/^\d{4}-\d{2}-\d{2}$/.test(d))) throw new Error("Ogni data festiva deve essere nel formato AAAA-MM-GG.");
     if (!/^\d{2}:\d{2}$/.test(chiusuraWeekend)) throw new Error("Inserisci un orario di chiusura weekend valido.");
-    await db.collection("impostazioni").doc("generale").set({ minutiEliminazioneDiario: minuti, festivi, chiusuraWeekend, linkDopoSalvaBiglietto }, { merge: true });
+    await db.collection("impostazioni").doc("generale").set({ minutiEliminazioneDiario: minuti, chiusuraWeekend, linkDopoSalvaBiglietto }, { merge: true });
     IMPOSTAZIONI.minutiEliminazioneDiario = minuti;
-    IMPOSTAZIONI.festivi = festivi;
     IMPOSTAZIONI.chiusuraWeekend = chiusuraWeekend;
     IMPOSTAZIONI.linkDopoSalvaBiglietto = linkDopoSalvaBiglietto;
   } catch (err) {
@@ -125,6 +121,64 @@ async function onSaveImpostazioni(e) {
   } finally {
     btn.disabled = false;
   }
+}
+
+// ---------- Giorni festivi ----------
+//
+// Stesso pattern di "Chiusure centro" (aggiunta/eliminazione una data
+// alla volta, subito salvata) invece del vecchio textarea multi-riga —
+// più chiaro e meno soggetto a errori di formato. Restano comunque un
+// solo campo array (impostazioni/generale.festivi), non una collection
+// dedicata: nessun altro punto dell'app che li legge (server e client)
+// deve cambiare.
+
+function renderFestivi() {
+  const el = document.getElementById("festivi-list");
+  const festivi = [...(IMPOSTAZIONI.festivi || [])].sort();
+  if (festivi.length === 0) {
+    el.innerHTML = `<div class="empty-state"><div class="display">Nessun giorno festivo</div></div>`;
+    return;
+  }
+  el.innerHTML = festivi.map(data => `
+    <div class="entry-card" data-data="${data}">
+      <div class="entry-main"><div class="entry-tipo">${escapeHtml(data)}</div></div>
+      <button type="button" class="btn btn-danger delete-festivo-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-data="${data}">Elimina</button>
+    </div>
+  `).join("");
+  el.querySelectorAll(".delete-festivo-btn").forEach(btn => {
+    btn.addEventListener("click", () => onRimuoviFestivo(btn.dataset.data));
+  });
+}
+
+async function onAggiungiFestivo(e) {
+  e.preventDefault();
+  const btn = e.target.querySelector("button[type=submit]");
+  const errorEl = document.getElementById("new-festivo-error");
+  errorEl.textContent = "";
+  const data = document.getElementById("new-festivo-data").value;
+  if (!data) { showError(errorEl, "Scegli una data."); return; }
+  if ((IMPOSTAZIONI.festivi || []).includes(data)) { showError(errorEl, "Questa data è già in elenco."); return; }
+
+  btn.disabled = true;
+  try {
+    const festivi = [...(IMPOSTAZIONI.festivi || []), data];
+    await db.collection("impostazioni").doc("generale").set({ festivi }, { merge: true });
+    IMPOSTAZIONI.festivi = festivi;
+    document.getElementById("new-festivo-form").reset();
+    renderFestivi();
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function onRimuoviFestivo(data) {
+  if (!confirm(`Togliere il ${data} dai giorni festivi?`)) return;
+  const festivi = (IMPOSTAZIONI.festivi || []).filter(d => d !== data);
+  await db.collection("impostazioni").doc("generale").set({ festivi }, { merge: true });
+  IMPOSTAZIONI.festivi = festivi;
+  renderFestivi();
 }
 
 // ---------- Helper lista generica con toggle attivo ----------
@@ -2037,6 +2091,7 @@ requireAuth(async (profile) => {
 
   document.getElementById("centro-form").addEventListener("submit", onSaveDatiCentro);
   document.getElementById("impostazioni-form").addEventListener("submit", onSaveImpostazioni);
+  document.getElementById("new-festivo-form").addEventListener("submit", onAggiungiFestivo);
   document.getElementById("new-disciplina-form").addEventListener("submit", onCreateDisciplina);
   document.getElementById("cancel-edit-disciplina-btn").addEventListener("click", cancelEditDisciplina);
   document.getElementById("new-allievo-form").addEventListener("submit", onCreateAllievo);

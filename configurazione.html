@@ -209,17 +209,30 @@
       <details class="config-section">
       <summary><h2>Impostazioni generali</h2></summary>
       <div class="config-section-body">
+      <div class="field">
+        <label>Giorni festivi</label>
+        <p style="color:var(--chalk-grey);font-size:0.78rem;margin:0 0 8px;">Usati per le tariffe campi: un giorno festivo viene trattato come una domenica ai fini del prezzo, indipendentemente dal giorno della settimana in cui cade. Non chiude il centro (per quello vedi "Chiusure centro" qui sotto).</p>
+        <div id="festivi-list">
+          <div class="empty-state"><div class="display">Caricamento…</div></div>
+        </div>
+        <form id="new-festivo-form" class="row2" style="align-items:flex-end;margin-top:10px;">
+          <div class="field" style="margin-bottom:0;">
+            <label for="new-festivo-data">Data</label>
+            <input type="date" id="new-festivo-data" required>
+          </div>
+          <button type="submit" class="btn btn-ghost" style="width:auto;padding:10px 16px;">+ Aggiungi</button>
+        </form>
+        <div class="error-msg" id="new-festivo-error"></div>
+      </div>
+
+      <hr class="court-divider">
+
       <form id="impostazioni-form">
         <div class="field">
           <label for="minuti-eliminazione-diario">Minuti entro cui un collaboratore può eliminare una propria voce diario</label>
           <input type="number" id="minuti-eliminazione-diario" min="0" step="1" required placeholder="es. 15">
         </div>
         <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Oltre questo tempo, solo chi ha il permesso "Diario: modificare/cancellare le voci di tutti" (es. admin, supervisore) può eliminare la voce.</p>
-        <div class="field">
-          <label for="impostazioni-festivi">Giorni festivi (una data per riga, formato AAAA-MM-GG)</label>
-          <textarea id="impostazioni-festivi" rows="6" placeholder="2026-01-01&#10;2026-04-18&#10;2026-08-01"></textarea>
-        </div>
-        <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Usati per le tariffe campi: un giorno festivo viene trattato come una domenica ai fini del prezzo, indipendentemente dal giorno della settimana in cui cade.</p>
         <div class="field">
           <label for="chiusura-weekend">Orario di chiusura sabato, domenica e festivi</label>
           <input type="time" id="chiusura-weekend" required>
