@@ -2067,6 +2067,7 @@ requireAuth(async (profile) => {
   initLinkCopyBox("link-tabellone", "copia-link-tabellone-btn", "prenotazioni.html");
   initLinkCopyBox("link-iscrizione-corsi", "copia-link-iscrizione-corsi-btn", "iscrizione-corso.html");
   initLinkCopyBox("link-prenota-campo", "copia-link-prenota-campo-btn", "prenota-campo.html");
+  initLinkCopyBox("link-prenota-campo-v2", "copia-link-prenota-campo-v2-btn", "prenota-campo-v2.html");
   initLinkCopyBox("link-attiva-socio", "copia-link-attiva-socio-btn", "attiva-socio.html");
   initLinkCopyBox("link-iscrizione-socio", "copia-link-iscrizione-socio-btn", "iscrizione-socio.html");
   initLinkCopyBox("link-chi-in-campo", "copia-link-chi-in-campo-btn", "chi-in-campo.html");
