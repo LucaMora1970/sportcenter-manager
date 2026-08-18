@@ -487,11 +487,11 @@ function render() {
   el.innerHTML = liberi.map((s, i) => {
     const durataMinuti = gruppo.disciplina === "padel" ? state.durataPadel : orarioToMin(s.fine) - orarioToMin(s.inizio);
     const prezzo = quotaCategoriaClient(gruppo.disciplina, gruppo.posizione, categoria, state.data, s.inizio, durataMinuti);
-    const prezzoLabel = prezzo == null ? "—" : (prezzo === 0 ? "Incluso" : `CHF ${prezzo.toFixed(2)}`);
+    const prezzoLabel = prezzo == null ? "—" : `CHF ${prezzo.toFixed(2)}`;
     return `
       <div class="slot-row">
         <div class="si">
-          <span class="st">${s.inizio}–${s.fine}</span>
+          <span class="st">${s.inizio}</span>
           <span class="sc">${escapeHtml(disciplinaLabel(gruppo.disciplina))} · Campo ${escapeHtml(s.campo.numero)}</span>
         </div>
         <span class="sp">${prezzoLabel}</span>
