@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Iscrizione socio — Tennis Club Mendrisio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script>if(localStorage.getItem("sportos-tema")==="light")document.documentElement.setAttribute("data-theme","light");</script>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest-cliente.json">
+<meta name="theme-color" content="#0d1f30">
+<style>
+  .categoria-preview {
+    background: var(--court-blue-900); border: 1px solid var(--court-blue-700);
+    border-radius: var(--radius); padding: 14px var(--gap); margin: -4px 0 16px;
+  }
+  .categoria-preview .nome { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 1rem; }
+  .categoria-preview .quota { color: var(--ball); font-family: 'Space Mono', monospace; font-size: 0.9rem; margin-top: 2px; }
+  :root[data-theme="light"] .categoria-preview .quota { color: var(--ball-dim); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <div>
+      <div class="topbar-kicker" id="centro-kicker">Tennis Club Mendrisio</div>
+      <h1>Iscrizione socio</h1>
+    </div>
+    <div></div>
+    <button type="button" class="topbar-link" id="theme-toggle-btn">Tema chiaro</button>
+  </div>
+
+  <main>
+
+    <div id="step-form">
+      <p style="color:var(--chalk-grey);font-size:0.85rem;margin:-4px 0 18px;">Compila i tuoi dati: la categoria si calcola da sola in base all'età, e verrai subito reindirizzato al pagamento online della quota. Per Famiglia o Studenti la categoria va verificata dal circolo — riceverai il link di pagamento via email appena confermata.</p>
+
+      <form id="iscrizione-form">
+        <div class="row2">
+          <div class="field">
+            <label for="is-nome">Nome</label>
+            <input type="text" id="is-nome" required autocomplete="given-name">
+          </div>
+          <div class="field">
+            <label for="is-cognome">Cognome</label>
+            <input type="text" id="is-cognome" required autocomplete="family-name">
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="is-email">Email</label>
+          <input type="email" id="is-email" required autocomplete="email">
+        </div>
+
+        <div class="row2">
+          <div class="field">
+            <label for="is-telefono">Telefono</label>
+            <input type="tel" id="is-telefono" autocomplete="tel">
+          </div>
+          <div class="field">
+            <label for="is-datanascita">Data di nascita</label>
+            <input type="date" id="is-datanascita" required>
+          </div>
+        </div>
+
+        <div id="categoria-preview" class="categoria-preview hidden">
+          <div class="nome" id="cp-nome">—</div>
+          <div class="quota" id="cp-quota">—</div>
+        </div>
+
+        <div class="checkbox-row hidden" id="cb-studente-row" style="margin-bottom:12px;">
+          <input type="checkbox" id="is-studente">
+          <label for="is-studente">Sono studente/essa (quota Studenti — verrà verificata dal circolo)</label>
+        </div>
+
+        <div class="checkbox-row" id="cb-famiglia-row" style="margin-bottom:16px;">
+          <input type="checkbox" id="is-famiglia">
+          <label for="is-famiglia">Richiedo la quota Famiglia (verrà verificata dal circolo)</label>
+        </div>
+
+        <div class="error-msg" id="iscrizione-form-error"></div>
+        <button type="submit" class="btn btn-primary" id="iscrizione-save-btn">Invia richiesta</button>
+      </form>
+    </div>
+
+    <div id="step-fatto" class="hidden">
+      <div class="empty-state">
+        <div class="display">Richiesta inviata</div>
+        <p>Grazie! La tua categoria richiede una verifica del circolo — riceverai un'email con il link per completare il pagamento della quota appena confermata.</p>
+      </div>
+    </div>
+
+  </main>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/iscrizione-socio.js"></script>
+</body>
+</html>

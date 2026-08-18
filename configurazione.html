@@ -183,6 +183,17 @@
       </div>
 
       <div class="field">
+        <label>Iscrizione socio</label>
+        <p style="color:var(--chalk-grey);font-size:0.78rem;margin:0 0 6px;">Pagina pubblica per chi vuole diventare socio — crea solo una richiesta in attesa, si approva qui sotto in "Categorie socio".</p>
+        <div class="row2" style="align-items:flex-end;">
+          <div class="field" style="margin-bottom:0;">
+            <input type="text" id="link-iscrizione-socio" readonly>
+          </div>
+          <button type="button" class="btn btn-ghost" id="copia-link-iscrizione-socio-btn" style="width:auto;padding:10px 16px;">Copia</button>
+        </div>
+      </div>
+
+      <div class="field">
         <label>Chi c'è in campo</label>
         <p style="color:var(--chalk-grey);font-size:0.78rem;margin:0 0 6px;">Pagina pubblica di sola lettura, tutte le discipline (padel compreso).</p>
         <div class="row2" style="align-items:flex-end;">
@@ -482,11 +493,11 @@
       <details class="config-section">
       <summary><h2>Soci (prenotazione campi)</h2></summary>
       <div class="config-section-body">
-      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Anagrafica per riconoscere chi prenota tennis/squash e applicare la tariffa giusta — mai visibile lato pubblico. Incolla una riga per persona: <code>nome;cognome;email;categoria;telefono;tessera</code> (categoria: uno degli ID definiti in "Categorie socio" qui sotto, oppure <code>azienda</code>).</p>
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Anagrafica per riconoscere chi prenota tennis/squash e applicare la tariffa giusta — mai visibile lato pubblico. Incolla una riga per persona: <code>nome;cognome;email;categoria;telefono;tessera;dataNascita</code> (categoria: uno degli ID definiti in "Categorie socio" qui sotto, oppure <code>azienda</code> — dataNascita obbligatoria, formato AAAA-MM-GG: righe senza vengono scartate).</p>
       <form id="import-soci-form">
         <div class="field">
           <label for="import-soci-testo">Righe da importare</label>
-          <textarea id="import-soci-testo" rows="6" placeholder="Mario;Rossi;mario.rossi@email.ch;socio;0791234567;T-102"></textarea>
+          <textarea id="import-soci-testo" rows="6" placeholder="Mario;Rossi;mario.rossi@email.ch;socio;0791234567;T-102;1980-05-14"></textarea>
         </div>
         <div class="error-msg" id="import-soci-error"></div>
         <div class="success-msg" id="import-soci-success"></div>
@@ -502,6 +513,20 @@
       <div id="categoriesocio-list">
         <div class="empty-state"><div class="display">Caricamento…</div></div>
       </div>
+
+      <form id="quotasocio-impostazioni-form">
+        <div class="field">
+          <label for="qs-percentuale-fissa">Quota fissa per chi si iscrive a stagione iniziata (%)</label>
+          <input type="number" id="qs-percentuale-fissa" min="0" max="100" step="1" placeholder="es. 50">
+        </div>
+        <p style="color:var(--chalk-grey);font-size:0.78rem;margin:-6px 0 14px;">Nel modulo di iscrizione, chi si iscrive a stagione iniziata paga sempre almeno questa percentuale della quota (copre i benefici non legati al periodo, es. le tariffe scontate valide tutto l'anno); il resto si riduce in proporzione ai mesi restanti dell'anno solare.</p>
+        <div class="error-msg" id="quotasocio-impostazioni-error"></div>
+        <button type="submit" class="btn btn-ghost" id="salva-quotasocio-impostazioni-btn">Salva impostazioni</button>
+      </form>
+
+      <hr class="court-divider">
+
+      <div id="richieste-iscrizione-list"></div>
       <form id="new-categoriasocio-form">
         <div class="row2">
           <div class="field">
@@ -524,6 +549,17 @@
             <input type="number" id="new-categoriasocio-ordine" step="1" placeholder="es. 3">
           </div>
         </div>
+        <div class="row2">
+          <div class="field">
+            <label for="new-categoriasocio-eta-min">Età minima (facoltativa)</label>
+            <input type="number" id="new-categoriasocio-eta-min" min="0" step="1" placeholder="es. 13">
+          </div>
+          <div class="field">
+            <label for="new-categoriasocio-eta-max">Età massima (facoltativa)</label>
+            <input type="number" id="new-categoriasocio-eta-max" min="0" step="1" placeholder="es. 15">
+          </div>
+        </div>
+        <p style="color:var(--chalk-grey);font-size:0.78rem;margin:-6px 0 14px;">Solo per le categorie legate all'età (es. fasce Junior, Età AVS) — lasciale vuote per quelle da verificare caso per caso (es. Famiglia, Studenti).</p>
         <div class="error-msg" id="new-categoriasocio-error"></div>
         <button type="submit" class="btn btn-ghost" id="create-categoriasocio-btn">+ Aggiungi categoria</button>
         <button type="button" class="btn btn-ghost hidden" id="cancel-edit-categoriasocio-btn" style="margin-top:10px;">Annulla modifica</button>

@@ -987,7 +987,13 @@ async function loadCategorieSocio() {
     "categoriesocio-list",
     categorieSocioCache,
     it => it.nome,
-    it => it.costoForfait != null ? `Quota forfait: CHF ${Number(it.costoForfait).toFixed(2)}` : "Quota forfait non ancora impostata",
+    it => {
+      const quota = it.costoForfait != null ? `Quota forfait: CHF ${Number(it.costoForfait).toFixed(2)}` : "Quota forfait non ancora impostata";
+      if (it.etaMin == null && it.etaMax == null) return quota;
+      const eta = it.etaMin != null && it.etaMax != null ? `${it.etaMin}-${it.etaMax} anni`
+        : it.etaMin != null ? `da ${it.etaMin} anni` : `fino a ${it.etaMax} anni`;
+      return `${quota} · ${eta}`;
+    },
     "categorieSocio",
     loadCategorieSocio,
     startEditCategoriaSocio
@@ -1001,6 +1007,8 @@ function startEditCategoriaSocio(item) {
   document.getElementById("new-categoriasocio-nome").value = item.nome || "";
   document.getElementById("new-categoriasocio-costo").value = item.costoForfait != null ? item.costoForfait : "";
   document.getElementById("new-categoriasocio-ordine").value = item.ordine != null ? item.ordine : "";
+  document.getElementById("new-categoriasocio-eta-min").value = item.etaMin != null ? item.etaMin : "";
+  document.getElementById("new-categoriasocio-eta-max").value = item.etaMax != null ? item.etaMax : "";
   document.getElementById("create-categoriasocio-btn").textContent = "Salva modifiche";
   document.getElementById("cancel-edit-categoriasocio-btn").classList.remove("hidden");
   document.getElementById("new-categoriasocio-form").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1012,6 +1020,140 @@ function cancelEditCategoriaSocio() {
   document.getElementById("new-categoriasocio-id").disabled = false;
   document.getElementById("create-categoriasocio-btn").textContent = "+ Aggiungi categoria";
   document.getElementById("cancel-edit-categoriasocio-btn").classList.add("hidden");
+}
+
+// Quota fissa minima (%) per chi si iscrive a stagione iniziata — vedi
+// quotaProporzionale() lato server (functions/index.js), applicata sia al
+// pagamento immediato (categoria chiara) sia a quello inviato dopo
+// l'approvazione (Famiglia/Studenti). Cache modulo-level: serve anche per
+// ricalcolare in tempo reale l'importo suggerito quando lo staff cambia
+// la categoria nella lista "Richieste di iscrizione" qui sotto.
+let percentualeFissaQuotaSocioCache = 50;
+
+async function loadQuotaSocioImpostazioni() {
+  const snap = await db.collection("impostazioni").doc("generale").get();
+  const g = snap.exists ? snap.data() : {};
+  percentualeFissaQuotaSocioCache = g.quotaSocioPercentualeFissa != null ? g.quotaSocioPercentualeFissa : 50;
+  document.getElementById("qs-percentuale-fissa").value = percentualeFissaQuotaSocioCache;
+}
+
+async function onSaveQuotaSocioImpostazioni(e) {
+  e.preventDefault();
+  const btn = document.getElementById("salva-quotasocio-impostazioni-btn");
+  const errorEl = document.getElementById("quotasocio-impostazioni-error");
+  errorEl.textContent = "";
+  btn.disabled = true;
+  try {
+    const raw = document.getElementById("qs-percentuale-fissa").value;
+    const quotaSocioPercentualeFissa = raw !== "" ? parseFloat(raw) : 50;
+    if (isNaN(quotaSocioPercentualeFissa) || quotaSocioPercentualeFissa < 0 || quotaSocioPercentualeFissa > 100) {
+      throw new Error("Inserisci una percentuale tra 0 e 100.");
+    }
+    await db.collection("impostazioni").doc("generale").set({ quotaSocioPercentualeFissa }, { merge: true });
+    percentualeFissaQuotaSocioCache = quotaSocioPercentualeFissa;
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// Stessa formula di quotaProporzionale() lato server (functions/index.js):
+// solo un'anteprima per lo staff, l'importo effettivo si può comunque
+// correggere a mano prima di inviarlo.
+function quotaProporzionaleClient(costoPieno, percentualeFissa) {
+  const mesiRimanenti = 12 - new Date().getMonth();
+  const fissa = percentualeFissa / 100;
+  const variabile = (1 - fissa) * (mesiRimanenti / 12);
+  return Math.round(costoPieno * (fissa + variabile) * 100) / 100;
+}
+
+// Richieste di iscrizione socio in attesa di verifica (modulo pubblico
+// iscrizione-socio.html, casi Famiglia/Studenti — quelle a categoria
+// chiara vanno già dritte al pagamento online da sole, non passano da
+// qui) — stesso pattern di "Richieste di ricarica su fattura" (elenco
+// vuoto = blocco nascosto). Approvare NON crea il socio: conferma la
+// categoria e invia il link di pagamento via email, il socio nasce solo
+// alla conferma del pagamento (webhook).
+async function loadRichiesteIscrizione() {
+  const listEl = document.getElementById("richieste-iscrizione-list");
+  if (!listEl) return;
+  try {
+    const snap = await db.collection("richiesteIscrizioneSocio").where("stato", "==", "IN_ATTESA_APPROVAZIONE").get();
+    const richieste = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : 0) - (b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : 0));
+    if (richieste.length === 0) {
+      listEl.innerHTML = "";
+      return;
+    }
+    const opzioniCategorie = categorieSocioCache.map(c => `<option value="${c.id}">${escapeHtml(c.nome)}</option>`).join("");
+    listEl.innerHTML = `<div class="section-title" style="margin-top:18px;"><h3 style="font-size:0.9rem;">Richieste di iscrizione da verificare</h3></div>`
+      + richieste.map(r => {
+        const data = r.createdAt && typeof r.createdAt.toDate === "function" ? r.createdAt.toDate().toLocaleDateString("it-CH") : "—";
+        const categoriaSuggerita = categorieSocioCache.find(c => c.id === r.categoriaRichiesta);
+        const importoSuggerito = categoriaSuggerita && categoriaSuggerita.costoForfait != null
+          ? quotaProporzionaleClient(categoriaSuggerita.costoForfait, percentualeFissaQuotaSocioCache) : "";
+        return `
+          <div class="entry-card" data-id="${r.id}" style="flex-direction:column;align-items:stretch;">
+            <div class="entry-main">
+              <div class="entry-tipo">${escapeHtml(r.nome)} ${escapeHtml(r.cognome)} · ${r.eta} anni</div>
+              <div class="entry-meta">${escapeHtml(r.email)}${r.telefono ? " · " + escapeHtml(r.telefono) : ""} — richiesta il ${data}</div>
+              <div class="entry-meta" style="color:var(--danger);">Categoria richiesta da verificare: ${escapeHtml(categoriaSuggerita ? categoriaSuggerita.nome : r.categoriaRichiesta)}</div>
+            </div>
+            <div class="row2" style="margin-top:10px;">
+              <div class="field" style="margin-bottom:0;">
+                <label>Categoria da confermare</label>
+                <select class="ri-categoria">${opzioniCategorie}</select>
+              </div>
+              <div class="field" style="margin-bottom:0;flex:0 0 140px;">
+                <label>Importo da richiedere (CHF)</label>
+                <input type="number" class="ri-importo" min="0" step="0.5" value="${importoSuggerito}">
+              </div>
+            </div>
+            <button type="button" class="btn btn-primary approva-iscrizione-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;margin-top:10px;align-self:flex-end;" data-id="${r.id}">Approva e invia pagamento</button>
+          </div>
+        `;
+      }).join("");
+
+    listEl.querySelectorAll(".entry-card").forEach(card => {
+      const richiesta = richieste.find(r => r.id === card.dataset.id);
+      if (!richiesta) return;
+      const sel = card.querySelector(".ri-categoria");
+      sel.value = richiesta.categoriaRichiesta;
+      // Ricalcola l'importo suggerito se lo staff corregge la categoria
+      // (es. da Studenti ad Attivi), senza toccarlo se lo ha già modificato a mano.
+      sel.addEventListener("change", () => {
+        const cat = categorieSocioCache.find(c => c.id === sel.value);
+        if (cat && cat.costoForfait != null) {
+          card.querySelector(".ri-importo").value = quotaProporzionaleClient(cat.costoForfait, percentualeFissaQuotaSocioCache);
+        }
+      });
+    });
+    listEl.querySelectorAll(".approva-iscrizione-btn").forEach(btn => btn.addEventListener("click", onApprovaIscrizione));
+  } catch (err) {
+    console.error("loadRichiesteIscrizione:", err.message);
+  }
+}
+
+async function onApprovaIscrizione(e) {
+  const btn = e.currentTarget;
+  const card = btn.closest(".entry-card");
+  const requestId = btn.dataset.id;
+  const categoria = card.querySelector(".ri-categoria").value;
+  const importoRaw = card.querySelector(".ri-importo").value;
+  const importo = importoRaw !== "" ? parseFloat(importoRaw) : 0;
+  if (!confirm("Confermare questa categoria e inviare il link di pagamento al richiedente? Il socio nascerà solo dopo che avrà pagato.")) return;
+  btn.disabled = true;
+  btn.textContent = "Invio in corso…";
+  try {
+    const fn = cloudFunctions().httpsCallable("approvaIscrizioneSocio");
+    await fn({ requestId, categoria, importo });
+    await loadRichiesteIscrizione();
+  } catch (err) {
+    alert("Errore: " + err.message);
+    btn.disabled = false;
+    btn.textContent = "Approva e invia pagamento";
+  }
 }
 
 async function onCreateCategoriaSocio(e) {
@@ -1027,14 +1169,19 @@ async function onCreateCategoriaSocio(e) {
   const costoForfait = costoRaw !== "" ? parseFloat(costoRaw) : null;
   const ordineRaw = document.getElementById("new-categoriasocio-ordine").value;
   const ordine = ordineRaw !== "" ? parseInt(ordineRaw, 10) : 99;
+  const etaMinRaw = document.getElementById("new-categoriasocio-eta-min").value;
+  const etaMin = etaMinRaw !== "" ? parseInt(etaMinRaw, 10) : null;
+  const etaMaxRaw = document.getElementById("new-categoriasocio-eta-max").value;
+  const etaMax = etaMaxRaw !== "" ? parseInt(etaMaxRaw, 10) : null;
 
   try {
     if (!nome) throw new Error("Inserisci un nome.");
+    if (etaMin != null && etaMax != null && etaMin > etaMax) throw new Error("L'età minima non può essere maggiore della massima.");
     if (editingCategoriaSocioId) {
-      await db.collection("categorieSocio").doc(editingCategoriaSocioId).update({ nome, costoForfait, ordine });
+      await db.collection("categorieSocio").doc(editingCategoriaSocioId).update({ nome, costoForfait, ordine, etaMin, etaMax });
     } else {
       if (!id) throw new Error("Inserisci un ID categoria (es. attivi) — usato anche nell'import soci.");
-      await db.collection("categorieSocio").doc(id).set({ nome, costoForfait, ordine, attivo: true });
+      await db.collection("categorieSocio").doc(id).set({ nome, costoForfait, ordine, etaMin, etaMax, attivo: true });
     }
     cancelEditCategoriaSocio();
     await loadCategorieSocio();
@@ -1308,8 +1455,8 @@ async function onImportSoci(e) {
 
   const testo = document.getElementById("import-soci-testo").value.trim();
   const righe = testo.split("\n").map(r => r.trim()).filter(Boolean).map(riga => {
-    const [nome, cognome, email, categoria, telefono, tessera] = riga.split(";").map(v => (v || "").trim());
-    return { nome, cognome, email, categoria, telefono: telefono || null, tessera: tessera || null };
+    const [nome, cognome, email, categoria, telefono, tessera, dataNascita] = riga.split(";").map(v => (v || "").trim());
+    return { nome, cognome, email, categoria, telefono: telefono || null, tessera: tessera || null, dataNascita: dataNascita || null };
   });
 
   try {
@@ -1867,6 +2014,7 @@ requireAuth(async (profile) => {
   initLinkCopyBox("link-iscrizione-corsi", "copia-link-iscrizione-corsi-btn", "iscrizione-corso.html");
   initLinkCopyBox("link-prenota-campo", "copia-link-prenota-campo-btn", "prenota-campo.html");
   initLinkCopyBox("link-attiva-socio", "copia-link-attiva-socio-btn", "attiva-socio.html");
+  initLinkCopyBox("link-iscrizione-socio", "copia-link-iscrizione-socio-btn", "iscrizione-socio.html");
   initLinkCopyBox("link-chi-in-campo", "copia-link-chi-in-campo-btn", "chi-in-campo.html");
 
   await seedDisciplineIfEmpty();
@@ -1938,7 +2086,10 @@ requireAuth(async (profile) => {
   await loadTipiAttivita();
   await loadQuoteCampo();
   await seedCategorieSocioIfEmpty();
+  await loadQuotaSocioImpostazioni();
+  document.getElementById("quotasocio-impostazioni-form").addEventListener("submit", onSaveQuotaSocioImpostazioni);
   await loadCategorieSocio();
+  await loadRichiesteIscrizione();
   await popolaSelectReferente();
   initLinkPrenotazioneAziende();
   await loadAziende();

@@ -354,9 +354,33 @@
       </div>
 
       <div class="voce">
+        <span class="dove">Configurazione → Categorie socio → modifica una categoria → "Età minima" / "Età massima"</span>
+        <div class="cosa">Fasce d'età (facoltative) → categoria dedotta da sola nel modulo di iscrizione</div>
+        <div class="come">L'età si calcola per anno solare (anno corrente meno anno di nascita — l'età che si compie durante l'anno, non quella esatta al giorno). Junior e Over 64 hanno una fascia univoca: si assegnano da sole. <strong>Famiglia</strong> non ha età (non deducibile) e <strong>Studenti</strong> si sovrappone volutamente ad Attivi (es. 19–27 anni) — per queste due, anche se l'età rientra, il modulo di iscrizione chiede sempre conferma allo staff, mai automatico.</div>
+      </div>
+
+      <div class="voce">
         <span class="dove">Configurazione → sezione import soci</span>
         <div class="cosa">Import in blocco</div>
-        <div class="come">Una riga per socio: <code>Nome;Cognome;Email;Categoria;Telefono;Tessera</code>. Email obbligatoria (righe senza vengono scartate e contate). Categoria deve corrispondere a un id già configurato sopra. Un'email già esistente aggiorna il socio invece di duplicarlo.</div>
+        <div class="come">Una riga per socio: <code>Nome;Cognome;Email;Categoria;Telefono;Tessera;DataNascita</code> (formato AAAA-MM-GG). Email, nome, cognome e data di nascita sono obbligatori (righe senza vengono scartate e contate). Categoria deve corrispondere a un id già configurato sopra. Un'email già esistente aggiorna il socio invece di duplicarlo — è anche l'unico modo per modificare un socio già importato (non c'è ancora una scheda di modifica singola).</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove"><code>iscrizione-socio.html</code> — pagina pubblica, nessun login (link in Configurazione → Link pubblici)</span>
+        <div class="cosa">Iscrizione self-service di un nuovo socio</div>
+        <div class="come">Chi si iscrive inserisce i propri dati — la categoria si calcola da sola dall'età (o si spunta "sono studente"/"richiedo Famiglia", da verificare). <strong>Categoria chiara</strong>: si passa subito al pagamento online della quota, come per una prenotazione. <strong>Famiglia/Studenti</strong>: si crea solo una richiesta in attesa (Configurazione → Categorie socio → "Richieste di iscrizione da verificare") — il pagamento parte solo dopo che lo staff ha confermato la categoria. In entrambi i casi il socio nasce solo alla conferma reale del pagamento (webhook), mai prima.</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove">Configurazione → Categorie socio → "Quota fissa per chi si iscrive a stagione iniziata (%)"</span>
+        <div class="cosa">Sconto per chi si iscrive a stagione già iniziata</div>
+        <div class="come">Chi si iscrive a stagione iniziata paga sempre almeno questa percentuale della quota (default 50% — copre i benefici non legati al periodo, es. le tariffe scontate valide tutto l'anno); il resto si riduce in proporzione ai mesi restanti dell'anno solare (gennaio-dicembre). Si applica da sola sia al pagamento immediato (categoria chiara) sia a quello inviato dopo l'approvazione di Famiglia/Studenti.</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove">Configurazione → Categorie socio → "Richieste di iscrizione da verificare"</span>
+        <div class="cosa">Approvare una richiesta (solo Famiglia/Studenti)</div>
+        <div class="come">Lo staff conferma (o corregge) la categoria proposta e l'importo suggerito (calcolato in automatico, modificabile), poi "Approva e invia pagamento": parte un'email al richiedente col link per pagare. Il socio nasce solo quando il pagamento risulta confermato, non a questo click — stesso link/email di attivazione di un socio importato da CSV, inviata in automatico appena il pagamento va a buon fine.</div>
       </div>
 
       <div class="voce">

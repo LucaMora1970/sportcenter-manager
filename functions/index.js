@@ -914,6 +914,62 @@ exports.webhookPostFinance = onRequest(
             forfaitPagato: { inizio: oggi, fine: scadenzaIso }
           });
         }
+      } else if (meta.tipoTransazione === "iscrizione_socio" && meta.token) {
+        // Iscrizione socio (richiediIscrizioneSocio a categoria chiara, o
+        // approvaIscrizioneSocio dopo verifica staff per Famiglia/
+        // Studenti): il socio vero nasce SOLO qui, alla conferma reale
+        // del pagamento — mai prima, né alla richiesta né all'eventuale
+        // approvazione della categoria (quella conferma solo chi/cosa,
+        // non che sia stato pagato).
+        const stato = successo ? "PAID" : "FAILED";
+        await db.collection("paymentRequests").doc(meta.token).update({
+          stato, paymentId: String(transaction.id), esitoAt: FieldValue.serverTimestamp()
+        });
+
+        if (meta.requestId) {
+          const reqRef = db.collection("richiesteIscrizioneSocio").doc(meta.requestId);
+          if (!successo) {
+            await reqRef.update({ stato: "PAGAMENTO_FALLITO" });
+          } else {
+            const reqSnap = await reqRef.get();
+            if (reqSnap.exists) {
+              const r = reqSnap.data();
+              const categoria = r.categoriaConfermata || r.categoriaRichiesta;
+              const dati = {
+                nome: r.nome, cognome: r.cognome, email: r.email,
+                telefono: r.telefono || null, categoria, dataNascita: r.dataNascita,
+                aziendaNome: null, tessera: null, scadenza: null, attivo: true
+              };
+              const esistente = await db.collection("soci").where("email", "==", r.email).limit(1).get();
+              let socioId;
+              if (!esistente.empty) {
+                await esistente.docs[0].ref.set(dati, { merge: true });
+                socioId = esistente.docs[0].id;
+              } else {
+                const ref = await db.collection("soci").add({ ...dati, authUid: null, forfaitPagato: null, createdAt: FieldValue.serverTimestamp() });
+                socioId = ref.id;
+              }
+              await reqRef.update({ stato: "COMPLETATA", socioId });
+
+              const attivazioneToken = generaToken();
+              await db.collection("attivazioniSoci").doc(attivazioneToken).set({
+                socioId, metodo: "email", usato: false, createdByUid: null, createdAt: FieldValue.serverTimestamp()
+              });
+              const link = `${APP_URL}attiva-socio.html?t=${attivazioneToken}`;
+              try {
+                await inviaEmail({
+                  to: r.email,
+                  subject: "Benvenuto/a — la tua iscrizione è confermata",
+                  html: `<p>Il pagamento della tua quota è stato ricevuto: sei ufficialmente socio/a.</p>`
+                    + `<p>Tocca il link qui sotto per attivare questo dispositivo e prenotare i campi con la tua tariffa socio:</p>`
+                    + `<p><a href="${link}">${link}</a></p><p>Il link è valido una sola volta.</p>`
+                });
+              } catch (err) {
+                console.error("webhookPostFinance (iscrizione_socio): invio email fallito:", err);
+              }
+            }
+          }
+        }
       } else if (meta.tipoTransazione === "tokenizzazione_corso" && meta.iscrizioneId) {
         // Salvataggio carta a costo zero (corsi a soglia minima): sul
         // successo il token è pronto per un addebito differito; sul
@@ -1712,7 +1768,7 @@ exports.importaSoci = onCall(async (request) => {
   let scartate = 0;
   for (const riga of righe) {
     const email = (riga.email || "").trim().toLowerCase();
-    if (!email || !riga.nome || !riga.cognome || !CATEGORIE_VALIDE.includes(riga.categoria)) {
+    if (!email || !riga.nome || !riga.cognome || !riga.dataNascita || !CATEGORIE_VALIDE.includes(riga.categoria)) {
       scartate++;
       continue;
     }
@@ -1722,6 +1778,10 @@ exports.importaSoci = onCall(async (request) => {
       categoria: riga.categoria,
       aziendaNome: riga.aziendaNome || null,
       tessera: riga.tessera || null,
+      // Stringa "AAAA-MM-GG" come in "iscrizioni" (vedi etaDa() in
+      // corsi.js/iscrizione-corso.js), non un Timestamp — stesso formato
+      // già usato per confrontare età, niente conversioni doppie.
+      dataNascita: riga.dataNascita || null,
       scadenza: riga.scadenza ? new Date(riga.scadenza) : null,
       attivo: true
     };
@@ -1735,6 +1795,252 @@ exports.importaSoci = onCall(async (request) => {
   }
   return { importate, scartate };
 });
+
+// ---------- Iscrizione socio (self-service, pubblico) ----------
+//
+// Età per anno solare (anno corrente - anno di nascita), non il
+// compleanno esatto — richiesto esplicitamente per le categorie socio: chi
+// si iscrive resta nella stessa fascia per tutto l'anno, indipendentemente
+// da quando cade il compleanno. Diversa apposta da etaDa() lato client
+// (corsi.js/iscrizione-corso.js), che calcola l'età precisa al giorno per
+// tutt'altro scopo (età minima/massima di un corso) — le due non vanno
+// confuse né unificate.
+function etaAnnoSociale(dataNascitaIso) {
+  const anno = parseInt((dataNascitaIso || "").slice(0, 4), 10);
+  if (!anno) return null;
+  return new Date().getFullYear() - anno;
+}
+
+async function percentualeFissaQuotaSocio() {
+  const snap = await db.collection("impostazioni").doc("generale").get();
+  const g = snap.exists ? snap.data() : {};
+  return g.quotaSocioPercentualeFissa != null ? g.quotaSocioPercentualeFissa : 50;
+}
+
+// Quota di chi si iscrive a stagione iniziata: una parte fissa (di
+// default 50%, Configurazione → Categorie socio — copre i benefici non
+// legati al periodo, come le tariffe scontate valide tutto l'anno) più il
+// resto ripartito in proporzione ai mesi restanti dell'anno solare
+// (gennaio-dicembre), mese di iscrizione incluso. getMonth() è 0-based
+// (gennaio=0), quindi "12 - getMonth()" dà già il conteggio corretto
+// senza bisogno di un +1 esplicito.
+function quotaProporzionale(costoPieno, percentualeFissa) {
+  const mesiRimanenti = 12 - new Date().getMonth();
+  const fissa = percentualeFissa / 100;
+  const variabile = (1 - fissa) * (mesiRimanenti / 12);
+  return Math.round(costoPieno * (fissa + variabile) * 100) / 100;
+}
+
+// Crea la transazione PostFinance per l'iscrizione di un socio (categoria
+// già decisa, chiara o confermata dallo staff) e il relativo
+// paymentRequests/{token} — stesso schema di richiediRinnovoAbbonamento,
+// riusato identico da entrambi i chiamanti qui sotto (self-service a
+// categoria chiara, e approvazione staff per Famiglia/Studenti).
+async function avviaPagamentoIscrizioneSocio({ requestId, nomeCompleto, categoriaNome, importo }) {
+  const token = generaToken();
+  const spaceId = parseInt(POSTFINANCE_SPACE_ID.value(), 10);
+  const service = transactionsService();
+  const transaction = await service.postPaymentTransactions({
+    space: spaceId,
+    transactionCreate: {
+      currency: "CHF",
+      merchantReference: token,
+      successUrl: `${APP_URL}pagamento-conferma.html?t=${token}`,
+      failedUrl: `${APP_URL}pagamento-conferma.html?t=${token}`,
+      lineItems: [{
+        uniqueId: token,
+        name: `Iscrizione socio — ${categoriaNome}`,
+        quantity: 1,
+        amountIncludingTax: importo,
+        type: LineItemType.Product
+      }],
+      metaData: { tipoTransazione: "iscrizione_socio", token, requestId, importo: String(importo) },
+      environmentSelectionStrategy: FORZA_AMBIENTE_TEST
+        ? TransactionEnvironmentSelectionStrategy.ForceTestEnvironment
+        : TransactionEnvironmentSelectionStrategy.UseConfiguration
+    }
+  });
+  const paymentPageUrl = await service.getPaymentTransactionsIdPaymentPageUrl({ id: transaction.id, space: spaceId });
+
+  await db.collection("paymentRequests").doc(token).set({
+    tipo: "iscrizione_socio", riferimentoId: requestId, importo,
+    descrizione: `Iscrizione socio — ${categoriaNome}`,
+    stato: "PENDING", createdByUid: null, createdByNome: nomeCompleto,
+    createdAt: FieldValue.serverTimestamp()
+  });
+
+  return { token, paymentPageUrl };
+}
+
+// Nessuna scrittura diretta su "soci": crea solo una richiesta
+// (Configurazione → Categorie socio → Richieste di iscrizione), il socio
+// vero nasce solo alla conferma del pagamento (webhook, vedi più sotto) —
+// mai prima. La categoria si deduce da sola dall'età (Configurazione →
+// Categorie socio → etaMin/etaMax): se chiara, si passa subito al
+// pagamento online, come per una prenotazione. Se la persona segnala
+// Famiglia o Studenti (o se la categoria dedotta non ha ancora una quota
+// configurata), la richiesta resta in attesa che lo staff la verifichi —
+// la Famiglia non è deducibile dall'età, gli Studenti si sovrappongono
+// all'età Attivi (es. 19-27), quindi il solo anno di nascita non basta a
+// decidere da soli.
+exports.richiediIscrizioneSocio = onCall(
+  { secrets: [POSTFINANCE_SPACE_ID, POSTFINANCE_USER_ID, POSTFINANCE_APP_KEY] },
+  async (request) => {
+    const { nome, cognome, telefono, dataNascita, richiedeFamiglia, richiedeStudente } = request.data || {};
+    const email = (request.data?.email || "").trim().toLowerCase();
+    if (!nome || !cognome || !email || !dataNascita) {
+      throw new HttpsError("invalid-argument", "Dati mancanti.");
+    }
+    const eta = etaAnnoSociale(dataNascita);
+    if (eta == null || eta < 0 || eta > 120) {
+      throw new HttpsError("invalid-argument", "Data di nascita non valida.");
+    }
+
+    const [socioSnap, richiestaSnap] = await Promise.all([
+      db.collection("soci").where("email", "==", email).limit(1).get(),
+      db.collection("richiesteIscrizioneSocio").where("email", "==", email).where("stato", "in", ["IN_ATTESA_APPROVAZIONE", "IN_ATTESA_PAGAMENTO"]).limit(1).get()
+    ]);
+    if (!socioSnap.empty && socioSnap.docs[0].data().attivo !== false) {
+      throw new HttpsError("already-exists", "Risulti già socio con questa email — contatta il circolo se pensi sia un errore.");
+    }
+    if (!richiestaSnap.empty) {
+      throw new HttpsError("already-exists", "C'è già una richiesta in corso con questa email.");
+    }
+
+    const categorieSnap = await db.collection("categorieSocio").where("attivo", "==", true).get();
+    const categorie = categorieSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    let categoriaRichiesta = null;
+    let richiedeVerifica = false;
+    if (richiedeFamiglia && categorie.some(c => c.id === "famiglia")) {
+      categoriaRichiesta = "famiglia";
+      richiedeVerifica = true;
+    } else if (richiedeStudente && categorie.some(c => c.id === "studenti")) {
+      categoriaRichiesta = "studenti";
+      richiedeVerifica = true;
+    } else {
+      const match = categorie.find(c =>
+        c.id !== "famiglia" && c.id !== "studenti"
+        && (c.etaMin == null || eta >= c.etaMin)
+        && (c.etaMax == null || eta <= c.etaMax)
+      );
+      categoriaRichiesta = match ? match.id : null;
+      // Una categoria trovata ma senza quota configurata non può andare
+      // subito a pagamento: meglio farla verificare allo staff che
+      // bloccare l'iscrizione con un errore.
+      if (match && match.costoForfait == null) richiedeVerifica = true;
+    }
+    if (!categoriaRichiesta) {
+      throw new HttpsError("failed-precondition", "Nessuna categoria configurata per la tua età — contatta il circolo.");
+    }
+
+    const nomeCompleto = `${nome} ${cognome}`;
+
+    if (richiedeVerifica) {
+      await db.collection("richiesteIscrizioneSocio").add({
+        nome, cognome, email, telefono: telefono || null, dataNascita, eta,
+        categoriaRichiesta, richiedeVerifica,
+        stato: "IN_ATTESA_APPROVAZIONE", createdAt: FieldValue.serverTimestamp()
+      });
+      return { ok: true, pagamentoNecessario: false };
+    }
+
+    const categoria = categorie.find(c => c.id === categoriaRichiesta);
+    const percentualeFissa = await percentualeFissaQuotaSocio();
+    const importo = quotaProporzionale(categoria.costoForfait, percentualeFissa);
+
+    const reqRef = await db.collection("richiesteIscrizioneSocio").add({
+      nome, cognome, email, telefono: telefono || null, dataNascita, eta,
+      categoriaRichiesta, richiedeVerifica, quotaCalcolata: importo,
+      stato: "IN_ATTESA_PAGAMENTO", createdAt: FieldValue.serverTimestamp()
+    });
+
+    try {
+      const { paymentPageUrl } = await avviaPagamentoIscrizioneSocio({
+        requestId: reqRef.id, nomeCompleto, categoriaNome: categoria.nome, importo
+      });
+      return { ok: true, pagamentoNecessario: true, paymentPageUrl };
+    } catch (err) {
+      await reqRef.delete();
+      console.error("richiediIscrizioneSocio: errore PostFinance:", err);
+      throw new HttpsError("internal", "Errore nella creazione del pagamento. Riprova.");
+    }
+  }
+);
+
+// Solo per Famiglia/Studenti (o categorie senza quota configurata): lo
+// staff conferma/corregge la categoria e l'importo, poi si invia il link
+// di pagamento via email — a differenza del caso a categoria chiara qui
+// non c'è una sessione del richiedente da reindirizzare, è l'admin che
+// preme "Approva" al posto suo. Il socio nasce solo alla conferma del
+// pagamento (webhook), non qui.
+exports.approvaIscrizioneSocio = onCall(
+  { secrets: [POSTFINANCE_SPACE_ID, POSTFINANCE_USER_ID, POSTFINANCE_APP_KEY, ...MAIL_SECRETS] },
+  async (request) => {
+    if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+    const { permessi, isAdmin } = await permessiUtente(request.auth.uid);
+    if (!isAdmin && !permessi.includes("config:gestisci")) {
+      throw new HttpsError("permission-denied", "Permesso mancante.");
+    }
+
+    const { requestId, categoria: categoriaId, importo } = request.data || {};
+    if (!requestId || !categoriaId || typeof importo !== "number" || !isFinite(importo) || importo < 0) {
+      throw new HttpsError("invalid-argument", "Dati mancanti.");
+    }
+
+    const reqRef = db.collection("richiesteIscrizioneSocio").doc(requestId);
+    const reqSnap = await reqRef.get();
+    if (!reqSnap.exists) throw new HttpsError("not-found", "Richiesta non trovata.");
+    const r = reqSnap.data();
+    if (r.stato !== "IN_ATTESA_APPROVAZIONE") throw new HttpsError("failed-precondition", "Richiesta già gestita.");
+
+    const categoriaSnap = await db.collection("categorieSocio").doc(categoriaId).get();
+    if (!categoriaSnap.exists) throw new HttpsError("not-found", "Categoria non trovata.");
+
+    // Il pagamento va creato PRIMA di spostare lo stato della richiesta:
+    // se PostFinance fallisse dopo aver già segnato "IN_ATTESA_PAGAMENTO",
+    // la richiesta sparirebbe dall'elenco "da verificare" (che filtra
+    // IN_ATTESA_APPROVAZIONE) senza che sia stato creato nulla — bloccata,
+    // invisibile, irrecuperabile. Così invece un errore qui non tocca
+    // affatto lo stato: la richiesta resta semplicemente riprovabile.
+    let paymentPageUrl;
+    try {
+      ({ paymentPageUrl } = await avviaPagamentoIscrizioneSocio({
+        requestId, nomeCompleto: `${r.nome} ${r.cognome}`, categoriaNome: categoriaSnap.data().nome, importo
+      }));
+    } catch (err) {
+      console.error("approvaIscrizioneSocio: errore PostFinance:", err);
+      throw new HttpsError("internal", "Errore nella creazione del pagamento. Riprova.");
+    }
+
+    const userSnap = await db.collection("users").doc(request.auth.uid).get();
+    await reqRef.update({
+      categoriaConfermata: categoriaId,
+      quotaCalcolata: importo,
+      approvataDaUid: request.auth.uid,
+      approvataDaNome: userSnap.exists ? (userSnap.data().nome || null) : null,
+      approvataAt: FieldValue.serverTimestamp(),
+      stato: "IN_ATTESA_PAGAMENTO"
+    });
+
+    // Il pagamento esiste già a questo punto: un'email non recapitata non
+    // deve far credere allo staff che l'approvazione sia fallita (non lo
+    // è), si registra solo l'errore.
+    try {
+      await inviaEmail({
+        to: r.email,
+        subject: "La tua iscrizione è stata verificata — completa il pagamento",
+        html: `<p>La tua richiesta di iscrizione (categoria ${categoriaSnap.data().nome}) è stata verificata dal circolo.</p>`
+          + `<p>Per completarla, tocca il link qui sotto e concludi il pagamento della quota (CHF ${importo.toFixed(2)}):</p>`
+          + `<p><a href="${paymentPageUrl}">${paymentPageUrl}</a></p>`
+      });
+    } catch (err) {
+      console.error("approvaIscrizioneSocio: invio email fallito:", err);
+    }
+
+    return { ok: true };
+  }
+);
 
 // Il client invia l'email inserita dal socio; la risposta è sempre
 // {ok:true} indipendentemente dal risultato reale della ricerca — non deve

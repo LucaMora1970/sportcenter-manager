@@ -153,8 +153,11 @@ service cloud.firestore {
     // stesso pattern di tipiUtenza/discipline, mai pubblica: il
     // vocabolario tariffario del circolo non serve alle pagine pubbliche,
     // che lavorano già solo per ID categoria.
+    // Lettura pubblica (non solo isSignedIn()): serve anche a
+    // iscrizione-socio.html, il modulo di iscrizione senza login, per
+    // mostrare nome/quota di ciascuna categoria — nessun dato sensibile.
     match /categorieSocio/{id} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow write: if hasPermission("config:gestisci");
     }
 
@@ -187,6 +190,17 @@ service cloud.firestore {
     // sempre e solo dalle Cloud Function dedicate (Admin SDK).
     match /abbonamentiFissi/{id} {
       allow get, list: if hasPermission("config:gestisci") || hasPermission("prenotazioni:gestisci");
+      allow write: if false;
+    }
+
+    // Richieste di iscrizione socio (modulo pubblico iscrizione-socio.html):
+    // creazione e approvazione sempre e solo dalle Cloud Function dedicate
+    // (richiediIscrizioneSocio, approvaIscrizioneSocio — Admin SDK, bypassano
+    // questa regola), mai una scrittura diretta dal client, nemmeno la
+    // creazione — evita che chiunque possa forzare una categoria o uno
+    // stato "APPROVATA" senza passare dalla verifica dello staff.
+    match /richiesteIscrizioneSocio/{id} {
+      allow get, list: if hasPermission("config:gestisci");
       allow write: if false;
     }
 
