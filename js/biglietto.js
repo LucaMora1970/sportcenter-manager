@@ -158,14 +158,27 @@ function renderBiglietto(data, token) {
   document.getElementById("ticket-save-bar").classList.remove("hidden");
 }
 
+// Vero solo se l'ultimo disegno sul canvas condiviso è già quello
+// richiesto (con o senza QR) — evita di ridisegnare da capo logo/testi/QR
+// se si clicca Salva e poi Inoltra (o viceversa) sullo stesso biglietto,
+// il contenuto non cambia tra un click e l'altro.
+let ultimoDisegnoConQr = null;
+
 // Ridisegna l'intero biglietto su <canvas> (logo + testi + QR) — nessun
 // backend di generazione immagini necessario, tutto lato client. Sempre
 // in versione chiara (indipendente dal tema scelto per la pagina): un'immagine
 // chiara si stampa meglio ed è più adatta a essere inoltrata/condivisa.
-// Riusata sia per il download ("Salva biglietto") sia per la condivisione
-// ("Inoltra", vedi condividiBiglietto) — stesso disegno, destinazione diversa.
-async function disegnaBigliettoCanvas() {
+// Riusata sia per il download ("Salva biglietto", con QR — è il proprio
+// biglietto, il QR/link serve a chi prenota per riaprirlo/annullarlo) sia
+// per la condivisione ("Inoltra", vedi condividiBiglietto — SENZA QR: chi
+// riceve il biglietto da un'altra persona non deve poter arrivare al
+// link che permette di annullarne la prenotazione).
+async function disegnaBigliettoCanvas({ includiQr = true } = {}) {
   const canvas = document.getElementById("ticket-canvas");
+  if (ultimoDisegnoConQr === includiQr) return canvas;
+  // Senza QR il biglietto è molto più corto (niente blocco QR 320px):
+  // un'altezza fissa più bassa invece di lasciare un vuoto in fondo.
+  canvas.height = includiQr ? 1150 : 900;
   const ctx = canvas.getContext("2d");
   const W = canvas.width, H = canvas.height;
 
@@ -227,25 +240,32 @@ async function disegnaBigliettoCanvas() {
   ctx.font = "700 40px 'Courier New', monospace";
   ctx.fillText(document.getElementById("t-codice").textContent, W / 2, y + 40);
 
-  const qrCanvas = document.querySelector("#qr-container canvas");
-  const qrImg = document.querySelector("#qr-container img");
   const qrSize = 320;
   const qrTop = y + 80;
-  if (qrCanvas) {
-    ctx.drawImage(qrCanvas, (W - qrSize) / 2, qrTop, qrSize, qrSize);
-  } else if (qrImg) {
-    ctx.drawImage(qrImg, (W - qrSize) / 2, qrTop, qrSize, qrSize);
+  let footerBaseY;
+  if (includiQr) {
+    const qrCanvas = document.querySelector("#qr-container canvas");
+    const qrImg = document.querySelector("#qr-container img");
+    if (qrCanvas) {
+      ctx.drawImage(qrCanvas, (W - qrSize) / 2, qrTop, qrSize, qrSize);
+    } else if (qrImg) {
+      ctx.drawImage(qrImg, (W - qrSize) / 2, qrTop, qrSize, qrSize);
+    }
+    footerBaseY = qrTop + qrSize + 40;
+  } else {
+    footerBaseY = y + 90;
   }
 
   ctx.fillStyle = "#52697a";
   ctx.font = "18px Arial";
-  ctx.fillText(document.getElementById("t-timestamp").textContent, W / 2, qrTop + qrSize + 40);
+  ctx.fillText(document.getElementById("t-timestamp").textContent, W / 2, footerBaseY);
 
   ctx.fillStyle = "#8a99a3";
   ctx.font = "15px Arial";
-  ctx.fillText("Powered by Sport-OS", W / 2, qrTop + qrSize + 74);
-  ctx.fillText("Copyright L.M. 2026", W / 2, qrTop + qrSize + 96);
+  ctx.fillText("Powered by Sport-OS", W / 2, footerBaseY + 34);
+  ctx.fillText("Copyright L.M. 2026", W / 2, footerBaseY + 56);
 
+  ultimoDisegnoConQr = includiQr;
   return canvas;
 }
 
@@ -260,43 +280,48 @@ async function salvaBigliettoPng() {
 // "Inoltra": apre il selettore nativo del telefono (WhatsApp, Mail, ecc.
 // — qualunque app di condivisione installata, non ne forziamo una) con
 // l'immagine del biglietto già pronta — così chi la riceve la vede
-// subito, senza dover prima aprire un link. Se il browser non supporta
-// la condivisione di file (soprattutto desktop) si scende di un
-// gradino: condivide solo il link; se nemmeno quello è supportato, lo
-// copia negli appunti. Lo stesso link/QR mostrato a più persone non è
-// un problema: il biglietto è di sola lettura, non si "consuma" a
-// guardarlo.
-async function condividiBiglietto(data, token) {
+// subito, senza dover prima aprire un link. A differenza di "Salva
+// biglietto", qui il QR (e più in generale il link a biglietto.html) non
+// vengono mai condivisi: quel link è anche il modo per annullare la
+// prenotazione da soli, e chi lo riceve solo per essere informato del
+// campo/orario non deve poter arrivare per sbaglio ad annullarla. Il
+// codice prenotazione stampato resta invece nell'immagine: da solo non
+// permette di annullare nulla (serve solo per una verifica manuale in
+// segreteria). Se il browser non supporta la condivisione di file
+// (soprattutto desktop) si scende di un gradino: condivide solo il testo
+// descrittivo, mai un link; se nemmeno quello è supportato, lo copia
+// negli appunti.
+async function condividiBiglietto(data) {
   const btn = document.getElementById("inoltra-btn");
   const testoOriginale = btn.querySelector("span").textContent;
-  const url = `${basePageUrl()}biglietto.html?t=${token}`;
   const titolo = `${data.disciplina ? disciplinaLabelBiglietto(data.disciplina) : DISCIPLINA_FALLBACK} — ${document.getElementById("t-data").textContent} ${document.getElementById("t-orario").textContent}`;
+  const descrizione = `${titolo} — ${DATI_CENTRO.nome || ""}`;
 
   try {
     if (navigator.canShare) {
-      const canvas = await disegnaBigliettoCanvas();
+      const canvas = await disegnaBigliettoCanvas({ includiQr: false });
       const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
       const file = new File([blob], `biglietto-${data.bookingCode || "prenotazione"}.png`, { type: "image/png" });
       if (navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], title: titolo, text: `${titolo}\n${url}` });
+        await navigator.share({ files: [file], title: titolo, text: descrizione });
         return;
       }
     }
     if (navigator.share) {
-      await navigator.share({ title: titolo, text: titolo, url });
+      await navigator.share({ title: titolo, text: descrizione });
       return;
     }
-    await navigator.clipboard.writeText(url);
-    btn.querySelector("span").textContent = "Link copiato";
+    await navigator.clipboard.writeText(descrizione);
+    btn.querySelector("span").textContent = "Copiato";
     setTimeout(() => { btn.querySelector("span").textContent = testoOriginale; }, 2000);
   } catch (err) {
     if (err.name === "AbortError") return; // utente ha chiuso il pannello di condivisione, non è un errore
     try {
-      await navigator.clipboard.writeText(url);
-      btn.querySelector("span").textContent = "Link copiato";
+      await navigator.clipboard.writeText(descrizione);
+      btn.querySelector("span").textContent = "Copiato";
       setTimeout(() => { btn.querySelector("span").textContent = testoOriginale; }, 2000);
     } catch {
-      alert("Impossibile condividere automaticamente. Link del biglietto:\n" + url);
+      alert("Impossibile condividere automaticamente.\n" + descrizione);
     }
   }
 }
@@ -442,9 +467,17 @@ function aggiungiAlCalendario(data) {
     if (link) {
       const url = /^https?:\/\//i.test(link) ? link : `https://${link}`;
       setTimeout(() => { window.location.href = url; }, 600);
+    } else {
+      // Nessun redirect configurato: si resta sulla pagina, quindi serve
+      // una conferma visibile — un click su un <a download> non dà di
+      // per sé nessun riscontro, sembra non aver fatto nulla.
+      const btn = document.getElementById("salva-btn");
+      const testoOriginale = btn.textContent;
+      btn.textContent = "Biglietto salvato ✓";
+      setTimeout(() => { btn.textContent = testoOriginale; }, 2500);
     }
   });
-  document.getElementById("inoltra-btn").addEventListener("click", () => condividiBiglietto(ticketData, token));
+  document.getElementById("inoltra-btn").addEventListener("click", () => condividiBiglietto(ticketData));
   document.getElementById("calendario-btn").addEventListener("click", () => aggiungiAlCalendario(ticketData));
   document.getElementById("ricevuta-btn").addEventListener("click", () => stampaRicevutaBiglietto(ticketData));
 
