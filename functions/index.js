@@ -299,6 +299,17 @@ function slotsInInterval(a, b, duration, feriale, oggi) {
         if (remain === 0 || remain >= 60) starts.push(t);
       }
     });
+    // Se la finestra libera è più stretta di 90', un 90' non ci sarebbe
+    // mai potuto stare comunque — un margine sprecato da un lato non toglie
+    // nessuna vera opportunità in quel caso, quindi qui (solo qui) si
+    // ignora la regola del buco minimo pur di non lasciare vuota tutta la
+    // finestra: meglio un'ora piena occupata con uno scarto ai bordi che
+    // niente.
+    if (limit - a < 90) {
+      [a, limit - 60].forEach(t => {
+        if (t >= a && t + 60 <= limit && !starts.includes(t)) starts.push(t);
+      });
+    }
     if (SLOT_FISSO_PRANZO >= a && SLOT_FISSO_PRANZO + 60 <= limit && gapPrimaOk(SLOT_FISSO_PRANZO, a)) {
       const remain = limit - (SLOT_FISSO_PRANZO + 60);
       if (remain === 0 || remain >= 60) starts.push(SLOT_FISSO_PRANZO);
