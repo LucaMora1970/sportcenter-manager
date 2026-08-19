@@ -770,6 +770,12 @@ async function confermaPrenota(slot, idx) {
     nascondiCaricamento();
     showError(errorEl, "Errore: " + (err.message || err));
     btn.disabled = false;
+    // Il bottone della griglia resta evidenziato "selezionato" (vedi
+    // selezionaBottoneGriglia) anche se la prenotazione non è andata a
+    // buon fine — sembra che lo slot sia bloccato/in corso quando invece
+    // non è successo nulla (l'errore arriva sempre prima che una vera
+    // prenotazione PENDING_PAYMENT venga creata). Va tolto qui.
+    selezionaBottoneGriglia(null);
   }
 }
 
