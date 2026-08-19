@@ -474,23 +474,28 @@ function formatoPrezzo(numero) {
 
 // Testo prezzo per una riga (stesso per tutte le colonne: la tariffa non
 // dipende dal campo, solo da disciplina/posizione/orario/categoria). Nel
-// tennis è un intervallo, non un numero fisso: il prezzo vero dipende
-// anche dalla categoria del secondo giocatore, non ancora nota qui —
-// da (quota propria, se il compagno è nella tua stessa categoria) a
-// (media con un compagno esterno, il caso più caro). Nello squash non
-// c'è secondo giocatore: quota propria e basta, mai una media.
+// tennis il prezzo vero dipende anche dalla categoria del secondo
+// giocatore, non ancora nota qui — invece di stimare un intervallo (che
+// in griglia stretta si legge male), si mostra solo "da CHF x": la
+// tariffa più bassa tra tutte le categorie clienti configurate per questo
+// slot (escluse maestri/amministrazione, non prezzi cliente), scartando
+// gli zero (forfait) così non sembra "gratis" quando non lo è per tutti.
+// Nello squash non c'è secondo giocatore: quota propria e basta.
 function prezzoTestoSlot(disciplina, posizione, orario, durataMinuti) {
   const categoria1 = categoriaCorrente();
   const quota1 = quotaCategoriaClient(disciplina, posizione, categoria1, state.data, orario, durataMinuti);
   if (quota1 == null) return "—";
   if (disciplina !== "tennis") return formatoPrezzo(quota1);
 
-  const quotaEsterno = quotaCategoriaClient(disciplina, posizione, "esterno", state.data, orario, durataMinuti);
-  if (quotaEsterno == null) return formatoPrezzo(quota1);
-  const conCompagnoEsterno = (quota1 + quotaEsterno) / 2;
-  const min = Math.min(quota1, conCompagnoEsterno);
-  const max = Math.max(quota1, conCompagnoEsterno);
-  return min === max ? formatoPrezzo(min) : `da ${formatoPrezzo(min)} a ${formatoPrezzo(max)}`;
+  const categorie = [...new Set(
+    TARIFFE_CAMPI.filter(t => t.disciplina === disciplina && t.posizione === (posizione ?? null)).map(t => t.categoria)
+  )].filter(c => c !== "maestro" && c !== "amministrazione");
+  const prezzi = categorie
+    .map(c => quotaCategoriaClient(disciplina, posizione, c, state.data, orario, durataMinuti))
+    .filter(p => p != null);
+  const nonZero = prezzi.filter(p => p > 0);
+  const min = nonZero.length > 0 ? Math.min(...nonZero) : (prezzi.length > 0 ? Math.min(...prezzi) : quota1);
+  return `da ${formatoPrezzo(min)}`;
 }
 
 function renderGrigliaCampi(el, gruppo) {
