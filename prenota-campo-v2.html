@@ -60,28 +60,34 @@
   table.slot-grid th .th-pill.th-pill-durata {
     font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 1.05rem; padding: 6px 14px;
   }
-  table.slot-grid th:first-child { text-align: left; width: 46px; }
-  table.slot-grid td { padding: 3px 3px; text-align: center; }
+  table.slot-grid th:first-child { text-align: left; width: 54px; }
+  table.slot-grid td { padding: 4px 3px; text-align: center; }
+  /* Stesso font/peso del numero giorno nel day-strip (.day-btn .n:
+     'Oswald' 600) invece di Space Mono, sia per l'orario "capitolo" che
+     per il testo dentro i bottoni slot. */
   table.slot-grid td.time-cell {
-    font-size: 0.74rem; color: var(--chalk-grey); font-weight: 700; text-align: left; padding-left: 2px;
+    font-family: 'Oswald', sans-serif; font-size: 0.95rem; font-weight: 600;
+    color: var(--line-white); text-align: left; padding-left: 2px;
   }
-  /* Colonna 60' (padel): stesso accento ma più tenue, per distinguerla a
-     colpo d'occhio dalla 90' senza introdurre un secondo colore. */
+  /* Stesso stile dei bottoni giorno (.day-btn): sfondo/bordo/colore testo
+     identici da riposo, verde pieno quando selezionato — solo il font dei
+     numeri (Oswald 500) resta quello deciso sopra per gli orari/slot. */
   .slot-btn {
-    display: block; width: 100%; padding: 7px 0; border-radius: 7px; border: none;
-    background: color-mix(in srgb, var(--ball) 22%, transparent); color: var(--ball);
-    font-family: 'Space Mono', monospace; font-size: 0.7rem; font-weight: 700; cursor: pointer;
+    display: block; width: 100%; padding: 8px 2px; border-radius: var(--radius);
+    border: 1px solid var(--court-blue-700); background: var(--court-blue-900); color: var(--chalk-grey);
+    font-family: 'Oswald', sans-serif; font-size: 0.8rem; font-weight: 500; cursor: pointer;
+    line-height: 1.3;
   }
-  :root[data-theme="light"] .slot-btn { color: var(--ball-dim); }
-  .slot-btn.dur-60 { background: color-mix(in srgb, var(--ball) 11%, transparent); }
+  /* Colonna 60' (padel): sfondo leggermente diverso, per distinguerla a
+     colpo d'occhio dalla 90' senza introdurre un secondo colore. */
+  .slot-btn.dur-60 { background: var(--court-blue-800); }
   /* Dopo .dur-60 nel foglio: a parità di specificità vince l'ultima
      regola — un bottone 60' selezionato deve mostrare lo stato
-     "selezionato" pieno, non il tono tenue della colonna. */
+     "selezionato" pieno, non il tono della colonna. */
   .slot-btn.selected {
-    background: var(--ball); color: var(--court-blue-950);
-    box-shadow: 0 0 0 2px var(--court-blue-900), 0 0 0 3px var(--ball);
+    background: var(--ball); border-color: var(--ball); color: var(--court-blue-950);
   }
-  .slot-empty { display: block; padding: 7px 0; text-align: center; color: var(--chalk-grey-dim); font-size: 0.7rem; }
+  .slot-empty { display: block; padding: 8px 0; text-align: center; color: var(--chalk-grey-dim); font-size: 0.8rem; }
 
   .prenota-panel { background: var(--court-blue-900); border: 1px solid var(--court-blue-700); border-radius: var(--radius);
     padding: 16px; margin-top: 10px; }

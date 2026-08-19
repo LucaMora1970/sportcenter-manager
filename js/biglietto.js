@@ -440,17 +440,12 @@ function aggiungiAlCalendario(data) {
   document.getElementById("annulla-btn").addEventListener("click", () => onAnnullaBiglietto(token));
 
   // Il link "torna alla prenotazione" (ora un'icona, vedi biglietto.html)
-  // deve puntare alla pagina giusta: il padel ha ancora la sua pagina
-  // dedicata, tennis/squash usano l'ingresso unico — data.disciplina
-  // (assente = vecchi biglietti, solo padel esisteva) decide quale.
+  // punta sempre alla v2 (griglia campi/durata × orari) — gestisce già
+  // tennis/squash/padel in un solo ingresso, non serve più distinguere
+  // per disciplina come quando padel aveva ancora la sua pagina a parte.
   const tornaLink = document.getElementById("torna-prenotazione-link");
-  if (data.disciplina && data.disciplina !== "padel") {
-    tornaLink.href = "prenota-campo.html";
-    tornaLink.setAttribute("aria-label", "Torna alla prenotazione");
-  } else {
-    tornaLink.href = "prenota-padel.html";
-    tornaLink.setAttribute("aria-label", "Torna a Prenotazione Padel");
-  }
+  tornaLink.href = "prenota-campo-v2.html";
+  tornaLink.setAttribute("aria-label", "Torna alla prenotazione");
 
   // Dopo il salvataggio, si riporta l'utente su un link deciso in
   // Configurazione → Impostazioni generali → "Link dopo 'Salva

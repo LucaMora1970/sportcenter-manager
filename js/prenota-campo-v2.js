@@ -468,25 +468,29 @@ function numeroOrdinabile(numero) {
   return match ? parseInt(match[0], 10) : Infinity;
 }
 
+function formatoPrezzo(numero) {
+  return `CHF ${numero.toFixed(2)}`;
+}
+
 // Testo prezzo per una riga (stesso per tutte le colonne: la tariffa non
 // dipende dal campo, solo da disciplina/posizione/orario/categoria). Nel
 // tennis è un intervallo, non un numero fisso: il prezzo vero dipende
 // anche dalla categoria del secondo giocatore, non ancora nota qui —
-// da CHF (quota propria, se il compagno è nella tua stessa categoria) a
-// CHF (media con un compagno esterno, il caso più caro). Nello squash non
+// da (quota propria, se il compagno è nella tua stessa categoria) a
+// (media con un compagno esterno, il caso più caro). Nello squash non
 // c'è secondo giocatore: quota propria e basta, mai una media.
 function prezzoTestoSlot(disciplina, posizione, orario, durataMinuti) {
   const categoria1 = categoriaCorrente();
   const quota1 = quotaCategoriaClient(disciplina, posizione, categoria1, state.data, orario, durataMinuti);
   if (quota1 == null) return "—";
-  if (disciplina !== "tennis") return `CHF ${quota1.toFixed(2)}`;
+  if (disciplina !== "tennis") return formatoPrezzo(quota1);
 
   const quotaEsterno = quotaCategoriaClient(disciplina, posizione, "esterno", state.data, orario, durataMinuti);
-  if (quotaEsterno == null) return `CHF ${quota1.toFixed(2)}`;
+  if (quotaEsterno == null) return formatoPrezzo(quota1);
   const conCompagnoEsterno = (quota1 + quotaEsterno) / 2;
   const min = Math.min(quota1, conCompagnoEsterno);
   const max = Math.max(quota1, conCompagnoEsterno);
-  return min === max ? `CHF ${min.toFixed(2)}` : `da CHF ${min.toFixed(2)} a CHF ${max.toFixed(2)}`;
+  return min === max ? formatoPrezzo(min) : `da ${formatoPrezzo(min)} a ${formatoPrezzo(max)}`;
 }
 
 function renderGrigliaCampi(el, gruppo) {
@@ -566,7 +570,7 @@ function renderGrigliaPadel(el, gruppo) {
   const categoria = categoriaCorrente();
   const prezzoTesto = (durataMinuti, orario) => {
     const prezzo = quotaCategoriaClient("padel", null, categoria, state.data, orario, durataMinuti);
-    return prezzo == null ? "" : ` (CHF ${prezzo.toFixed(2)})`;
+    return prezzo == null ? "" : ` (${formatoPrezzo(prezzo)})`;
   };
 
   const righe = [...new Set([...starts90, ...starts60])].sort((a, b) => a - b);
@@ -652,7 +656,7 @@ function apriPannelloPrenota(slot) {
   const gruppo = gruppoAttivo();
   const durataMinuti = slot.campo.disciplina === "padel" ? state.durataPadel : orarioToMin(slot.fine) - orarioToMin(slot.inizio);
   const prezzo = quotaCategoriaClient(slot.campo.disciplina, gruppo ? gruppo.posizione : null, categoriaCorrente(), state.data, slot.inizio, durataMinuti);
-  const prezzoLabel = prezzo == null ? "—" : `CHF ${prezzo.toFixed(2)}`;
+  const prezzoLabel = prezzo == null ? "—" : formatoPrezzo(prezzo);
   const prezzoTitolo = slot.campo.disciplina === "tennis" ? "Prezzo indicativo" : "Prezzo";
 
   const etichetta = slot.campo.disciplina === "tennis" ? "Nome del secondo giocatore" : "Nome giocatore";
