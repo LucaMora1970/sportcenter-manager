@@ -254,6 +254,17 @@ function slotsInInterval(a, b, duration, feriale, oggi) {
       const remain = b - (t + 90);
       if ((remain === 0 || remain >= 60) && gapPrimaOk(t, a)) starts.push(t);
     }
+    // La griglia a passi di 30' sopra parte da `a` e avanza a scatti: se la
+    // distanza fino al prossimo impegno non è multipla di 30' salta esatta-
+    // mente i due punti più utili — quello che tocca l'impegno (buco 0') e
+    // quello che lascia il buco minimo consentito (60') — anche se validi
+    // per la stessa regola. Cercati qui esplicitamente, in aggiunta.
+    [b - 90, b - 90 - 60].forEach(t => {
+      if (t >= a && t < BOUNDARY && !starts.includes(t) && gapPrimaOk(t, a)) {
+        const remain = b - (t + 90);
+        if (remain === 0 || remain >= 60) starts.push(t);
+      }
+    });
     // Oggi la catena dei 90' dopo le 17:00 usa un passo più fine (15'
     // invece di 90') così non nasconde disponibilità reale nelle
     // prossime ore (es. sono le 20:07, il prossimo scatto fisso sarebbe
@@ -280,6 +291,14 @@ function slotsInInterval(a, b, duration, feriale, oggi) {
       const remain = limit - (t + 60);
       if ((remain === 0 || remain >= 60) && gapPrimaOk(t, a)) starts.push(t);
     }
+    // Stesso problema di "punto utile saltato dalla griglia" spiegato sopra
+    // per i 90', qui per i 60'.
+    [limit - 60, limit - 60 - 60].forEach(t => {
+      if (t >= a && !starts.includes(t) && gapPrimaOk(t, a)) {
+        const remain = limit - (t + 60);
+        if (remain === 0 || remain >= 60) starts.push(t);
+      }
+    });
     if (SLOT_FISSO_PRANZO >= a && SLOT_FISSO_PRANZO + 60 <= limit && gapPrimaOk(SLOT_FISSO_PRANZO, a)) {
       const remain = limit - (SLOT_FISSO_PRANZO + 60);
       if (remain === 0 || remain >= 60) starts.push(SLOT_FISSO_PRANZO);

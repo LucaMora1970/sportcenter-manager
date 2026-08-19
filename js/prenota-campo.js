@@ -103,6 +103,17 @@ function padelSlotsInInterval(a, b, duration, feriale, oggi) {
       const remain = b - (t + 90);
       if ((remain === 0 || remain >= 60) && padelGapPrimaOk(t, a)) starts.push(t);
     }
+    // La griglia a passi di 30' sopra parte da `a` e avanza a scatti: se la
+    // distanza fino al prossimo impegno non è multipla di 30' salta esatta-
+    // mente i due punti più utili — quello che tocca l'impegno (buco 0') e
+    // quello che lascia il buco minimo consentito (60') — anche se validi
+    // per la stessa regola. Cercati qui esplicitamente, in aggiunta.
+    [b - 90, b - 90 - 60].forEach(t => {
+      if (t >= a && t < PADEL_BOUNDARY && !starts.includes(t) && padelGapPrimaOk(t, a)) {
+        const remain = b - (t + 90);
+        if (remain === 0 || remain >= 60) starts.push(t);
+      }
+    });
     const primoChain = Math.max(a, PADEL_BOUNDARY);
     if (padelGapPrimaOk(primoChain, a)) {
       const passo = oggi ? 15 : 90;
@@ -122,6 +133,14 @@ function padelSlotsInInterval(a, b, duration, feriale, oggi) {
       const remain = limit - (t + 60);
       if ((remain === 0 || remain >= 60) && padelGapPrimaOk(t, a)) starts.push(t);
     }
+    // Stesso problema di "punto utile saltato dalla griglia" spiegato sopra
+    // per i 90', qui per i 60'.
+    [limit - 60, limit - 60 - 60].forEach(t => {
+      if (t >= a && !starts.includes(t) && padelGapPrimaOk(t, a)) {
+        const remain = limit - (t + 60);
+        if (remain === 0 || remain >= 60) starts.push(t);
+      }
+    });
     if (PADEL_SLOT_FISSO_PRANZO >= a && PADEL_SLOT_FISSO_PRANZO + 60 <= limit && padelGapPrimaOk(PADEL_SLOT_FISSO_PRANZO, a)) {
       const remain = limit - (PADEL_SLOT_FISSO_PRANZO + 60);
       if (remain === 0 || remain >= 60) starts.push(PADEL_SLOT_FISSO_PRANZO);
