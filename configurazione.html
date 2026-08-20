@@ -364,6 +364,10 @@
           <label for="new-campo-posizione">Posizione</label>
           <select id="new-campo-posizione" required></select>
         </div>
+        <div class="field">
+          <label for="new-campo-ordine">Ordine (numero più basso = più in alto nell'elenco/prenotazioni)</label>
+          <input type="number" id="new-campo-ordine" step="1" placeholder="es. 1">
+        </div>
         <div class="error-msg" id="new-campo-error"></div>
         <button type="submit" class="btn btn-ghost" id="create-campo-btn">+ Aggiungi campo</button>
         <button type="button" class="btn btn-ghost hidden" id="cancel-edit-campo-btn" style="margin-top:10px;">Annulla modifica</button>

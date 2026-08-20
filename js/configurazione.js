@@ -501,13 +501,24 @@ async function loadCampi() {
 
   const snap = await db.collection("campi").get();
   const campi = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  campi.sort((a, b) => (a.numero || "").localeCompare(b.numero || "", undefined, { numeric: true }));
+  // "ordine" (esplicito, assegnato qui in Configurazione) ha la
+  // precedenza sul vecchio ordinamento per "numero" testuale — quest'ultimo
+  // si spezza appena il numero non è puramente numerico (es. "Campo 1",
+  // che non ordina prima di "Campo 10" da stringa) o ha un prefisso non
+  // numerico. Chi non ha ancora un "ordine" (campi creati prima di questo
+  // campo) resta ordinato per numero come prima, in fondo alla lista.
+  campi.sort((a, b) => {
+    if (a.ordine != null && b.ordine != null) return a.ordine - b.ordine;
+    if (a.ordine != null) return -1;
+    if (b.ordine != null) return 1;
+    return (a.numero || "").localeCompare(b.numero || "", undefined, { numeric: true });
+  });
 
   renderSimpleList(
     "campi-list",
     campi,
     it => "Campo " + it.numero,
-    it => `${disciplinaLabel(it.disciplina)} · ${posizioneLabel(it.posizione)}`,
+    it => `${disciplinaLabel(it.disciplina)} · ${posizioneLabel(it.posizione)} · ordine ${it.ordine != null ? it.ordine : "—"}`,
     "campi",
     loadCampi,
     startEditCampo
@@ -519,6 +530,7 @@ function startEditCampo(item) {
   document.getElementById("new-campo-numero").value = item.numero || "";
   document.getElementById("new-campo-disciplina").value = item.disciplina || "";
   document.getElementById("new-campo-posizione").value = item.posizione || "";
+  document.getElementById("new-campo-ordine").value = item.ordine != null ? item.ordine : "";
   document.getElementById("create-campo-btn").textContent = "Salva modifiche";
   document.getElementById("cancel-edit-campo-btn").classList.remove("hidden");
   document.getElementById("new-campo-form").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -541,13 +553,15 @@ async function onCreateCampo(e) {
   const numero = document.getElementById("new-campo-numero").value.trim();
   const disciplina = document.getElementById("new-campo-disciplina").value;
   const posizione = document.getElementById("new-campo-posizione").value;
+  const ordineRaw = document.getElementById("new-campo-ordine").value;
+  const ordine = ordineRaw !== "" ? parseInt(ordineRaw, 10) : 99;
 
   try {
     if (!numero) throw new Error("Inserisci un numero campo.");
     if (editingCampoId) {
-      await db.collection("campi").doc(editingCampoId).update({ numero, disciplina, posizione });
+      await db.collection("campi").doc(editingCampoId).update({ numero, disciplina, posizione, ordine });
     } else {
-      await db.collection("campi").add({ numero, disciplina, posizione, attivo: true });
+      await db.collection("campi").add({ numero, disciplina, posizione, ordine, attivo: true });
     }
     cancelEditCampo();
     await loadCampi();

@@ -437,10 +437,29 @@ function ascoltaPrenotazioniGiorno() {
 function renderPosizioneTennis() {
   return `
     <div class="gruppo-pills" id="posizione-tennis-pills" style="margin-bottom:10px;">
-      <button type="button" data-pos="interno" aria-pressed="${state.tennisPosizione === "interno"}">Interno</button>
-      <button type="button" data-pos="esterno" aria-pressed="${state.tennisPosizione === "esterno"}">Esterno</button>
+      <button type="button" data-pos="interno" aria-pressed="${state.tennisPosizione === "interno"}">Campi INDOOR</button>
+      <button type="button" data-pos="esterno" aria-pressed="${state.tennisPosizione === "esterno"}">Campi OUTDOOR</button>
     </div>
   `;
+}
+
+// Bottone in fondo all'elenco orari per saltare all'altra posizione
+// (indoor↔outdoor) senza dover risalire alle pillole in cima — utile
+// quando la griglia è lunga (molti orari) o quando qui non c'è niente di
+// libero e l'altra posizione può avercelo.
+function etichettaPosizione(posizione) {
+  return posizione === "esterno" ? "Campi OUTDOOR" : "Campi INDOOR";
+}
+function renderSaltaPosizione(gruppo) {
+  if (gruppo.disciplina !== "tennis") return "";
+  const altra = gruppo.posizione === "interno" ? "esterno" : "interno";
+  return `<button type="button" class="btn btn-ghost salta-posizione-btn" data-pos="${altra}" style="margin-top:14px;width:auto;">${etichettaPosizione(altra)} →</button>`;
+}
+function wireSaltaPosizione(el) {
+  el.querySelector(".salta-posizione-btn")?.addEventListener("click", (e) => {
+    state.tennisPosizione = e.currentTarget.dataset.pos;
+    selezionaGruppo(`tennis__${state.tennisPosizione}`);
+  });
 }
 
 function wirePosizioneTennis() {
@@ -460,12 +479,26 @@ function selezionaBottoneGriglia(btn) {
   if (btn) btn.classList.add("selected");
 }
 
-// Un campo "4 Leda Polli" (dedica dopo il numero, vedi tabellone-generale.js
-// per lo stesso pattern) va comunque ordinato per 4 — i non numerici
-// restano in fondo, non spariscono.
+// La cifra non è sempre all'inizio della stringa: i campi interno reali
+// sono salvati come "Campo 1"/"Campo 2"/"Campo 3", quelli esterno come
+// "4 Leda Polli"/"5 Antonietta S." (dedica dopo il numero, vedi anche
+// tabellone-generale.js) — cercata ovunque nella stringa, non solo
+// all'inizio, altrimenti "Campo 1" non matcherebbe affatto e finirebbe
+// in fondo come non numerico invece che ordinato al posto 1.
 function numeroOrdinabile(numero) {
-  const match = String(numero || "").match(/^\d+/);
+  const match = String(numero || "").match(/\d+/);
   return match ? parseInt(match[0], 10) : Infinity;
+}
+
+// "ordine" (assegnato in Configurazione → Campi) ha la precedenza quando
+// presente — un numero esplicito non si rompe mai. I campi creati prima
+// che questo campo esistesse non ce l'hanno ancora: per loro si torna al
+// parsing di "numero" sopra.
+function confrontaOrdineCampi(a, b) {
+  if (a.ordine != null && b.ordine != null) return a.ordine - b.ordine;
+  if (a.ordine != null) return -1;
+  if (b.ordine != null) return 1;
+  return numeroOrdinabile(a.numero) - numeroOrdinabile(b.numero);
 }
 
 function formatoPrezzo(numero) {
@@ -502,10 +535,11 @@ function renderGrigliaCampi(el, gruppo) {
   const ora = oraLocaleZurigo();
   const oggi = state.data === ora.dataIso;
   const fissi = slotFissiDisciplina(gruppo.disciplina, state.data).filter(s => !(oggi && orarioToMin(s.inizio) <= ora.minuti));
-  const campi = [...gruppo.campi].sort((a, b) => numeroOrdinabile(a.numero) - numeroOrdinabile(b.numero));
+  const campi = [...gruppo.campi].sort(confrontaOrdineCampi);
 
   if (fissi.length === 0 || campi.length === 0) {
-    el.innerHTML = `<div class="empty-state"><div class="display">Nessun orario libero</div><p>Prova un altro giorno.</p></div>`;
+    el.innerHTML = `<div class="empty-state"><div class="display">Nessun orario libero</div><p>Prova un altro giorno.</p></div>${renderSaltaPosizione(gruppo)}`;
+    wireSaltaPosizione(el);
     return;
   }
 
@@ -514,7 +548,8 @@ function renderGrigliaCampi(el, gruppo) {
     return fissi.map(slot => occupati.some(b => sovrapposto(slot.inizio, slot.fine, b.startTime, b.endTime)));
   });
   if (occupatoMatrix.every(riga => riga.every(Boolean))) {
-    el.innerHTML = `<div class="empty-state"><div class="display">Nessun orario libero</div><p>Prova un altro giorno.</p></div>`;
+    el.innerHTML = `<div class="empty-state"><div class="display">Nessun orario libero</div><p>Prova un altro giorno.</p></div>${renderSaltaPosizione(gruppo)}`;
+    wireSaltaPosizione(el);
     return;
   }
 
@@ -530,7 +565,7 @@ function renderGrigliaCampi(el, gruppo) {
     });
     html += `</tr>`;
   });
-  html += `</table></div><div id="grid-panel-area"></div>`;
+  html += `</table></div><div id="grid-panel-area"></div>${renderSaltaPosizione(gruppo)}`;
   el.innerHTML = html;
 
   el.querySelectorAll(".apri-prenota-btn").forEach(btn => {
@@ -541,6 +576,7 @@ function renderGrigliaCampi(el, gruppo) {
       apriPannelloPrenota({ campo, inizio: slot.inizio, fine: slot.fine });
     });
   });
+  wireSaltaPosizione(el);
 }
 
 // Padel: 2 colonne per durata (90'/60'), non per campo — c'è un solo
