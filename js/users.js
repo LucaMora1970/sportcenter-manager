@@ -16,6 +16,7 @@ const KNOWN_PERMISSIONS = [
   { id: "users:gestisci", label: "Gestire utenti" },
   { id: "ruoli:gestisci", label: "Gestire ruoli e permessi" },
   { id: "config:gestisci", label: "Gestire configurazione (tipi attività, tariffe, campi)" },
+  { id: "soci:gestisci", label: "Gestire soci (anagrafica, iscrizioni, attivazioni)" },
   { id: "vendite:gestisci", label: "Gestire vendite (Cassa: registrare e vedere il riepilogo)" },
   { id: "corsi:gestisci", label: "Corsi: creare e modificare" },
   { id: "corsi:approva", label: "Corsi: approvare" },

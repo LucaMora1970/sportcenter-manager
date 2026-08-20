@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Soci — Sport-OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script>if(localStorage.getItem("sportos-tema")==="light")document.documentElement.setAttribute("data-theme","light");</script>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d1f30">
+<style>
+  .soci-search-row { display: flex; gap: 10px; align-items: flex-end; margin-bottom: 6px; }
+  .soci-search-row .field { flex: 1 1 auto; margin-bottom: 0; }
+  .soci-badge { display: inline-block; font-size: 0.68rem; padding: 2px 8px; border-radius: 999px;
+    background: var(--court-blue-800); color: var(--chalk-grey); margin-left: 6px; }
+  .soci-badge.attivato { background: color-mix(in srgb, var(--ball) 16%, transparent); color: var(--ball); }
+  :root[data-theme="light"] .soci-badge.attivato { color: var(--ball-dim); }
+  .soci-badge.inattivo { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <h1>Soci</h1>
+    <div class="user-chip" id="user-chip">—</div>
+    <div class="topbar-actions">
+      <button type="button" class="topbar-link" id="theme-toggle-btn">Tema chiaro</button>
+      <a href="password.html" class="topbar-link">Password</a>
+    </div>
+  </div>
+
+  <main>
+
+    <div id="access-denied" class="empty-state hidden">
+      <div class="display">Accesso non consentito</div>
+      <p>Questa sezione è riservata a chi ha il permesso "Gestire soci".</p>
+    </div>
+
+    <div id="admin-content">
+
+      <div class="section-title"><h2>Registra un socio</h2></div>
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 12px;">Apre il modulo di iscrizione pubblico in una nuova scheda, compilabile per conto di chi non può farlo da sé — l'iscrizione risulterà inserita da te.</p>
+      <button type="button" class="btn btn-ghost" id="registra-socio-btn" style="width:auto;margin-bottom:22px;">+ Registra un socio</button>
+
+      <hr class="court-divider">
+
+      <div class="section-title"><h2>Cerca socio</h2></div>
+      <div class="soci-search-row">
+        <div class="field">
+          <label for="soci-search-input">Nome, cognome, email o tessera</label>
+          <input type="text" id="soci-search-input" placeholder="es. Rossi">
+        </div>
+      </div>
+      <div class="checkbox-row" style="margin-bottom:14px;">
+        <input type="checkbox" id="soci-mostra-inattivi">
+        <label for="soci-mostra-inattivi">Mostra anche i soci disattivati</label>
+      </div>
+      <div class="error-msg" id="soci-search-error"></div>
+      <div id="soci-search-list">
+        <div class="empty-state"><div class="display">Cerca un nome per iniziare</div></div>
+      </div>
+
+      <hr class="court-divider">
+
+      <div class="section-title" id="socio-form-title"><h2>Modifica socio</h2></div>
+      <div id="socio-form-wrap" class="hidden">
+        <form id="socio-form">
+          <div class="row2">
+            <div class="field">
+              <label for="socio-nome">Nome</label>
+              <input type="text" id="socio-nome" required>
+            </div>
+            <div class="field">
+              <label for="socio-cognome">Cognome</label>
+              <input type="text" id="socio-cognome" required>
+            </div>
+          </div>
+          <div class="field">
+            <label for="socio-email">Email</label>
+            <input type="email" id="socio-email" required>
+          </div>
+          <div class="row2">
+            <div class="field">
+              <label for="socio-telefono">Telefono</label>
+              <input type="tel" id="socio-telefono" placeholder="+41 79 123 45 67">
+            </div>
+            <div class="field">
+              <label for="socio-datanascita">Data di nascita</label>
+              <input type="date" id="socio-datanascita" required>
+            </div>
+          </div>
+          <div class="field">
+            <label for="socio-via">Via</label>
+            <input type="text" id="socio-via">
+          </div>
+          <div class="row2">
+            <div class="field" style="flex:0 0 110px;">
+              <label for="socio-cap">CAP</label>
+              <input type="text" id="socio-cap">
+            </div>
+            <div class="field">
+              <label for="socio-localita">Località</label>
+              <input type="text" id="socio-localita">
+            </div>
+          </div>
+          <div class="row2">
+            <div class="field">
+              <label for="socio-categoria">Categoria</label>
+              <select id="socio-categoria" required></select>
+            </div>
+            <div class="field">
+              <label for="socio-tessera">Tessera</label>
+              <input type="text" id="socio-tessera">
+            </div>
+          </div>
+          <div class="field">
+            <label for="socio-scadenza">Scadenza tesseramento</label>
+            <input type="date" id="socio-scadenza">
+          </div>
+          <div class="checkbox-row" style="margin-bottom:16px;">
+            <input type="checkbox" id="socio-attivo">
+            <label for="socio-attivo">Socio attivo</label>
+          </div>
+          <div class="error-msg" id="socio-form-error"></div>
+          <button type="submit" class="btn btn-primary" id="socio-save-btn">Salva modifiche</button>
+          <button type="button" class="btn btn-ghost" id="socio-cancel-edit-btn" style="margin-top:10px;">Annulla</button>
+          <button type="button" class="btn btn-danger" id="socio-delete-btn" style="margin-top:10px;">Elimina socio</button>
+        </form>
+      </div>
+
+      <div id="richieste-iscrizione-list"></div>
+
+    </div>
+
+  </main>
+
+  <nav class="bottom-nav">
+    <a href="diario.html">Diario</a>
+    <a href="resoconto.html">Resoconto</a>
+    <a href="cassa.html">Cassa</a>
+    <a href="corsi.html">Corsi</a>
+    <a href="prenotazioni.html">Prenotazioni</a>
+    <a href="#" title="In arrivo">Camp</a>
+    <a href="soci.html" class="active">Soci</a>
+    <a href="utenti.html">Team</a>
+    <a href="configurazione.html">Config</a>
+    <a href="#" id="logout-link">Esci</a>
+  </nav>
+
+  <script>
+    document.querySelector(".bottom-nav a.active")?.scrollIntoView({ inline: "center", block: "nearest" });
+  </script>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/soci.js"></script>
+</body>
+</html>

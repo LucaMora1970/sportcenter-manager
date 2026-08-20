@@ -345,6 +345,12 @@ function renderGruppoPills() {
 }
 
 function selezionaDisciplina(disciplina) {
+  // Il bottone "Tennis" riporta sempre a Campi INDOOR, non a qualunque
+  // posizione fosse rimasta selezionata l'ultima volta (es. si era
+  // passati a Squash con Campi OUTDOOR ancora attivo: ritornando su
+  // Tennis ci si aspetta di ripartire da capo, non di ritrovarsi su
+  // Esterno senza averlo scelto).
+  if (disciplina === "tennis") state.tennisPosizione = "interno";
   const key = disciplina === "tennis"
     ? `tennis__${state.tennisPosizione}`
     : (GRUPPI.find(g => g.disciplina === disciplina) || {}).key;
@@ -661,6 +667,15 @@ function render() {
   } else {
     renderGrigliaCampi(el, gruppo);
   }
+
+  // L'intestazione della griglia (numeri campo / "90 minuti"-"60 minuti")
+  // resta fissa in cima mentre si scorrono gli orari (position:sticky in
+  // CSS), ma sotto la barra giorni+pillole — anche lei fissa — che però
+  // cambia altezza da una vista all'altra (es. il tennis ha in più il
+  // toggle Interno/Esterno). Misurata qui ad ogni render e passata come
+  // variabile CSS invece di un valore fisso, altrimenti l'intestazione
+  // finirebbe nascosta sotto la barra nelle viste più alte.
+  document.documentElement.style.setProperty("--griglia-sticky-top", document.getElementById("stickySelectors").offsetHeight + "px");
 }
 
 // ---------- Pannello di conferma prenotazione ----------

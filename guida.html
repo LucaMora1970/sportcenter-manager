@@ -360,15 +360,15 @@
       </div>
 
       <div class="voce">
-        <span class="dove">Configurazione → sezione import soci</span>
-        <div class="cosa">Import in blocco</div>
-        <div class="come">Una riga per socio: <code>Nome;Cognome;Email;Categoria;Telefono;Tessera;DataNascita</code> (formato AAAA-MM-GG). Email, nome, cognome e data di nascita sono obbligatori (righe senza vengono scartate e contate). Categoria deve corrispondere a un id già configurato sopra. Un'email già esistente aggiorna il socio invece di duplicarlo — è anche l'unico modo per modificare un socio già importato (non c'è ancora una scheda di modifica singola).</div>
+        <span class="dove">Pagina <strong>Soci</strong> (permesso "Gestire soci") → "Cerca socio"</span>
+        <div class="cosa">Cercare/modificare un socio esistente</div>
+        <div class="come">Cerca per nome, cognome, email o tessera (anche tra i disattivati, con l'apposita spunta). Dalla scheda si modificano tutti i dati, si disattiva/riattiva o si elimina definitivamente il socio. Non esiste più un import in blocco: ogni socio nasce da una registrazione (self-service o compilata dallo staff, vedi sotto).</div>
       </div>
 
       <div class="voce">
-        <span class="dove"><code>iscrizione-socio.html</code> — pagina pubblica, nessun login (link in Configurazione → Link pubblici)</span>
-        <div class="cosa">Iscrizione self-service di un nuovo socio</div>
-        <div class="come">Chi si iscrive inserisce i propri dati — la categoria si calcola da sola dall'età (o si spunta "sono studente"/"richiedo Famiglia", da verificare). <strong>Categoria chiara</strong>: si passa subito al pagamento online della quota, come per una prenotazione. <strong>Famiglia/Studenti</strong>: si crea solo una richiesta in attesa (Configurazione → Categorie socio → "Richieste di iscrizione da verificare") — il pagamento parte solo dopo che lo staff ha confermato la categoria. In entrambi i casi il socio nasce solo alla conferma reale del pagamento (webhook), mai prima.</div>
+        <span class="dove"><code>iscrizione-socio.html</code> — pagina pubblica, nessun login (link in Configurazione → Link pubblici), oppure bottone "Registra un socio" nella pagina Soci</span>
+        <div class="cosa">Iscrizione di un nuovo socio (self-service o compilata dallo staff)</div>
+        <div class="come">Chi si iscrive inserisce i propri dati (incluso indirizzo e accettazione dell'informativa privacy) — la categoria si calcola da sola dall'età (o si spunta "sono studente"/"richiedo Famiglia", da verificare). <strong>Categoria chiara</strong>: si passa subito al pagamento online della quota, come per una prenotazione. <strong>Famiglia/Studenti</strong>: si crea solo una richiesta in attesa (pagina Soci → "Richieste di iscrizione") — il pagamento parte solo dopo che lo staff ha confermato la categoria. In entrambi i casi il socio nasce solo alla conferma reale del pagamento (webhook), a meno che lo staff non confermi un pagamento avvenuto fuori dall'app (vedi sotto). Se lo staff è loggato e apre il modulo dal bottone "Registra un socio", l'iscrizione risulta inserita da lui/lei — utile per chi non può compilarlo da solo.</div>
       </div>
 
       <div class="voce">
@@ -378,15 +378,15 @@
       </div>
 
       <div class="voce">
-        <span class="dove">Configurazione → Categorie socio → "Richieste di iscrizione da verificare"</span>
-        <div class="cosa">Approvare una richiesta (solo Famiglia/Studenti)</div>
-        <div class="come">Lo staff conferma (o corregge) la categoria proposta e l'importo suggerito (calcolato in automatico, modificabile), poi "Approva e invia pagamento": parte un'email al richiedente col link per pagare. Il socio nasce solo quando il pagamento risulta confermato, non a questo click — stesso link/email di attivazione di un socio importato da CSV, inviata in automatico appena il pagamento va a buon fine.</div>
+        <span class="dove">Pagina Soci → "Richieste di iscrizione"</span>
+        <div class="cosa">Approvare una richiesta, o confermare un pagamento avvenuto fuori dall'app</div>
+        <div class="come">Per Famiglia/Studenti lo staff conferma (o corregge) la categoria proposta e l'importo suggerito (calcolato in automatico, modificabile), poi "Approva e invia pagamento": parte un'email al richiedente col link per pagare — il socio nasce solo quando il pagamento risulta confermato, non a questo click. In alternativa, su qualunque richiesta in attesa (categoria già chiara o appena confermata), "Conferma pagamento esterno" crea il socio subito, bypassando PostFinance — da usare quando il pagamento è già avvenuto in contanti o con bonifico.</div>
       </div>
 
       <div class="voce">
         <span class="dove">Nessuna configurazione — è già pronto</span>
         <div class="cosa">Attivazione del socio (collegare il dispositivo)</div>
-        <div class="come">Self-service: il socio va su <code>attiva-socio.html</code> e inserisce l'email importata sopra, riceve un link di attivazione via email. In alternativa, dal pannello Prenotazioni lo staff cerca il socio e genera un QR da fargli scansionare di persona.</div>
+        <div class="come">Self-service: il socio va su <code>attiva-socio.html</code> e inserisce la propria email, riceve un link di attivazione via email (lo stesso arriva già in automatico appena l'iscrizione risulta confermata). In alternativa, dal pannello Prenotazioni lo staff cerca il socio e genera un QR da fargli scansionare di persona.</div>
       </div>
 
     </div>
@@ -529,6 +529,7 @@
     <a href="corsi.html">Corsi</a>
     <a href="prenotazioni.html">Prenotazioni</a>
     <a href="#" title="In arrivo">Camp</a>
+    <a href="soci.html">Soci</a>
     <a href="utenti.html">Team</a>
     <a href="configurazione.html">Config</a>
     <a href="#" id="logout-link">Esci</a>

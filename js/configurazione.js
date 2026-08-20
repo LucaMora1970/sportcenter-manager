@@ -1136,94 +1136,6 @@ function quotaProporzionaleClient(costoPieno, percentualeFissa) {
   return Math.round(costoPieno * (fissa + variabile) * 100) / 100;
 }
 
-// Richieste di iscrizione socio in attesa di verifica (modulo pubblico
-// iscrizione-socio.html, casi Famiglia/Studenti — quelle a categoria
-// chiara vanno già dritte al pagamento online da sole, non passano da
-// qui) — stesso pattern di "Richieste di ricarica su fattura" (elenco
-// vuoto = blocco nascosto). Approvare NON crea il socio: conferma la
-// categoria e invia il link di pagamento via email, il socio nasce solo
-// alla conferma del pagamento (webhook).
-async function loadRichiesteIscrizione() {
-  const listEl = document.getElementById("richieste-iscrizione-list");
-  if (!listEl) return;
-  try {
-    const snap = await db.collection("richiesteIscrizioneSocio").where("stato", "==", "IN_ATTESA_APPROVAZIONE").get();
-    const richieste = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-      .sort((a, b) => (a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : 0) - (b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : 0));
-    if (richieste.length === 0) {
-      listEl.innerHTML = "";
-      return;
-    }
-    const opzioniCategorie = categorieSocioCache.map(c => `<option value="${c.id}">${escapeHtml(c.nome)}</option>`).join("");
-    listEl.innerHTML = `<div class="section-title" style="margin-top:18px;"><h3 style="font-size:0.9rem;">Richieste di iscrizione da verificare</h3></div>`
-      + richieste.map(r => {
-        const data = r.createdAt && typeof r.createdAt.toDate === "function" ? r.createdAt.toDate().toLocaleDateString("it-CH") : "—";
-        const categoriaSuggerita = categorieSocioCache.find(c => c.id === r.categoriaRichiesta);
-        const importoSuggerito = categoriaSuggerita && categoriaSuggerita.costoForfait != null
-          ? quotaProporzionaleClient(categoriaSuggerita.costoForfait, percentualeFissaQuotaSocioCache) : "";
-        return `
-          <div class="entry-card" data-id="${r.id}" style="flex-direction:column;align-items:stretch;">
-            <div class="entry-main">
-              <div class="entry-tipo">${escapeHtml(r.nome)} ${escapeHtml(r.cognome)} · ${r.eta} anni</div>
-              <div class="entry-meta">${escapeHtml(r.email)}${r.telefono ? " · " + escapeHtml(r.telefono) : ""} — richiesta il ${data}</div>
-              <div class="entry-meta" style="color:var(--danger);">Categoria richiesta da verificare: ${escapeHtml(categoriaSuggerita ? categoriaSuggerita.nome : r.categoriaRichiesta)}</div>
-            </div>
-            <div class="row2" style="margin-top:10px;">
-              <div class="field" style="margin-bottom:0;">
-                <label>Categoria da confermare</label>
-                <select class="ri-categoria">${opzioniCategorie}</select>
-              </div>
-              <div class="field" style="margin-bottom:0;flex:0 0 140px;">
-                <label>Importo da richiedere (CHF)</label>
-                <input type="number" class="ri-importo" min="0" step="0.5" value="${importoSuggerito}">
-              </div>
-            </div>
-            <button type="button" class="btn btn-primary approva-iscrizione-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;margin-top:10px;align-self:flex-end;" data-id="${r.id}">Approva e invia pagamento</button>
-          </div>
-        `;
-      }).join("");
-
-    listEl.querySelectorAll(".entry-card").forEach(card => {
-      const richiesta = richieste.find(r => r.id === card.dataset.id);
-      if (!richiesta) return;
-      const sel = card.querySelector(".ri-categoria");
-      sel.value = richiesta.categoriaRichiesta;
-      // Ricalcola l'importo suggerito se lo staff corregge la categoria
-      // (es. da Studenti ad Attivi), senza toccarlo se lo ha già modificato a mano.
-      sel.addEventListener("change", () => {
-        const cat = categorieSocioCache.find(c => c.id === sel.value);
-        if (cat && cat.costoForfait != null) {
-          card.querySelector(".ri-importo").value = quotaProporzionaleClient(cat.costoForfait, percentualeFissaQuotaSocioCache);
-        }
-      });
-    });
-    listEl.querySelectorAll(".approva-iscrizione-btn").forEach(btn => btn.addEventListener("click", onApprovaIscrizione));
-  } catch (err) {
-    console.error("loadRichiesteIscrizione:", err.message);
-  }
-}
-
-async function onApprovaIscrizione(e) {
-  const btn = e.currentTarget;
-  const card = btn.closest(".entry-card");
-  const requestId = btn.dataset.id;
-  const categoria = card.querySelector(".ri-categoria").value;
-  const importoRaw = card.querySelector(".ri-importo").value;
-  const importo = importoRaw !== "" ? parseFloat(importoRaw) : 0;
-  if (!confirm("Confermare questa categoria e inviare il link di pagamento al richiedente? Il socio nascerà solo dopo che avrà pagato.")) return;
-  btn.disabled = true;
-  btn.textContent = "Invio in corso…";
-  try {
-    const fn = cloudFunctions().httpsCallable("approvaIscrizioneSocio");
-    await fn({ requestId, categoria, importo });
-    await loadRichiesteIscrizione();
-  } catch (err) {
-    alert("Errore: " + err.message);
-    btn.disabled = false;
-    btn.textContent = "Approva e invia pagamento";
-  }
-}
-
 async function onCreateCategoriaSocio(e) {
   e.preventDefault();
   const btn = document.getElementById("create-categoriasocio-btn");
@@ -1367,7 +1279,7 @@ async function loadAziende() {
 // mostrato una sola volta nella descrizione della sezione, non ripetuto
 // su ogni scheda.
 function initLinkPrenotazioneAziende() {
-  const link = `${basePageUrl()}prenota-campo.html`;
+  const link = `${basePageUrl()}prenota-campo-v2.html`;
   document.getElementById("aziende-link-prenotazione").textContent = link;
   document.getElementById("aziende-copia-link-btn").addEventListener("click", e => copyToClipboard(link, e.currentTarget));
 }
@@ -1511,35 +1423,6 @@ const DISCIPLINE_CHIUDIBILI = [
   { id: "squash", nome: "Squash" },
   { id: "padel", nome: "Padel" }
 ];
-
-async function onImportSoci(e) {
-  e.preventDefault();
-  const btn = document.getElementById("import-soci-btn");
-  const errorEl = document.getElementById("import-soci-error");
-  const successEl = document.getElementById("import-soci-success");
-  errorEl.textContent = "";
-  successEl.textContent = "";
-  btn.disabled = true;
-
-  const testo = document.getElementById("import-soci-testo").value.trim();
-  const righe = testo.split("\n").map(r => r.trim()).filter(Boolean).map(riga => {
-    const [nome, cognome, email, categoria, telefono, tessera, dataNascita] = riga.split(";").map(v => (v || "").trim());
-    return { nome, cognome, email, categoria, telefono: telefono || null, tessera: tessera || null, dataNascita: dataNascita || null };
-  });
-
-  try {
-    if (righe.length === 0) throw new Error("Incolla almeno una riga.");
-    const fn = cloudFunctions().httpsCallable("importaSoci");
-    const result = await fn({ righe });
-    successEl.textContent = `Importati ${result.data.importate} soci`
-      + (result.data.scartate ? ` (${result.data.scartate} righe scartate — controlla il formato).` : ".");
-    document.getElementById("import-soci-testo").value = "";
-  } catch (err) {
-    showError(errorEl, "Errore: " + err.message);
-  } finally {
-    btn.disabled = false;
-  }
-}
 
 // ---------- Tariffe campi ----------
 
@@ -2080,7 +1963,6 @@ requireAuth(async (profile) => {
   initLinkCopyBox("link-prenota-padel", "copia-link-prenota-padel-btn", "prenota-padel.html");
   initLinkCopyBox("link-tabellone", "copia-link-tabellone-btn", "prenotazioni.html");
   initLinkCopyBox("link-iscrizione-corsi", "copia-link-iscrizione-corsi-btn", "iscrizione-corso.html");
-  initLinkCopyBox("link-prenota-campo", "copia-link-prenota-campo-btn", "prenota-campo.html");
   initLinkCopyBox("link-prenota-campo-v2", "copia-link-prenota-campo-v2-btn", "prenota-campo-v2.html");
   initLinkCopyBox("link-attiva-socio", "copia-link-attiva-socio-btn", "attiva-socio.html");
   initLinkCopyBox("link-iscrizione-socio", "copia-link-iscrizione-socio-btn", "iscrizione-socio.html");
@@ -2126,7 +2008,6 @@ requireAuth(async (profile) => {
   document.getElementById("new-articolo-form").addEventListener("submit", onCreateArticolo);
   document.getElementById("cancel-edit-articolo-btn").addEventListener("click", cancelEditArticolo);
 
-  document.getElementById("import-soci-form").addEventListener("submit", onImportSoci);
   document.getElementById("new-categoriasocio-form").addEventListener("submit", onCreateCategoriaSocio);
   document.getElementById("cancel-edit-categoriasocio-btn").addEventListener("click", cancelEditCategoriaSocio);
   document.getElementById("new-azienda-form").addEventListener("submit", onCreateAzienda);
@@ -2159,7 +2040,6 @@ requireAuth(async (profile) => {
   await loadQuotaSocioImpostazioni();
   document.getElementById("quotasocio-impostazioni-form").addEventListener("submit", onSaveQuotaSocioImpostazioni);
   await loadCategorieSocio();
-  await loadRichiesteIscrizione();
   await popolaSelectReferente();
   initLinkPrenotazioneAziende();
   await loadAziende();

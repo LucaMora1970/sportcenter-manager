@@ -165,17 +165,6 @@
         <p style="color:var(--chalk-grey);font-size:0.78rem;margin:0 0 6px;">Ingresso unico alle tre discipline, nessun login richiesto — questo è il link da condividere normalmente con soci ed esterni.</p>
         <div class="row2" style="align-items:flex-end;">
           <div class="field" style="margin-bottom:0;">
-            <input type="text" id="link-prenota-campo" readonly>
-          </div>
-          <button type="button" class="btn btn-ghost" id="copia-link-prenota-campo-btn" style="width:auto;padding:10px 16px;">Copia</button>
-        </div>
-      </div>
-
-      <div class="field">
-        <label>Prenotazione campo — variante 2 (in prova)</label>
-        <p style="color:var(--chalk-grey);font-size:0.78rem;margin:0 0 6px;">Stessa prenotazione, griglia campi/durata × orari invece dell'elenco — non condiviso pubblicamente, solo per testarlo con dati veri prima di eventualmente sostituire quello sopra.</p>
-        <div class="row2" style="align-items:flex-end;">
-          <div class="field" style="margin-bottom:0;">
             <input type="text" id="link-prenota-campo-v2" readonly>
           </div>
           <button type="button" class="btn btn-ghost" id="copia-link-prenota-campo-v2-btn" style="width:auto;padding:10px 16px;">Copia</button>
@@ -195,7 +184,7 @@
 
       <div class="field">
         <label>Iscrizione socio</label>
-        <p style="color:var(--chalk-grey);font-size:0.78rem;margin:0 0 6px;">Pagina pubblica per chi vuole diventare socio — crea solo una richiesta in attesa, si approva qui sotto in "Categorie socio".</p>
+        <p style="color:var(--chalk-grey);font-size:0.78rem;margin:0 0 6px;">Pagina pubblica per chi vuole diventare socio — crea solo una richiesta in attesa, si approva o si conferma nella pagina <a href="soci.html" style="color:var(--ball);">Soci</a>.</p>
         <div class="row2" style="align-items:flex-end;">
           <div class="field" style="margin-bottom:0;">
             <input type="text" id="link-iscrizione-socio" readonly>
@@ -519,22 +508,6 @@
       </details>
 
       <details class="config-section">
-      <summary><h2>Soci (prenotazione campi)</h2></summary>
-      <div class="config-section-body">
-      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Anagrafica per riconoscere chi prenota tennis/squash e applicare la tariffa giusta — mai visibile lato pubblico. Incolla una riga per persona: <code>nome;cognome;email;categoria;telefono;tessera;dataNascita</code> (categoria: uno degli ID definiti in "Categorie socio" qui sotto, oppure <code>azienda</code> — dataNascita obbligatoria, formato AAAA-MM-GG: righe senza vengono scartate).</p>
-      <form id="import-soci-form">
-        <div class="field">
-          <label for="import-soci-testo">Righe da importare</label>
-          <textarea id="import-soci-testo" rows="6" placeholder="Mario;Rossi;mario.rossi@email.ch;socio;0791234567;T-102;1980-05-14"></textarea>
-        </div>
-        <div class="error-msg" id="import-soci-error"></div>
-        <div class="success-msg" id="import-soci-success"></div>
-        <button type="submit" class="btn btn-ghost" id="import-soci-btn">Importa</button>
-      </form>
-      </div>
-      </details>
-
-      <details class="config-section">
       <summary><h2>Categorie socio</h2></summary>
       <div class="config-section-body">
       <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Sotto-categorie di tesseramento (es. Attivi, Famiglia, Studenti, Età AVS, Sostenitori, fasce Junior) con la relativa quota forfait annuale — usate ovunque nell'app al posto di un generico "Socio": tariffe campi, forfait stagionale, sconto padel, priorità di prenotazione. Personalizzabili liberamente.</p>
@@ -554,7 +527,7 @@
 
       <hr class="court-divider">
 
-      <div id="richieste-iscrizione-list"></div>
+      <p style="color:var(--chalk-grey);font-size:0.78rem;margin:-6px 0 14px;">Le richieste di iscrizione da verificare o confermare si gestiscono ora nella pagina <a href="soci.html" style="color:var(--ball);">Soci</a>.</p>
       <form id="new-categoriasocio-form">
         <div class="row2">
           <div class="field">
@@ -941,6 +914,7 @@
     <a href="corsi.html">Corsi</a>
     <a href="prenotazioni.html">Prenotazioni</a>
     <a href="#" title="In arrivo">Camp</a>
+    <a href="soci.html">Soci</a>
     <a href="utenti.html">Team</a>
     <a href="configurazione.html" class="active">Config</a>
     <a href="#" id="logout-link">Esci</a>

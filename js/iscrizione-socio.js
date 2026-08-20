@@ -12,10 +12,37 @@
 // server-side alla conferma.
 //
 // Richiede firebase-config.js e utils.js già caricati (NON auth.js: qui
-// non c'è login).
+// non c'è login — ma se chi apre la pagina è già loggato nell'app, la
+// sessione viene comunque rilevata per il banner staff sotto).
 // ============================================================
 
 let categorieSocioCache = [];
+let staffProfile = null;
+
+// La pagina resta pubblica (nessun requireAuth/redirect), ma se chi la
+// apre è già loggato nell'app (es. segretaria arrivata dal pulsante
+// "Registra un socio" nella pagina Soci) rileviamo la sessione per
+// mostrare un banner — il tag "inserita da staff" lo decide comunque
+// sempre e solo richiediIscrizioneSocio lato server, verificando
+// request.auth: un flag mandato dal client non farebbe fede. Stesso
+// pattern di js/iscrizione-corso.js.
+auth.onAuthStateChanged(async (user) => {
+  if (!user) { staffProfile = null; syncStaffBanner(); return; }
+  try {
+    const userSnap = await db.collection("users").doc(user.uid).get();
+    staffProfile = userSnap.exists ? { uid: user.uid, nome: userSnap.data().nome || user.email } : null;
+  } catch {
+    staffProfile = null;
+  }
+  syncStaffBanner();
+});
+
+function syncStaffBanner() {
+  const banner = document.getElementById("staff-banner");
+  if (!banner) return;
+  banner.classList.toggle("hidden", !staffProfile);
+  if (staffProfile) banner.textContent = `Stai compilando come membro dello staff (${staffProfile.nome}) — l'iscrizione verrà segnata come inserita da te.`;
+}
 
 function etaAnnoSociale(dataNascitaIso) {
   if (!dataNascitaIso) return null;
@@ -76,6 +103,12 @@ async function onSubmitIscrizione(e) {
   const btn = document.getElementById("iscrizione-save-btn");
   const errorEl = document.getElementById("iscrizione-form-error");
   errorEl.textContent = "";
+
+  if (!document.getElementById("is-privacy").checked) {
+    showError(errorEl, "Devi accettare l'informativa privacy per proseguire.");
+    return;
+  }
+
   btn.disabled = true;
   btn.textContent = "Invio in corso…";
 
@@ -85,6 +118,10 @@ async function onSubmitIscrizione(e) {
     email: document.getElementById("is-email").value.trim(),
     telefono: document.getElementById("is-telefono").value.trim() || null,
     dataNascita: document.getElementById("is-datanascita").value,
+    via: document.getElementById("is-via").value.trim(),
+    cap: document.getElementById("is-cap").value.trim(),
+    localita: document.getElementById("is-localita").value.trim(),
+    consensoPrivacy: true,
     richiedeFamiglia: document.getElementById("is-famiglia").checked,
     richiedeStudente: document.getElementById("is-studente").checked
   };

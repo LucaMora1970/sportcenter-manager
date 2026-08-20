@@ -25,6 +25,13 @@
      12px + .sticky-selectors padding-top 4px) — qui sopra Interno/Esterno
      c'era solo il padding-bottom:4px del day-strip, molto più stretto. */
   #posizione-tennis-pills { margin-top: 12px; }
+  /* Tennis/Padel/Squash sono il primo tocco della pagina — stesso
+     trattamento prominente di "90 minuti" nella griglia (Oswald, più
+     grande) invece del testo piccolo generico di .gruppo-pills, che qui
+     sotto resta invariato per gli altri usi (Interno/Esterno). */
+  #gruppo-pills button {
+    font-family: 'Oswald', sans-serif; font-size: 1rem; font-weight: 600; padding: 10px 18px;
+  }
 
   .socio-box { display: flex; align-items: center; justify-content: space-between; gap: 10px;
     background: var(--court-blue-900); border: 1px solid var(--court-blue-700); border-radius: var(--radius);
@@ -32,19 +39,31 @@
   .socio-box a { color: var(--ball); }
   .profilo-select { margin-bottom: 14px; }
 
-  .v2-badge {
-    background: color-mix(in srgb, var(--ball) 16%, transparent); border: 1px solid var(--ball);
-    color: var(--ball); border-radius: var(--radius); padding: 8px 12px; font-size: 0.76rem;
-    margin-bottom: 14px; line-height: 1.5;
-  }
-  :root[data-theme="light"] .v2-badge { color: var(--ball-dim); }
-  .v2-badge a { color: inherit; text-decoration: underline; }
-
   /* ---------- Griglia campi/durata × orari ---------- */
-  .grid-wrap { overflow-x: auto; margin-bottom: 8px; }
+  /* Niente più overflow-x:auto qui: un contenitore con l'overflow
+     impostato (anche solo in orizzontale) diventa il riferimento per gli
+     elementi sticky al suo interno — l'intestazione sotto si sarebbe
+     agganciata a questo div invece che alla pagina, cioè non si sarebbe
+     mai fermata sotto la barra dei giorni scorrendo. I campi in griglia
+     sono pochi, la larghezza resta comunque gestibile senza scroll
+     orizzontale dedicato. */
+  .grid-wrap { margin-bottom: 8px; }
   table.slot-grid { width: 100%; border-collapse: collapse; font-family: 'Space Mono', monospace; }
   table.slot-grid th {
     padding: 6px 3px 10px;
+  }
+  /* La riga di intestazione (numeri campo, o "90 minuti"/"60 minuti" per
+     il padel) resta fissa mentre si scorrono gli orari sotto — sticky
+     invece di scomparire in cima come il resto della tabella. Ferma
+     appena sotto la barra giorni+pillole (anche lei sticky, sopra):
+     l'offset --griglia-sticky-top è calcolato in JS ad ogni render()
+     (l'altezza di quella barra cambia tra le viste, es. il tennis ha in
+     più il toggle Interno/Esterno) invece di un valore fisso qui, che
+     sarebbe stato giusto solo per una vista. Sfondo pieno, altrimenti le
+     righe sotto si vedrebbero scorrere in trasparenza dietro i numeri. */
+  table.slot-grid tr:first-child th {
+    position: sticky; top: var(--griglia-sticky-top, 0px); z-index: 4;
+    background: var(--court-blue-950);
   }
   /* Stessa lingua visiva dei tab disciplina (.gruppo-pills) e del day-strip
      (.day-btn): pillola con accento --ball, non più testo grigio piatto —
@@ -118,8 +137,6 @@
   </div>
 
   <main>
-
-    <div class="v2-badge">Stai provando la <strong>variante 2</strong> (griglia campi × orari) — <a href="prenota-campo.html">torna alla versione attuale</a>.</div>
 
     <div class="socio-box" id="socio-box">
       <span id="socio-box-testo">Stai prenotando come utente esterno</span>

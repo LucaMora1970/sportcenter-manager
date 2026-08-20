@@ -195,12 +195,13 @@ service cloud.firestore {
 
     // Richieste di iscrizione socio (modulo pubblico iscrizione-socio.html):
     // creazione e approvazione sempre e solo dalle Cloud Function dedicate
-    // (richiediIscrizioneSocio, approvaIscrizioneSocio — Admin SDK, bypassano
+    // (richiediIscrizioneSocio, approvaIscrizioneSocio,
+    // confermaIscrizioneSocioPagamentoEsterno — Admin SDK, bypassano
     // questa regola), mai una scrittura diretta dal client, nemmeno la
     // creazione — evita che chiunque possa forzare una categoria o uno
     // stato "APPROVATA" senza passare dalla verifica dello staff.
     match /richiesteIscrizioneSocio/{id} {
-      allow get, list: if hasPermission("config:gestisci");
+      allow get, list: if hasPermission("soci:gestisci");
       allow write: if false;
     }
 

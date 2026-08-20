@@ -2,7 +2,7 @@
 // abbonamento.js — pagina del socio per vedere il proprio abbonamento
 // fisso (tennis) e cancellare una singola settimana. Nessun login
 // staff: si basa sullo stesso riconoscimento dispositivo già usato da
-// prenota-campo.html (sessione Firebase Auth ottenuta via
+// prenota-campo-v2.html (sessione Firebase Auth ottenuta via
 // attiva-socio.html) — se il dispositivo non è riconosciuto, non c'è
 // nulla da mostrare qui.
 //

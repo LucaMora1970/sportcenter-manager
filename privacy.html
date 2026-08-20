@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Informativa privacy — Tennis Club Mendrisio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script>if(localStorage.getItem("sportos-tema")==="light")document.documentElement.setAttribute("data-theme","light");</script>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d1f30">
+<style>
+  .privacy-testo { color: var(--chalk-grey); font-size: 0.85rem; line-height: 1.7; }
+  .privacy-testo h2 { font-size: 0.95rem; color: var(--line-white); margin: 22px 0 8px; }
+  .privacy-testo h2:first-child { margin-top: 0; }
+  .privacy-testo p { margin: 0 0 12px; }
+  .privacy-testo .placeholder-badge {
+    display: inline-block; background: color-mix(in srgb, var(--ball) 16%, transparent); border: 1px solid var(--ball);
+    color: var(--ball); border-radius: var(--radius); padding: 8px 12px; font-size: 0.76rem; line-height: 1.5; margin-bottom: 18px;
+  }
+  :root[data-theme="light"] .privacy-testo .placeholder-badge { color: var(--ball-dim); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <div>
+      <div class="topbar-kicker" id="centro-kicker">Tennis Club Mendrisio</div>
+      <h1>Informativa privacy</h1>
+    </div>
+    <div></div>
+    <button type="button" class="topbar-link" id="theme-toggle-btn">Tema chiaro</button>
+  </div>
+
+  <main>
+    <div class="privacy-testo">
+      <p class="placeholder-badge">Testo segnaposto — da rivedere e sostituire con l'informativa privacy definitiva del circolo prima della pubblicazione.</p>
+
+      <h2>Titolare del trattamento</h2>
+      <p>Tennis Club Mendrisio è il titolare del trattamento dei dati personali raccolti tramite l'iscrizione come socio/a e l'utilizzo dei servizi del circolo (prenotazione campi, corsi, abbonamenti).</p>
+
+      <h2>Dati raccolti</h2>
+      <p>In fase di iscrizione raccogliamo: nome, cognome, data di nascita, email, telefono, indirizzo (via, CAP, località). Questi dati sono necessari per gestire il tesseramento, calcolare la categoria/tariffa applicabile, e comunicare con te riguardo alla tua iscrizione, alle prenotazioni e ai servizi del circolo.</p>
+
+      <h2>Finalità e base giuridica</h2>
+      <p>I dati sono trattati per l'esecuzione del rapporto associativo (gestione del tesseramento, prenotazioni, fatturazione delle quote) e, con il tuo consenso, per comunicazioni relative alle attività del circolo. Non vengono ceduti a terzi per finalità commerciali.</p>
+
+      <h2>Conservazione</h2>
+      <p>I dati sono conservati per la durata del rapporto associativo e per il periodo successivo richiesto da obblighi legali/contabili.</p>
+
+      <h2>I tuoi diritti</h2>
+      <p>Puoi in ogni momento richiedere accesso, rettifica o cancellazione dei tuoi dati, o revocare il consenso, contattando la segreteria del circolo.</p>
+
+      <h2>Contatti</h2>
+      <p>Per qualsiasi domanda su questa informativa o sul trattamento dei tuoi dati, contatta la segreteria del Tennis Club Mendrisio.</p>
+    </div>
+  </main>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/utils.js"></script>
+<script>
+  (async function () {
+    await loadDatiCentro();
+    document.getElementById("centro-kicker").textContent = DATI_CENTRO.nome;
+  })();
+</script>
+</body>
+</html>

@@ -963,40 +963,7 @@ exports.webhookPostFinance = onRequest(
           } else {
             const reqSnap = await reqRef.get();
             if (reqSnap.exists) {
-              const r = reqSnap.data();
-              const categoria = r.categoriaConfermata || r.categoriaRichiesta;
-              const dati = {
-                nome: r.nome, cognome: r.cognome, email: r.email,
-                telefono: r.telefono || null, categoria, dataNascita: r.dataNascita,
-                aziendaNome: null, tessera: null, scadenza: null, attivo: true
-              };
-              const esistente = await db.collection("soci").where("email", "==", r.email).limit(1).get();
-              let socioId;
-              if (!esistente.empty) {
-                await esistente.docs[0].ref.set(dati, { merge: true });
-                socioId = esistente.docs[0].id;
-              } else {
-                const ref = await db.collection("soci").add({ ...dati, authUid: null, forfaitPagato: null, createdAt: FieldValue.serverTimestamp() });
-                socioId = ref.id;
-              }
-              await reqRef.update({ stato: "COMPLETATA", socioId });
-
-              const attivazioneToken = generaToken();
-              await db.collection("attivazioniSoci").doc(attivazioneToken).set({
-                socioId, metodo: "email", usato: false, createdByUid: null, createdAt: FieldValue.serverTimestamp()
-              });
-              const link = `${APP_URL}attiva-socio.html?t=${attivazioneToken}`;
-              try {
-                await inviaEmail({
-                  to: r.email,
-                  subject: "Benvenuto/a — la tua iscrizione è confermata",
-                  html: `<p>Il pagamento della tua quota è stato ricevuto: sei ufficialmente socio/a.</p>`
-                    + `<p>Tocca il link qui sotto per attivare questo dispositivo e prenotare i campi con la tua tariffa socio:</p>`
-                    + `<p><a href="${link}">${link}</a></p><p>Il link è valido una sola volta.</p>`
-                });
-              } catch (err) {
-                console.error("webhookPostFinance (iscrizione_socio): invio email fallito:", err);
-              }
+              await creaSocioDaRichiesta(reqRef, reqSnap.data(), { pagamentoMetodo: "online" });
             }
           }
         }
@@ -1773,59 +1740,6 @@ async function permessiUtente(uid) {
   return { userData, permessi, isAdmin: permessi.includes("*") };
 }
 
-// Import/aggiornamento massivo dell'anagrafica soci (a inizio stagione,
-// incollando l'export del gestionale attuale) — upsert per email. Righe
-// senza i campi minimi vengono scartate e contate, non bloccano le altre.
-exports.importaSoci = onCall(async (request) => {
-  if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
-  const { permessi, isAdmin } = await permessiUtente(request.auth.uid);
-  if (!isAdmin && !permessi.includes("config:gestisci")) {
-    throw new HttpsError("permission-denied", "Permesso mancante.");
-  }
-
-  const { righe } = request.data || {};
-  if (!Array.isArray(righe) || righe.length === 0) {
-    throw new HttpsError("invalid-argument", "Nessuna riga da importare.");
-  }
-
-  // Le categorie sono configurabili (collection "categorieSocio", vedi
-  // Configurazione) invece di un elenco fisso — "azienda" resta l'unico
-  // valore speciale non di tesseramento accettato qui ("esterno"/"maestro"
-  // non hanno senso per un socio importato).
-  const categorieSnap = await db.collection("categorieSocio").where("attivo", "==", true).get();
-  const CATEGORIE_VALIDE = [...categorieSnap.docs.map(d => d.id), "azienda"];
-  let importate = 0;
-  let scartate = 0;
-  for (const riga of righe) {
-    const email = (riga.email || "").trim().toLowerCase();
-    if (!email || !riga.nome || !riga.cognome || !riga.dataNascita || !CATEGORIE_VALIDE.includes(riga.categoria)) {
-      scartate++;
-      continue;
-    }
-    const dati = {
-      nome: riga.nome, cognome: riga.cognome, email,
-      telefono: riga.telefono || null,
-      categoria: riga.categoria,
-      aziendaNome: riga.aziendaNome || null,
-      tessera: riga.tessera || null,
-      // Stringa "AAAA-MM-GG" come in "iscrizioni" (vedi etaDa() in
-      // corsi.js/iscrizione-corso.js), non un Timestamp — stesso formato
-      // già usato per confrontare età, niente conversioni doppie.
-      dataNascita: riga.dataNascita || null,
-      scadenza: riga.scadenza ? new Date(riga.scadenza) : null,
-      attivo: true
-    };
-    const esistente = await db.collection("soci").where("email", "==", email).limit(1).get();
-    if (!esistente.empty) {
-      await esistente.docs[0].ref.set(dati, { merge: true });
-    } else {
-      await db.collection("soci").add({ ...dati, authUid: null, forfaitPagato: null, createdAt: FieldValue.serverTimestamp() });
-    }
-    importate++;
-  }
-  return { importate, scartate };
-});
-
 // ---------- Iscrizione socio (self-service, pubblico) ----------
 //
 // Età per anno solare (anno corrente - anno di nascita), non il
@@ -1902,6 +1816,54 @@ async function avviaPagamentoIscrizioneSocio({ requestId, nomeCompleto, categori
   return { token, paymentPageUrl };
 }
 
+// Crea/aggiorna il documento "soci" a partire da una richiesta ormai
+// risolta — riusata sia dal webhook PostFinance (pagamento online
+// confermato) sia da confermaIscrizioneSocioPagamentoEsterno (staff che
+// segna un pagamento avvenuto fuori dall'app, contanti/bonifico): stessa
+// identica logica di upsert-per-email, token di attivazione ed email di
+// benvenuto, non duplicata in due punti che rischierebbero di divergere.
+async function creaSocioDaRichiesta(reqRef, r, { pagamentoMetodo }) {
+  const categoria = r.categoriaConfermata || r.categoriaRichiesta;
+  const consenso = r.consensoPrivacy === true;
+  const dati = {
+    nome: r.nome, cognome: r.cognome, email: r.email,
+    telefono: r.telefono || null, categoria, dataNascita: r.dataNascita,
+    via: r.via || null, cap: r.cap || null, localita: r.localita || null,
+    consensoPrivacy: consenso, consensoPrivacyAt: consenso ? FieldValue.serverTimestamp() : null,
+    aziendaNome: null, tessera: null, scadenza: null, attivo: true,
+    pagamentoMetodo,
+    ...(r.inseritaDaStaff ? { inseritaDaStaff: true, inseritaDaUid: r.inseritaDaUid || null, inseritaDaNome: r.inseritaDaNome || null } : {})
+  };
+  const esistente = await db.collection("soci").where("email", "==", r.email).limit(1).get();
+  let socioId;
+  if (!esistente.empty) {
+    await esistente.docs[0].ref.set(dati, { merge: true });
+    socioId = esistente.docs[0].id;
+  } else {
+    const ref = await db.collection("soci").add({ ...dati, authUid: null, forfaitPagato: null, createdAt: FieldValue.serverTimestamp() });
+    socioId = ref.id;
+  }
+  await reqRef.update({ stato: "COMPLETATA", socioId });
+
+  const attivazioneToken = generaToken();
+  await db.collection("attivazioniSoci").doc(attivazioneToken).set({
+    socioId, metodo: "email", usato: false, createdByUid: null, createdAt: FieldValue.serverTimestamp()
+  });
+  const link = `${APP_URL}attiva-socio.html?t=${attivazioneToken}`;
+  try {
+    await inviaEmail({
+      to: r.email,
+      subject: "Benvenuto/a — la tua iscrizione è confermata",
+      html: `<p>${pagamentoMetodo === "esterno" ? "La tua iscrizione è stata confermata" : "Il pagamento della tua quota è stato ricevuto"}: sei ufficialmente socio/a.</p>`
+        + `<p>Tocca il link qui sotto per attivare questo dispositivo e prenotare i campi con la tua tariffa socio:</p>`
+        + `<p><a href="${link}">${link}</a></p><p>Il link è valido una sola volta.</p>`
+    });
+  } catch (err) {
+    console.error("creaSocioDaRichiesta: invio email fallito:", err);
+  }
+  return { socioId };
+}
+
 // Nessuna scrittura diretta su "soci": crea solo una richiesta
 // (Configurazione → Categorie socio → Richieste di iscrizione), il socio
 // vero nasce solo alla conferma del pagamento (webhook, vedi più sotto) —
@@ -1916,14 +1878,31 @@ async function avviaPagamentoIscrizioneSocio({ requestId, nomeCompleto, categori
 exports.richiediIscrizioneSocio = onCall(
   { secrets: [POSTFINANCE_SPACE_ID, POSTFINANCE_USER_ID, POSTFINANCE_APP_KEY] },
   async (request) => {
-    const { nome, cognome, telefono, dataNascita, richiedeFamiglia, richiedeStudente } = request.data || {};
+    const { nome, cognome, telefono, dataNascita, via, cap, localita, consensoPrivacy, richiedeFamiglia, richiedeStudente } = request.data || {};
     const email = (request.data?.email || "").trim().toLowerCase();
-    if (!nome || !cognome || !email || !dataNascita) {
+    if (!nome || !cognome || !email || !dataNascita || !via || !cap || !localita) {
       throw new HttpsError("invalid-argument", "Dati mancanti.");
+    }
+    if (consensoPrivacy !== true) {
+      throw new HttpsError("invalid-argument", "Devi accettare l'informativa privacy.");
     }
     const eta = etaAnnoSociale(dataNascita);
     if (eta == null || eta < 0 || eta > 120) {
       throw new HttpsError("invalid-argument", "Data di nascita non valida.");
+    }
+
+    // La pagina resta pubblica (nessun requireAuth), ma se chi chiama è
+    // già loggato come staff (es. segretaria che compila per conto di un
+    // socio che non può farlo da sé) marchiamo la richiesta di conseguenza
+    // — verificato qui via request.auth, mai fidandosi di un flag mandato
+    // dal client (vedi anche js/iscrizione-socio.js, che mostra solo il
+    // banner ma non decide nulla).
+    let provenienzaStaff = {};
+    if (request.auth) {
+      const staffSnap = await db.collection("users").doc(request.auth.uid).get();
+      if (staffSnap.exists) {
+        provenienzaStaff = { inseritaDaStaff: true, inseritaDaUid: request.auth.uid, inseritaDaNome: staffSnap.data().nome || null };
+      }
     }
 
     const [socioSnap, richiestaSnap] = await Promise.all([
@@ -1969,8 +1948,10 @@ exports.richiediIscrizioneSocio = onCall(
     if (richiedeVerifica) {
       await db.collection("richiesteIscrizioneSocio").add({
         nome, cognome, email, telefono: telefono || null, dataNascita, eta,
+        via, cap, localita, consensoPrivacy: true,
         categoriaRichiesta, richiedeVerifica,
-        stato: "IN_ATTESA_APPROVAZIONE", createdAt: FieldValue.serverTimestamp()
+        stato: "IN_ATTESA_APPROVAZIONE", createdAt: FieldValue.serverTimestamp(),
+        ...provenienzaStaff
       });
       return { ok: true, pagamentoNecessario: false };
     }
@@ -1981,8 +1962,10 @@ exports.richiediIscrizioneSocio = onCall(
 
     const reqRef = await db.collection("richiesteIscrizioneSocio").add({
       nome, cognome, email, telefono: telefono || null, dataNascita, eta,
+      via, cap, localita, consensoPrivacy: true,
       categoriaRichiesta, richiedeVerifica, quotaCalcolata: importo,
-      stato: "IN_ATTESA_PAGAMENTO", createdAt: FieldValue.serverTimestamp()
+      stato: "IN_ATTESA_PAGAMENTO", createdAt: FieldValue.serverTimestamp(),
+      ...provenienzaStaff
     });
 
     try {
@@ -2009,7 +1992,7 @@ exports.approvaIscrizioneSocio = onCall(
   async (request) => {
     if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
     const { permessi, isAdmin } = await permessiUtente(request.auth.uid);
-    if (!isAdmin && !permessi.includes("config:gestisci")) {
+    if (!isAdmin && !permessi.includes("soci:gestisci")) {
       throw new HttpsError("permission-denied", "Permesso mancante.");
     }
 
@@ -2071,6 +2054,148 @@ exports.approvaIscrizioneSocio = onCall(
     return { ok: true };
   }
 );
+
+// Bypassa completamente PostFinance: crea il socio subito per chi ha
+// pagato fuori dall'app (contanti, bonifico) — utilizzabile sia su una
+// richiesta già a categoria chiara (IN_ATTESA_PAGAMENTO) sia su una da
+// verificare (IN_ATTESA_APPROVAZIONE: qui categoria/importo passati
+// confermano la richiesta contestualmente, come farebbe
+// approvaIscrizioneSocio, ma senza generare nessun link di pagamento).
+exports.confermaIscrizioneSocioPagamentoEsterno = onCall({ secrets: MAIL_SECRETS }, async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+  const { permessi, isAdmin } = await permessiUtente(request.auth.uid);
+  if (!isAdmin && !permessi.includes("soci:gestisci")) {
+    throw new HttpsError("permission-denied", "Permesso mancante.");
+  }
+
+  const { requestId, categoria: categoriaId, importo } = request.data || {};
+  if (!requestId) throw new HttpsError("invalid-argument", "requestId mancante.");
+
+  const reqRef = db.collection("richiesteIscrizioneSocio").doc(requestId);
+  const reqSnap = await reqRef.get();
+  if (!reqSnap.exists) throw new HttpsError("not-found", "Richiesta non trovata.");
+  let r = reqSnap.data();
+  if (r.stato !== "IN_ATTESA_PAGAMENTO" && r.stato !== "IN_ATTESA_APPROVAZIONE") {
+    throw new HttpsError("failed-precondition", "Richiesta già gestita.");
+  }
+
+  if (r.stato === "IN_ATTESA_APPROVAZIONE") {
+    if (!categoriaId || typeof importo !== "number" || !isFinite(importo) || importo < 0) {
+      throw new HttpsError("invalid-argument", "Categoria e importo mancanti per confermare questa richiesta.");
+    }
+    const categoriaSnap = await db.collection("categorieSocio").doc(categoriaId).get();
+    if (!categoriaSnap.exists) throw new HttpsError("not-found", "Categoria non trovata.");
+    const userSnap = await db.collection("users").doc(request.auth.uid).get();
+    await reqRef.update({
+      categoriaConfermata: categoriaId,
+      quotaCalcolata: importo,
+      approvataDaUid: request.auth.uid,
+      approvataDaNome: userSnap.exists ? (userSnap.data().nome || null) : null,
+      approvataAt: FieldValue.serverTimestamp()
+    });
+    r = { ...r, categoriaConfermata: categoriaId };
+  }
+
+  const { socioId } = await creaSocioDaRichiesta(reqRef, r, { pagamentoMetodo: "esterno" });
+  return { ok: true, socioId };
+});
+
+// Ricerca/elenco soci per la pagina Soci (admin/segretaria) — a
+// differenza di cercaSociStaff (pensata solo per trovare in fretta un
+// socio da un altro flusso, campi minimi, solo attivi) qui servono tutti
+// i campi utili a una scheda di modifica, e la possibilità di includere
+// gli inattivi (altrimenti non potrebbero mai essere ritrovati per
+// riattivarli).
+exports.listaSoci = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+  const { permessi, isAdmin } = await permessiUtente(request.auth.uid);
+  if (!isAdmin && !permessi.includes("soci:gestisci")) {
+    throw new HttpsError("permission-denied", "Permesso mancante.");
+  }
+  const testo = (request.data?.testo || "").trim().toLowerCase();
+  const includiInattivi = request.data?.includiInattivi === true;
+
+  let query = db.collection("soci").limit(500);
+  if (!includiInattivi) query = query.where("attivo", "==", true);
+  const snap = await query.get();
+  let risultati = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  if (testo.length >= 2) {
+    risultati = risultati.filter(s => `${s.nome} ${s.cognome} ${s.tessera || ""} ${s.email || ""}`.toLowerCase().includes(testo));
+  }
+  risultati = risultati.slice(0, 50).map(s => ({
+    id: s.id, nome: s.nome, cognome: s.cognome, email: s.email, telefono: s.telefono || null,
+    via: s.via || null, cap: s.cap || null, localita: s.localita || null,
+    categoria: s.categoria, tessera: s.tessera || null, dataNascita: s.dataNascita || null,
+    scadenza: s.scadenza || null, attivo: s.attivo !== false, consensoPrivacy: s.consensoPrivacy === true,
+    attivato: !!s.authUid, pagamentoMetodo: s.pagamentoMetodo || null
+  }));
+  return { risultati };
+});
+
+// Modifica un socio esistente (o lo disattiva/riattiva) — nessuna
+// scrittura diretta dal client su "soci" (vedi firestore.rules), passa
+// sempre da qui. Stessa validazione categoria di importaSoci (che questa
+// funzione sostituisce come unico punto di scrittura manuale).
+exports.aggiornaSocioAdmin = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+  const { permessi, isAdmin } = await permessiUtente(request.auth.uid);
+  if (!isAdmin && !permessi.includes("soci:gestisci")) {
+    throw new HttpsError("permission-denied", "Permesso mancante.");
+  }
+
+  const { socioId, nome, cognome, email, telefono, via, cap, localita, categoria, tessera, dataNascita, scadenza, attivo } = request.data || {};
+  if (!socioId || !nome || !cognome || !email || !categoria || !dataNascita) {
+    throw new HttpsError("invalid-argument", "Dati mancanti.");
+  }
+  const socioRef = db.collection("soci").doc(socioId);
+  const socioSnap = await socioRef.get();
+  if (!socioSnap.exists) throw new HttpsError("not-found", "Socio non trovato.");
+
+  const categorieSnap = await db.collection("categorieSocio").where("attivo", "==", true).get();
+  const CATEGORIE_VALIDE = [...categorieSnap.docs.map(d => d.id), "azienda"];
+  if (!CATEGORIE_VALIDE.includes(categoria)) {
+    throw new HttpsError("invalid-argument", "Categoria non valida.");
+  }
+
+  await socioRef.update({
+    nome, cognome, email: email.trim().toLowerCase(),
+    telefono: telefono || null, via: via || null, cap: cap || null, localita: localita || null,
+    categoria, tessera: tessera || null, dataNascita,
+    scadenza: scadenza ? new Date(scadenza) : null,
+    attivo: attivo !== false
+  });
+  return { ok: true };
+});
+
+// Elimina definitivamente un socio — stesso pattern di
+// eliminaDipendenteAzienda: pulisce anche i token di attivazione residui
+// e l'eventuale account Auth collegato, non solo il documento.
+exports.eliminaSocioAdmin = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+  const { permessi, isAdmin } = await permessiUtente(request.auth.uid);
+  if (!isAdmin && !permessi.includes("soci:gestisci")) {
+    throw new HttpsError("permission-denied", "Permesso mancante.");
+  }
+  const { socioId } = request.data || {};
+  if (!socioId) throw new HttpsError("invalid-argument", "socioId mancante.");
+  const socioSnap = await db.collection("soci").doc(socioId).get();
+  if (!socioSnap.exists) throw new HttpsError("not-found", "Socio non trovato.");
+  const authUid = socioSnap.data().authUid;
+
+  const tokenSnap = await db.collection("attivazioniSoci").where("socioId", "==", socioId).get();
+  await Promise.all(tokenSnap.docs.map(d => d.ref.delete()));
+
+  await db.collection("soci").doc(socioId).delete();
+
+  if (authUid) {
+    try {
+      await getAuth().deleteUser(authUid);
+    } catch (err) {
+      if (err.code !== "auth/user-not-found") throw err;
+    }
+  }
+  return { ok: true };
+});
 
 // Il client invia l'email inserita dal socio; la risposta è sempre
 // {ok:true} indipendentemente dal risultato reale della ricerca — non deve
@@ -3401,7 +3526,7 @@ exports.creaPrenotazioneCampo = onCall(
           currency: "CHF",
           merchantReference: bookingRef.id,
           successUrl: `${APP_URL}biglietto.html?t=${token}`,
-          failedUrl: `${APP_URL}prenota-campo.html?pagamento=fallito`,
+          failedUrl: `${APP_URL}prenota-campo-v2.html?pagamento=fallito`,
           lineItems: [{
             uniqueId: bookingRef.id,
             name: `Campo ${disciplina} ${date} ${startTime}–${endTime}`,

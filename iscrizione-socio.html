@@ -38,6 +38,7 @@
   <main>
 
     <div id="step-form">
+      <p id="staff-banner" class="hidden" style="background:var(--court-blue-700);color:var(--chalk-grey);font-size:0.78rem;padding:10px 12px;border-radius:6px;margin-bottom:16px;"></p>
       <p style="color:var(--chalk-grey);font-size:0.85rem;margin:-4px 0 18px;">Compila i tuoi dati: la categoria si calcola da sola in base all'età, e verrai subito reindirizzato al pagamento online della quota. Per Famiglia o Studenti la categoria va verificata dal circolo — riceverai il link di pagamento via email appena confermata.</p>
 
       <form id="iscrizione-form">
@@ -60,11 +61,27 @@
         <div class="row2">
           <div class="field">
             <label for="is-telefono">Telefono</label>
-            <input type="tel" id="is-telefono" autocomplete="tel">
+            <input type="tel" id="is-telefono" autocomplete="tel" placeholder="+41 79 123 45 67">
           </div>
           <div class="field">
             <label for="is-datanascita">Data di nascita</label>
             <input type="date" id="is-datanascita" required>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="is-via">Via</label>
+          <input type="text" id="is-via" required autocomplete="street-address">
+        </div>
+
+        <div class="row2">
+          <div class="field" style="flex:0 0 110px;">
+            <label for="is-cap">CAP</label>
+            <input type="text" id="is-cap" required autocomplete="postal-code">
+          </div>
+          <div class="field">
+            <label for="is-localita">Località</label>
+            <input type="text" id="is-localita" required autocomplete="address-level2">
           </div>
         </div>
 
@@ -81,6 +98,11 @@
         <div class="checkbox-row" id="cb-famiglia-row" style="margin-bottom:16px;">
           <input type="checkbox" id="is-famiglia">
           <label for="is-famiglia">Richiedo la quota Famiglia (verrà verificata dal circolo)</label>
+        </div>
+
+        <div class="checkbox-row" id="cb-privacy-row" style="margin-bottom:16px;">
+          <input type="checkbox" id="is-privacy" required>
+          <label for="is-privacy">Accetto <a href="privacy.html" target="_blank" style="color:var(--ball);">l'informativa privacy</a> sul trattamento dei dati personali</label>
         </div>
 
         <div class="error-msg" id="iscrizione-form-error"></div>
