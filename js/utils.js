@@ -91,7 +91,7 @@ function disciplinaLabel(id) {
 // (quello è il sito del circolo; questo può essere qualsiasi pagina,
 // anche non collegata al circolo). Vuoto = nessun redirect, resta sul
 // biglietto dopo il download.
-const IMPOSTAZIONI_DEFAULT = { minutiEliminazioneDiario: 15, festivi: [], chiusuraWeekend: "20:30", linkDopoSalvaBiglietto: "" };
+const IMPOSTAZIONI_DEFAULT = { minutiEliminazioneDiario: 15, festivi: [], chiusuraWeekend: "20:30", linkDopoSalvaBiglietto: "", privacyTesto: "" };
 let IMPOSTAZIONI = { ...IMPOSTAZIONI_DEFAULT };
 
 async function loadImpostazioni() {
@@ -324,16 +324,22 @@ async function copyToClipboard(text, btn) {
   }
 }
 
-// Riempie un campo readonly con l'URL assoluto di un'altra pagina dell'app
-// e collega un pulsante "Copia" negli appunti.
-function initLinkCopyBox(inputId, btnId, targetPage) {
+// Riempie un campo readonly con l'URL assoluto di un'altra pagina dell'app,
+// collega un pulsante "Copia" negli appunti e (se l'id è passato) un link
+// "Apri" che porta lì direttamente in una nuova scheda — prima bisognava
+// per forza copiare e incollare altrove per vedere dove portava un link.
+function initLinkCopyBox(inputId, btnId, targetPage, openId) {
   const input = document.getElementById(inputId);
   const btn = document.getElementById(btnId);
   if (!input || !btn) return;
 
-  input.value = basePageUrl() + targetPage;
+  const url = basePageUrl() + targetPage;
+  input.value = url;
 
   btn.addEventListener("click", () => copyToClipboard(input.value, btn));
+
+  const openLink = openId ? document.getElementById(openId) : null;
+  if (openLink) openLink.href = url;
 }
 
 // ---------- Tema chiaro/scuro ----------

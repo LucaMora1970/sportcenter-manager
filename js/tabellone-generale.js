@@ -65,18 +65,26 @@ function formatGiornoEsteso(dataIso) {
 
 // ---------- Caricamento campi ----------
 
-// Il campo "Numero" in Configurazione è testo libero (es. "4 Leda Polli",
-// il circolo ci mette anche il nome di uno sponsor/dedica) — non un
-// intero pulito. Separa la parte numerica iniziale (per ordinare ed
-// etichettare "Campo N") dal resto (mostrato come dedica sulla riga
-// sotto, vedi render()).
+// Il campo "Numero" in Configurazione è testo libero — due formati reali
+// convivono: "N Dedica" per i campi con sponsor (es. "4 Leda Polli", la
+// cifra è già in testa) e "Campo N" per gli altri (es. "Campo 1", nessuna
+// vera dedica — "Campo" è solo un'etichetta ridondante, non va mostrata
+// come se fosse un nome di sponsor). Separa la parte numerica (per
+// ordinare ed etichettare "Campo N") dall'eventuale dedica, provando
+// entrambi i formati.
 function parseNumeroCampo(numero) {
   const testo = String(numero || "").trim();
-  const match = testo.match(/^(\d+)\s*(.*)$/);
-  return match ? { numero: match[1], dedica: match[2].trim() || null } : { numero: testo, dedica: null };
+  let match = testo.match(/^(\d+)\s*(.*)$/);
+  if (match) return { numero: match[1], dedica: match[2].trim() || null };
+  match = testo.match(/^campo\s+(\d+)\s*(.*)$/i);
+  if (match) return { numero: match[1], dedica: match[2].trim() || null };
+  return { numero: testo, dedica: null };
 }
+// Stessa cifra di parseNumeroCampo, ma cercata ovunque nella stringa (non
+// solo in testa) — "Campo 1" altrimenti non matcherebbe affatto e
+// finirebbe ordinato come non numerico invece che al posto 1.
 function numeroOrdinabile(numero) {
-  const match = String(numero || "").match(/^\d+/);
+  const match = String(numero || "").match(/\d+/);
   return match ? parseInt(match[0], 10) : Infinity; // non numerici in fondo, non spariscono
 }
 

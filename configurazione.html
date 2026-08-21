@@ -124,6 +124,7 @@
             <input type="text" id="link-app" readonly>
           </div>
           <button type="button" class="btn btn-ghost" id="copia-link-app-btn" style="width:auto;padding:10px 16px;">Copia</button>
+          <a href="#" target="_blank" rel="noopener" class="btn btn-ghost" id="apri-link-app-btn" style="width:auto;padding:10px 16px;">Apri</a>
         </div>
       </div>
 
@@ -135,6 +136,7 @@
             <input type="text" id="link-prenota-padel" readonly>
           </div>
           <button type="button" class="btn btn-ghost" id="copia-link-prenota-padel-btn" style="width:auto;padding:10px 16px;">Copia</button>
+          <a href="#" target="_blank" rel="noopener" class="btn btn-ghost" id="apri-link-prenota-padel-btn" style="width:auto;padding:10px 16px;">Apri</a>
         </div>
       </div>
 
@@ -146,6 +148,7 @@
             <input type="text" id="link-tabellone" readonly>
           </div>
           <button type="button" class="btn btn-ghost" id="copia-link-tabellone-btn" style="width:auto;padding:10px 16px;">Copia</button>
+          <a href="#" target="_blank" rel="noopener" class="btn btn-ghost" id="apri-link-tabellone-btn" style="width:auto;padding:10px 16px;">Apri</a>
         </div>
       </div>
 
@@ -157,6 +160,7 @@
             <input type="text" id="link-iscrizione-corsi" readonly>
           </div>
           <button type="button" class="btn btn-ghost" id="copia-link-iscrizione-corsi-btn" style="width:auto;padding:10px 16px;">Copia</button>
+          <a href="#" target="_blank" rel="noopener" class="btn btn-ghost" id="apri-link-iscrizione-corsi-btn" style="width:auto;padding:10px 16px;">Apri</a>
         </div>
       </div>
 
@@ -168,6 +172,7 @@
             <input type="text" id="link-prenota-campo-v2" readonly>
           </div>
           <button type="button" class="btn btn-ghost" id="copia-link-prenota-campo-v2-btn" style="width:auto;padding:10px 16px;">Copia</button>
+          <a href="#" target="_blank" rel="noopener" class="btn btn-ghost" id="apri-link-prenota-campo-v2-btn" style="width:auto;padding:10px 16px;">Apri</a>
         </div>
       </div>
 
@@ -179,6 +184,7 @@
             <input type="text" id="link-attiva-socio" readonly>
           </div>
           <button type="button" class="btn btn-ghost" id="copia-link-attiva-socio-btn" style="width:auto;padding:10px 16px;">Copia</button>
+          <a href="#" target="_blank" rel="noopener" class="btn btn-ghost" id="apri-link-attiva-socio-btn" style="width:auto;padding:10px 16px;">Apri</a>
         </div>
       </div>
 
@@ -190,6 +196,7 @@
             <input type="text" id="link-iscrizione-socio" readonly>
           </div>
           <button type="button" class="btn btn-ghost" id="copia-link-iscrizione-socio-btn" style="width:auto;padding:10px 16px;">Copia</button>
+          <a href="#" target="_blank" rel="noopener" class="btn btn-ghost" id="apri-link-iscrizione-socio-btn" style="width:auto;padding:10px 16px;">Apri</a>
         </div>
       </div>
 
@@ -201,6 +208,19 @@
             <input type="text" id="link-chi-in-campo" readonly>
           </div>
           <button type="button" class="btn btn-ghost" id="copia-link-chi-in-campo-btn" style="width:auto;padding:10px 16px;">Copia</button>
+          <a href="#" target="_blank" rel="noopener" class="btn btn-ghost" id="apri-link-chi-in-campo-btn" style="width:auto;padding:10px 16px;">Apri</a>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>La mia area</label>
+        <p style="color:var(--chalk-grey);font-size:0.78rem;margin:0 0 6px;">Pagina pubblica per un dispositivo riconosciuto — abbonamento fisso, prenotazioni fatte, credito residuo.</p>
+        <div class="row2" style="align-items:flex-end;">
+          <div class="field" style="margin-bottom:0;">
+            <input type="text" id="link-la-mia-area" readonly>
+          </div>
+          <button type="button" class="btn btn-ghost" id="copia-link-la-mia-area-btn" style="width:auto;padding:10px 16px;">Copia</button>
+          <a href="#" target="_blank" rel="noopener" class="btn btn-ghost" id="apri-link-la-mia-area-btn" style="width:auto;padding:10px 16px;">Apri</a>
         </div>
       </div>
       </div>
@@ -243,6 +263,11 @@
           <input type="text" id="link-dopo-salva-biglietto" placeholder="es. www.tennisclubmendrisio.ch">
         </div>
         <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Dove finisce chi ha appena scaricato il biglietto — può essere qualsiasi pagina, non necessariamente il sito del circolo. Vuoto = resta sul biglietto.</p>
+        <div class="field">
+          <label for="privacy-testo">Informativa privacy (pagina pubblica privacy.html)</label>
+          <textarea id="privacy-testo" rows="14" placeholder="Un paragrafo per riga vuota — mostrato così com'è sulla pagina pubblica."></textarea>
+        </div>
+        <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Testo mostrato integralmente su <code>privacy.html</code>, linkata dalla checkbox di consenso nel modulo di iscrizione socio. Righe vuote separano i paragrafi.</p>
         <div class="error-msg" id="impostazioni-error"></div>
         <button type="submit" class="btn btn-ghost" id="salva-impostazioni-btn">Salva</button>
       </form>

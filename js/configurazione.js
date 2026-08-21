@@ -90,11 +90,45 @@ async function onSaveDatiCentro(e) {
 
 // ---------- Impostazioni generali ----------
 
+// Il testo iniziale (segnaposto scritto in fase di sviluppo, mai
+// pensato come definitivo) viene copiato qui una sola volta se il
+// campo è ancora vuoto — così l'amministratore trova subito qualcosa
+// da correggere invece di una casella bianca, e privacy.html ha
+// comunque un contenuto reale dal primo momento.
+const PRIVACY_TESTO_SEED = `Titolare del trattamento
+
+Tennis Club Mendrisio è il titolare del trattamento dei dati personali raccolti tramite l'iscrizione come socio/a e l'utilizzo dei servizi del circolo (prenotazione campi, corsi, abbonamenti).
+
+Dati raccolti
+
+In fase di iscrizione raccogliamo: nome, cognome, data di nascita, email, telefono, indirizzo (via, CAP, località). Questi dati sono necessari per gestire il tesseramento, calcolare la categoria/tariffa applicabile, e comunicare con te riguardo alla tua iscrizione, alle prenotazioni e ai servizi del circolo.
+
+Finalità e base giuridica
+
+I dati sono trattati per l'esecuzione del rapporto associativo (gestione del tesseramento, prenotazioni, fatturazione delle quote) e, con il tuo consenso, per comunicazioni relative alle attività del circolo. Non vengono ceduti a terzi per finalità commerciali.
+
+Conservazione
+
+I dati sono conservati per la durata del rapporto associativo e per il periodo successivo richiesto da obblighi legali/contabili.
+
+I tuoi diritti
+
+Puoi in ogni momento richiedere accesso, rettifica o cancellazione dei tuoi dati, o revocare il consenso, contattando la segreteria del circolo.
+
+Contatti
+
+Per qualsiasi domanda su questa informativa o sul trattamento dei tuoi dati, contatta la segreteria del Tennis Club Mendrisio.`;
+
 async function loadImpostazioniForm() {
   await loadImpostazioni();
   document.getElementById("minuti-eliminazione-diario").value = IMPOSTAZIONI.minutiEliminazioneDiario;
   document.getElementById("chiusura-weekend").value = IMPOSTAZIONI.chiusuraWeekend || "20:30";
   document.getElementById("link-dopo-salva-biglietto").value = IMPOSTAZIONI.linkDopoSalvaBiglietto || "";
+  if (!IMPOSTAZIONI.privacyTesto) {
+    IMPOSTAZIONI.privacyTesto = PRIVACY_TESTO_SEED;
+    await db.collection("impostazioni").doc("generale").set({ privacyTesto: PRIVACY_TESTO_SEED }, { merge: true });
+  }
+  document.getElementById("privacy-testo").value = IMPOSTAZIONI.privacyTesto;
   renderFestivi();
 }
 
@@ -108,14 +142,16 @@ async function onSaveImpostazioni(e) {
   const minuti = parseInt(document.getElementById("minuti-eliminazione-diario").value, 10);
   const chiusuraWeekend = document.getElementById("chiusura-weekend").value;
   const linkDopoSalvaBiglietto = document.getElementById("link-dopo-salva-biglietto").value.trim();
+  const privacyTesto = document.getElementById("privacy-testo").value.trim();
 
   try {
     if (isNaN(minuti) || minuti < 0) throw new Error("Inserisci un numero di minuti valido.");
     if (!/^\d{2}:\d{2}$/.test(chiusuraWeekend)) throw new Error("Inserisci un orario di chiusura weekend valido.");
-    await db.collection("impostazioni").doc("generale").set({ minutiEliminazioneDiario: minuti, chiusuraWeekend, linkDopoSalvaBiglietto }, { merge: true });
+    await db.collection("impostazioni").doc("generale").set({ minutiEliminazioneDiario: minuti, chiusuraWeekend, linkDopoSalvaBiglietto, privacyTesto }, { merge: true });
     IMPOSTAZIONI.minutiEliminazioneDiario = minuti;
     IMPOSTAZIONI.chiusuraWeekend = chiusuraWeekend;
     IMPOSTAZIONI.linkDopoSalvaBiglietto = linkDopoSalvaBiglietto;
+    IMPOSTAZIONI.privacyTesto = privacyTesto;
   } catch (err) {
     showError(errorEl, "Errore: " + err.message);
   } finally {
@@ -1989,14 +2025,15 @@ requireAuth(async (profile) => {
     return;
   }
 
-  initLinkCopyBox("link-app", "copia-link-app-btn", "index.html");
-  initLinkCopyBox("link-prenota-padel", "copia-link-prenota-padel-btn", "prenota-padel.html");
-  initLinkCopyBox("link-tabellone", "copia-link-tabellone-btn", "prenotazioni.html");
-  initLinkCopyBox("link-iscrizione-corsi", "copia-link-iscrizione-corsi-btn", "iscrizione-corso.html");
-  initLinkCopyBox("link-prenota-campo-v2", "copia-link-prenota-campo-v2-btn", "tcm.html");
-  initLinkCopyBox("link-attiva-socio", "copia-link-attiva-socio-btn", "attiva-socio.html");
-  initLinkCopyBox("link-iscrizione-socio", "copia-link-iscrizione-socio-btn", "iscrizione-socio.html");
-  initLinkCopyBox("link-chi-in-campo", "copia-link-chi-in-campo-btn", "chi-in-campo.html");
+  initLinkCopyBox("link-app", "copia-link-app-btn", "index.html", "apri-link-app-btn");
+  initLinkCopyBox("link-prenota-padel", "copia-link-prenota-padel-btn", "prenota-padel.html", "apri-link-prenota-padel-btn");
+  initLinkCopyBox("link-tabellone", "copia-link-tabellone-btn", "prenotazioni.html", "apri-link-tabellone-btn");
+  initLinkCopyBox("link-iscrizione-corsi", "copia-link-iscrizione-corsi-btn", "iscrizione-corso.html", "apri-link-iscrizione-corsi-btn");
+  initLinkCopyBox("link-prenota-campo-v2", "copia-link-prenota-campo-v2-btn", "tcm.html", "apri-link-prenota-campo-v2-btn");
+  initLinkCopyBox("link-attiva-socio", "copia-link-attiva-socio-btn", "attiva-socio.html", "apri-link-attiva-socio-btn");
+  initLinkCopyBox("link-iscrizione-socio", "copia-link-iscrizione-socio-btn", "iscrizione-socio.html", "apri-link-iscrizione-socio-btn");
+  initLinkCopyBox("link-chi-in-campo", "copia-link-chi-in-campo-btn", "chi-in-campo.html", "apri-link-chi-in-campo-btn");
+  initLinkCopyBox("link-la-mia-area", "copia-link-la-mia-area-btn", "abbonamento.html", "apri-link-la-mia-area-btn");
 
   await seedDisciplineIfEmpty();
   await loadDiscipline();
