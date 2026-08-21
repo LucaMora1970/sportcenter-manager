@@ -379,3 +379,32 @@ function initThemeToggle(btnId) {
   sync();
 }
 initThemeToggle();
+
+// Menu ☰ dei link utente sulle pagine pubbliche (Prenota campo, La mia
+// area, Diventa socio, ecc.) — no-op se la pagina non ha il markup
+// (#menu-utente-btn/#menu-utente-dropdown, vedi css/style.css), quindi
+// sicuro da chiamare sempre qui invece che una pagina alla volta, come
+// initThemeToggle() sopra. Le pagine staff non hanno questo markup: non
+// se ne accorgono.
+function initMenuUtente() {
+  const btn = document.getElementById("menu-utente-btn");
+  const dropdown = document.getElementById("menu-utente-dropdown");
+  if (!btn || !dropdown) return;
+
+  const chiudi = () => {
+    dropdown.classList.add("hidden");
+    btn.setAttribute("aria-expanded", "false");
+  };
+
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const eraAperto = !dropdown.classList.contains("hidden");
+    if (eraAperto) { chiudi(); return; }
+    dropdown.classList.remove("hidden");
+    btn.setAttribute("aria-expanded", "true");
+  });
+  document.addEventListener("click", (e) => {
+    if (!dropdown.classList.contains("hidden") && !dropdown.contains(e.target)) chiudi();
+  });
+}
+initMenuUtente();

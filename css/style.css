@@ -132,6 +132,23 @@ button.topbar-link {
 
 .topbar-actions { display: flex; gap: 8px; align-items: center; }
 
+/* Menu ☰ dei link utente (Prenota campo, La mia area, ecc.) sulle
+   pagine pubbliche — stesso markup duplicato su ogni pagina (nessun
+   sistema di partial in questo repo, vedi bottom-nav lato staff), logica
+   apri/chiudi unica in initMenuUtente() (js/utils.js). */
+.menu-utente-wrap { position: relative; }
+.menu-utente-dropdown {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 20;
+  background: var(--court-blue-900); border: 1px solid var(--court-blue-700); border-radius: var(--radius);
+  padding: 6px; min-width: 210px; display: flex; flex-direction: column; gap: 2px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.menu-utente-dropdown a {
+  display: block; padding: 9px 12px; border-radius: 7px; font-size: 0.82rem;
+  color: var(--chalk-grey); text-decoration: none; white-space: nowrap;
+}
+.menu-utente-dropdown a:hover { background: var(--court-blue-800); color: var(--line-white); }
+
 /* Toggle tema: lampadina spenta (scuro, default) / accesa (chiaro) */
 #theme-toggle-btn {
   font-size: 0.9rem;
