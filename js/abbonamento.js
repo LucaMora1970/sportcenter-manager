@@ -1,13 +1,19 @@
 // ============================================================
-// abbonamento.js — pagina del socio per vedere il proprio abbonamento
-// fisso (tennis) e cancellare una singola settimana. Nessun login
-// staff: si basa sullo stesso riconoscimento dispositivo già usato da
-// prenota-campo-v2.html (sessione Firebase Auth ottenuta via
-// attiva-socio.html) — se il dispositivo non è riconosciuto, non c'è
-// nulla da mostrare qui.
+// abbonamento.js — "La mia area" del socio: abbonamento fisso (con
+// cancellazione di una singola settimana), le proprie prenotazioni
+// (tennis/squash/padel, sola lettura) e il credito residuo da eventuali
+// annullamenti. Nessun login staff: si basa sullo stesso riconoscimento
+// dispositivo già usato da prenota-campo-v2.html (sessione Firebase Auth
+// ottenuta via attiva-socio.html) — se il dispositivo non è riconosciuto,
+// non c'è nulla da mostrare qui.
 //
 // Nessun rimborso automatico alla cancellazione: se dovuto, lo valuta
 // la segreteria a parte (vedi annullaSettimanaAbbonamento lato server).
+//
+// Le prenotazioni sono per dispositivo (bookings.authUid), non per
+// profilo/socioId come l'abbonamento — su un device condiviso da più
+// familiari si vedono tutte insieme, vedi commento server-side su
+// leMiePrenotazioniECredito.
 //
 // Richiede firebase-config.js e utils.js già caricati (NON auth.js: qui
 // non c'è login staff).
@@ -32,7 +38,7 @@ async function caricaCampiLabel() {
 }
 
 function mostraStato(id) {
-  ["stato-caricamento", "stato-non-riconosciuto", "stato-vuoto", "abbonamenti-container"].forEach(s => {
+  ["stato-caricamento", "stato-non-riconosciuto", "area-content"].forEach(s => {
     document.getElementById(s).classList.toggle("hidden", s !== id);
   });
 }
@@ -63,22 +69,55 @@ function abbonamentoCardHtml(abb) {
 const GIORNO_LABEL_DISPLAY = { lun: "Lunedì", mar: "Martedì", mer: "Mercoledì", gio: "Giovedì", ven: "Venerdì", sab: "Sabato", dom: "Domenica" };
 
 async function caricaAbbonamenti() {
-  mostraStato("stato-caricamento");
   try {
     const fn = cloudFunctions().httpsCallable("ilMioAbbonamento");
     const { data } = await fn();
-    if (data.abbonamenti.length === 0) {
-      mostraStato("stato-vuoto");
-      return;
-    }
+    if (data.abbonamenti.length === 0) return; // resta il messaggio "nessun abbonamento" già nell'HTML
     document.getElementById("abbonamenti-container").innerHTML = data.abbonamenti.map(abbonamentoCardHtml).join("");
     document.querySelectorAll(".cancella-settimana-btn").forEach(btn => {
       btn.addEventListener("click", () => onCancellaSettimana(btn));
     });
-    mostraStato("abbonamenti-container");
   } catch (err) {
     document.getElementById("abbonamento-error").textContent = "Errore: " + err.message;
-    mostraStato("stato-vuoto");
+  }
+}
+
+const STATO_PRENOTAZIONE_LABEL = { CONFIRMED: "Confermata", CREDITED: "Annullata (credito)", CANCELLED: "Annullata", COMPLETED: "Giocata" };
+
+function prenotazioneRowHtml(p) {
+  const campoLabel = CAMPI_LABEL[p.courtId] || "Campo";
+  const annullata = p.status === "CANCELLED" || p.status === "CREDITED";
+  return `
+    <div class="prenotazione-row">
+      <div>
+        <div class="data${annullata ? " stato-annullata" : ""}">${formatDataEstesa(p.date)}, ${p.startTime}–${p.endTime}</div>
+        <div class="disciplina">${escapeHtml(campoLabel)} · ${STATO_PRENOTAZIONE_LABEL[p.status] || p.status}</div>
+      </div>
+      <div class="prezzo${annullata ? " stato-annullata" : ""}">CHF ${(p.prezzo || 0).toFixed(2)}</div>
+    </div>
+  `;
+}
+
+// Prenotazioni e credito residuo: stessa chiamata, un solo giro di rete —
+// vedi leMiePrenotazioniECredito lato server per il perché sono per
+// dispositivo (authUid) e non per profilo come l'abbonamento qui sopra.
+async function caricaPrenotazioniECredito() {
+  try {
+    const fn = cloudFunctions().httpsCallable("leMiePrenotazioniECredito");
+    const { data } = await fn();
+
+    if (data.prenotazioni.length > 0) {
+      document.getElementById("prenotazioni-container").innerHTML = data.prenotazioni.map(prenotazioneRowHtml).join("");
+    }
+
+    if (data.credito.length > 0) {
+      const righe = data.credito.map(c => `CHF ${(c.remainingAmount || 0).toFixed(2)} — codice <strong>${escapeHtml(c.id)}</strong>`).join("<br>");
+      document.getElementById("credito-lista").innerHTML =
+        righe + `<br>Comunica il codice in segreteria per usarlo su una prossima prenotazione.`;
+      document.getElementById("credito-box").classList.remove("hidden");
+    }
+  } catch (err) {
+    document.getElementById("abbonamento-error").textContent = "Errore: " + err.message;
   }
 }
 
@@ -109,6 +148,7 @@ async function onCancellaSettimana(btn) {
       mostraStato("stato-non-riconosciuto");
       return;
     }
-    await caricaAbbonamenti();
+    mostraStato("area-content");
+    await Promise.all([caricaAbbonamenti(), caricaPrenotazioniECredito()]);
   });
 })();

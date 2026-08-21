@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Il mio abbonamento — Tennis Club Mendrisio</title>
+<title>La mia area — Tennis Club Mendrisio</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <script>if(localStorage.getItem("sportos-tema")==="light")document.documentElement.setAttribute("data-theme","light");</script>
@@ -33,6 +33,20 @@
   }
   .settimana-row button:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
   .settimana-row button:disabled { opacity: 0.4; cursor: default; }
+  .credito-box {
+    border-color: var(--ball) !important;
+  }
+  .credito-box .titolo { color: var(--ball); }
+  :root[data-theme="light"] .credito-box .titolo { color: var(--ball-dim); }
+  .prenotazione-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 10px 0; border-bottom: 1px dashed var(--court-blue-700);
+  }
+  .prenotazione-row:last-child { border-bottom: none; }
+  .prenotazione-row .data { font-family: 'Space Mono', monospace; font-size: 0.86rem; }
+  .prenotazione-row .disciplina { color: var(--chalk-grey); font-size: 0.76rem; }
+  .prenotazione-row .prezzo { font-family: 'Space Mono', monospace; font-size: 0.84rem; text-align: right; }
+  .prenotazione-row .stato-annullata { color: var(--chalk-grey-dim); text-decoration: line-through; }
 </style>
 </head>
 <body>
@@ -41,10 +55,24 @@
   <div class="topbar">
     <div>
       <div class="topbar-kicker" id="centro-kicker">Tennis Club Mendrisio</div>
-      <h1>Il mio abbonamento</h1>
+      <h1>La mia area</h1>
     </div>
     <div></div>
-    <button type="button" class="topbar-link" id="theme-toggle-btn">Tema chiaro</button>
+    <div class="topbar-actions">
+      <div class="menu-utente-wrap">
+        <button type="button" class="topbar-link" id="menu-utente-btn" aria-label="Menu" aria-expanded="false">☰</button>
+        <div class="menu-utente-dropdown hidden" id="menu-utente-dropdown">
+          <a href="prenota-campo-v2.html">Prenota campo</a>
+          <a href="abbonamento.html">La mia area</a>
+          <a href="attiva-socio.html">Attiva dispositivo</a>
+          <a href="iscrizione-socio.html">Diventa socio</a>
+          <a href="iscrizione-corso.html">Iscrizione corsi</a>
+          <a href="buono-regalo.html">Regala un buono campo</a>
+          <a href="chi-in-campo.html">Chi c'è in campo</a>
+        </div>
+      </div>
+      <button type="button" class="topbar-link" id="theme-toggle-btn">Tema chiaro</button>
+    </div>
   </div>
 
   <main>
@@ -55,16 +83,28 @@
 
     <div id="stato-non-riconosciuto" class="empty-state hidden">
       <div class="display">Dispositivo non riconosciuto</div>
-      <p>Per vedere il tuo abbonamento, attiva prima questo dispositivo.</p>
+      <p>Per vedere la tua area, attiva prima questo dispositivo.</p>
       <a href="attiva-socio.html" class="btn btn-primary" style="margin-top:14px;display:inline-block;">Attiva dispositivo</a>
     </div>
 
-    <div id="stato-vuoto" class="empty-state hidden">
-      <div class="display">Nessun abbonamento attivo</div>
-      <p>Non risulta nessun abbonamento fisso collegato al tuo profilo. Contatta la segreteria per attivarne uno.</p>
-    </div>
+    <div id="area-content" class="hidden">
 
-    <div id="abbonamenti-container" class="hidden"></div>
+      <div id="credito-box" class="hidden abb-card credito-box">
+        <div class="titolo">Credito disponibile</div>
+        <div class="meta" id="credito-lista"></div>
+      </div>
+
+      <div class="section-title"><h2>Abbonamenti fissi</h2></div>
+      <div id="abbonamenti-container">
+        <p style="color:var(--chalk-grey);font-size:0.84rem;">Nessun abbonamento fisso collegato al tuo profilo.</p>
+      </div>
+
+      <div class="section-title" style="margin-top:22px;"><h2>Le mie prenotazioni</h2></div>
+      <div class="abb-card" id="prenotazioni-container">
+        <p style="color:var(--chalk-grey);font-size:0.84rem;">Nessuna prenotazione trovata su questo dispositivo.</p>
+      </div>
+
+    </div>
 
     <div class="error-msg" id="abbonamento-error"></div>
 

@@ -438,6 +438,47 @@ async function padelCampoNumero() {
 // "Padel"/"Campo {courtId}" — per tennis/squash (dove courtId è l'id
 // interno del doc "campi", non il numero mostrato) servono per mostrare
 // un'etichetta leggibile sul biglietto.
+// Avvisa via email chi è stato aggiunto come secondo/terzo/quarto
+// giocatore a una prenotazione — tennis/squash hanno solo
+// giocatore2SocioId (vedi creaPrenotazioneCampo), il padel fino a
+// giocatore4SocioId ("fino a 4 nominativi", vedi creaPrenotazionePubblica)
+// — letti da bookingDettagli, già scritto da entrambi i flussi prima
+// della conferma. Solo per chi è un socio riconosciuto CON email in
+// anagrafica: un nome libero non risolto non ha un indirizzo a cui
+// scrivere. Mai al prenotante stesso (ha già il biglietto).
+async function notificaGiocatoriAggiunti(bookingId, { disciplina, campoLabel, date, startTime, endTime }) {
+  const dettSnap = await db.collection("bookingDettagli").doc(bookingId).get();
+  if (!dettSnap.exists) return;
+  const dett = dettSnap.data();
+  const prenotanteSocioId = ((dett.prezzoDettaglio || [])[0] || {}).socioId || null;
+
+  const socioIds = [...new Set(
+    [dett.giocatore2SocioId, dett.giocatore3SocioId, dett.giocatore4SocioId]
+      .filter(id => id && id !== prenotanteSocioId)
+  )];
+  if (socioIds.length === 0) return;
+
+  const DISCIPLINA_LABEL_EMAIL = { tennis: "Tennis", squash: "Squash", padel: "Padel" };
+  const dataLeggibile = new Date(date + "T00:00:00")
+    .toLocaleDateString("it-CH", { weekday: "long", day: "numeric", month: "long" });
+
+  for (const socioId of socioIds) {
+    try {
+      const socioSnap = await db.collection("soci").doc(socioId).get();
+      if (!socioSnap.exists || !socioSnap.data().email) continue;
+      const socio = socioSnap.data();
+      await inviaEmail({
+        to: socio.email,
+        subject: "Sei stato aggiunto a una prenotazione",
+        html: `<p>Ciao ${socio.nome || ""}, sei stato aggiunto come giocatore a una prenotazione ${DISCIPLINA_LABEL_EMAIL[disciplina] || disciplina}${campoLabel ? " — " + campoLabel : ""}.</p>`
+          + `<p><strong>${dataLeggibile}, ${startTime}–${endTime}</strong></p>`
+      });
+    } catch (err) {
+      console.error("notificaGiocatoriAggiunti: invio fallito per", socioId, err);
+    }
+  }
+}
+
 async function confermaPrenotazionePubblica({ bookingId, courtId, date, startTime, endTime, prezzo, token, paymentId, creditCode, creditoScalato, disciplina, campoLabel }) {
   const bookingCode = await generaCodicePrenotazioneUnivoco();
 
@@ -464,6 +505,11 @@ async function confermaPrenotazionePubblica({ bookingId, courtId, date, startTim
     });
   }
   await batch.commit();
+
+  // Best-effort, mai bloccante: chi ha prenotato ha già il biglietto
+  // (link), un'email in più che fallisse non deve rovinare una
+  // prenotazione già confermata e pagata.
+  await notificaGiocatoriAggiunti(bookingId, { disciplina, campoLabel, date, startTime, endTime });
 
   if (creditCode && creditoScalato > 0) {
     const creditoRef = db.collection("credits").doc(creditCode);
@@ -492,7 +538,7 @@ async function confermaPrenotazionePubblica({ bookingId, courtId, date, startTim
 // per l'intero prezzo se non c'è credito) e si restituisce l'URL di
 // pagamento.
 exports.creaPrenotazionePubblica = onCall(
-  { secrets: [POSTFINANCE_SPACE_ID, POSTFINANCE_USER_ID, POSTFINANCE_APP_KEY] },
+  { secrets: [POSTFINANCE_SPACE_ID, POSTFINANCE_USER_ID, POSTFINANCE_APP_KEY, ...MAIL_SECRETS] },
   async (request) => {
     const {
       courtId, date, startTime, endTime, durationMinutes, creditCode, profiloId,
@@ -1113,7 +1159,7 @@ exports.webhookPostFinance = onRequest(
 // operatore (senza limiti di tempo, qualunque prenotazione) e
 // l'annullamento self-service del cliente entro il termine di preavviso
 // (che aggiunge il proprio controllo PRIMA di chiamare questa).
-async function emettiCreditoAnnullamento(bookingId) {
+async function emettiCreditoAnnullamento(bookingId, authUid) {
   const bookingRef = db.collection("bookings").doc(bookingId);
   const paymentsSnap = await db.collection("payments").where("bookingId", "==", bookingId).get();
   const importoPagato = paymentsSnap.docs.reduce((somma, d) => somma + (d.data().amount || 0), 0);
@@ -1130,6 +1176,10 @@ async function emettiCreditoAnnullamento(bookingId) {
   await bookingRef.update({ status: "CREDITED" });
   await db.collection("credits").doc(creditCode).set({
     originalBookingId: bookingId,
+    // authUid di chi ha prenotato (non null solo se dispositivo
+    // riconosciuto) — permette a "La mia area" di ritrovare il credito
+    // senza dover comunicare il codice a voce, vedi leMiePrenotazioniECredito.
+    authUid: authUid || null,
     initialAmount: importoPagato,
     remainingAmount: importoPagato,
     status: "ACTIVE",
@@ -1168,7 +1218,7 @@ exports.annullaEConvertiInCredito = onCall(async (request) => {
     throw new HttpsError("failed-precondition", `Impossibile convertire in credito una prenotazione in stato ${stato}.`);
   }
 
-  return await emettiCreditoAnnullamento(bookingId);
+  return await emettiCreditoAnnullamento(bookingId, bookingSnap.data().authUid);
 });
 
 // Self-service dal biglietto: il cliente conosce il token (stessa
@@ -1218,7 +1268,7 @@ exports.annullaPrenotazioneCliente = onCall(async (request) => {
     );
   }
 
-  return await emettiCreditoAnnullamento(ticket.bookingId);
+  return await emettiCreditoAnnullamento(ticket.bookingId, booking.authUid);
 });
 
 // ---------- 3b. Abbonamenti fissi (tennis) ----------
@@ -1471,6 +1521,47 @@ exports.ilMioAbbonamento = onCall(async (request) => {
   }));
 
   return { abbonamenti };
+});
+
+// "La mia area" (abbonamento.html): prenotazioni fatte da questo
+// dispositivo (bookings.authUid, lo stesso identificativo stabile creato
+// all'attivazione) e credito residuo da annullamenti. A differenza di
+// ilMioAbbonamento qui sopra (per socioId, corretto per un dispositivo
+// di famiglia condiviso — un abbonamento appartiene alla persona, non al
+// device) le prenotazioni non hanno un socioId proprio salvato su
+// "bookings" — solo authUid — quindi restano scope al dispositivo: su un
+// device condiviso da più profili si vedono tutte insieme, non filtrate
+// per profilo. Solo query a campo singolo (mai un composto disciplina/
+// data), apposta: niente indice Firestore da creare in anticipo, filtri
+// aggiuntivi fatti qui in JS sul risultato.
+exports.leMiePrenotazioniECredito = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+
+  const [bookingsSnap, creditsSnap] = await Promise.all([
+    db.collection("bookings").where("authUid", "==", request.auth.uid).get(),
+    db.collection("credits").where("authUid", "==", request.auth.uid).get()
+  ]);
+
+  const STATI_VISIBILI = ["CONFIRMED", "CREDITED", "CANCELLED", "COMPLETED"];
+  const bookings = bookingsSnap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(b => STATI_VISIBILI.includes(b.status))
+    .sort((a, b) => (b.date + b.startTime).localeCompare(a.date + a.startTime));
+
+  const dettagliSnap = await Promise.all(bookings.map(b => db.collection("bookingDettagli").doc(b.id).get()));
+  const prenotazioni = bookings.map((b, i) => {
+    const dett = dettagliSnap[i].exists ? dettagliSnap[i].data() : {};
+    const prezzo = (dett.prezzoDettaglio || []).reduce((somma, p) => somma + (p.importo || 0), 0);
+    return { id: b.id, courtId: b.courtId, date: b.date, startTime: b.startTime, endTime: b.endTime, status: b.status, prezzo };
+  });
+
+  const credito = creditsSnap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(c => c.status === "ACTIVE" || c.status === "PARTIALLY_USED")
+    .sort((a, b) => (b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : 0) - (a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : 0))
+    .map(c => ({ id: c.id, remainingAmount: c.remainingAmount }));
+
+  return { prenotazioni, credito };
 });
 
 // Nessun rimborso automatico: se dovuto, lo valuta la segreteria a parte
@@ -3298,7 +3389,7 @@ async function risolviCategoriaPrenotante(auth, profiloId) {
 // da un maestro loggato. Non modifica creaPrenotazionePubblica (padel),
 // che resta la funzione dedicata a quel flusso già in produzione.
 exports.creaPrenotazioneCampo = onCall(
-  { secrets: [POSTFINANCE_SPACE_ID, POSTFINANCE_USER_ID, POSTFINANCE_APP_KEY] },
+  { secrets: [POSTFINANCE_SPACE_ID, POSTFINANCE_USER_ID, POSTFINANCE_APP_KEY, ...MAIL_SECRETS] },
   async (request) => {
     const { courtId, date, startTime, giocatore2Nome, giocatore2SocioId, profiloId } = request.data || {};
     if (!courtId || !date || !startTime) {
