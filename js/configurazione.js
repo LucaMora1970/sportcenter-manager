@@ -1447,9 +1447,21 @@ function tariffaCampoMeta(it) {
   return parts.join(" · ");
 }
 
+// Stesso ordine di DISCIPLINE (Configurazione → Discipline → "Ordine"),
+// non l'ordine di inserimento in Firestore — con più righe per
+// disciplina/posizione/categoria la lista era difficile da scorrere
+// senza un raggruppamento visivo. A parità di disciplina, posizione e
+// categoria (alfabetica) tengono insieme le righe della stessa fascia.
+function loadTariffeCampiOrdine(it) {
+  return (DISCIPLINE.find(d => d.id === it.disciplina) || {}).ordine ?? 99;
+}
+
 async function loadTariffeCampi() {
   const snap = await db.collection("tariffeCampi").get();
-  const tariffe = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const tariffe = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => loadTariffeCampiOrdine(a) - loadTariffeCampiOrdine(b)
+      || (a.posizione || "").localeCompare(b.posizione || "")
+      || (CATEGORIA_LABEL[a.categoria] || a.categoria).localeCompare(CATEGORIA_LABEL[b.categoria] || b.categoria));
   renderSimpleList("tariffecampi-list", tariffe, tariffaCampoLabel, tariffaCampoMeta, "tariffeCampi", loadTariffeCampi, null, startDuplicaTariffaCampo);
 }
 

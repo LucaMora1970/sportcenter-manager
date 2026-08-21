@@ -292,8 +292,6 @@ async function salvaBigliettoPng() {
 // descrittivo, mai un link; se nemmeno quello è supportato, lo copia
 // negli appunti.
 async function condividiBiglietto(data) {
-  const btn = document.getElementById("inoltra-btn");
-  const testoOriginale = btn.querySelector("span").textContent;
   const titolo = `${data.disciplina ? disciplinaLabelBiglietto(data.disciplina) : DISCIPLINA_FALLBACK} — ${document.getElementById("t-data").textContent} ${document.getElementById("t-orario").textContent}`;
   const descrizione = `${titolo} — ${DATI_CENTRO.nome || ""}`;
 
@@ -311,19 +309,26 @@ async function condividiBiglietto(data) {
       await navigator.share({ title: titolo, text: descrizione });
       return;
     }
-    await navigator.clipboard.writeText(descrizione);
-    btn.querySelector("span").textContent = "Copiato";
-    setTimeout(() => { btn.querySelector("span").textContent = testoOriginale; }, 2000);
+    mostraScelteCondivisione(descrizione);
   } catch (err) {
     if (err.name === "AbortError") return; // utente ha chiuso il pannello di condivisione, non è un errore
-    try {
-      await navigator.clipboard.writeText(descrizione);
-      btn.querySelector("span").textContent = "Copiato";
-      setTimeout(() => { btn.querySelector("span").textContent = testoOriginale; }, 2000);
-    } catch {
-      alert("Impossibile condividere automaticamente.\n" + descrizione);
-    }
+    mostraScelteCondivisione(descrizione);
   }
+}
+
+// Desktop (Web Share API assente, o rifiutata dal browser — Safari in
+// particolare la nega se tra il click e la chiamata è passato un await,
+// come qui sopra per disegnare il canvas): prima si copiava solo negli
+// appunti, un feedback minuscolo e facile da non notare — sembrava che
+// "Inoltra" non facesse nulla. Al posto del bottone, due link diretti già
+// pronti col testo — mai il link a biglietto.html (vedi sopra, è anche il
+// modo per annullare la prenotazione).
+function mostraScelteCondivisione(descrizione) {
+  document.getElementById("inoltra-btn").classList.add("hidden");
+  document.getElementById("inoltra-email").href = `mailto:?body=${encodeURIComponent(descrizione)}`;
+  document.getElementById("inoltra-email").classList.remove("hidden");
+  document.getElementById("inoltra-whatsapp").href = `https://wa.me/?text=${encodeURIComponent(descrizione)}`;
+  document.getElementById("inoltra-whatsapp").classList.remove("hidden");
 }
 
 // Ricevuta come vero PDF (jsPDF, via CDN in biglietto.html) — a differenza
