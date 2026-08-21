@@ -1283,7 +1283,7 @@ async function loadAziende() {
 // mostrato una sola volta nella descrizione della sezione, non ripetuto
 // su ogni scheda.
 function initLinkPrenotazioneAziende() {
-  const link = `${basePageUrl()}prenota-campo-v2.html`;
+  const link = `${basePageUrl()}tcm.html`;
   document.getElementById("aziende-link-prenotazione").textContent = link;
   document.getElementById("aziende-copia-link-btn").addEventListener("click", e => copyToClipboard(link, e.currentTarget));
 }
@@ -1993,7 +1993,7 @@ requireAuth(async (profile) => {
   initLinkCopyBox("link-prenota-padel", "copia-link-prenota-padel-btn", "prenota-padel.html");
   initLinkCopyBox("link-tabellone", "copia-link-tabellone-btn", "prenotazioni.html");
   initLinkCopyBox("link-iscrizione-corsi", "copia-link-iscrizione-corsi-btn", "iscrizione-corso.html");
-  initLinkCopyBox("link-prenota-campo-v2", "copia-link-prenota-campo-v2-btn", "prenota-campo-v2.html");
+  initLinkCopyBox("link-prenota-campo-v2", "copia-link-prenota-campo-v2-btn", "tcm.html");
   initLinkCopyBox("link-attiva-socio", "copia-link-attiva-socio-btn", "attiva-socio.html");
   initLinkCopyBox("link-iscrizione-socio", "copia-link-iscrizione-socio-btn", "iscrizione-socio.html");
   initLinkCopyBox("link-chi-in-campo", "copia-link-chi-in-campo-btn", "chi-in-campo.html");

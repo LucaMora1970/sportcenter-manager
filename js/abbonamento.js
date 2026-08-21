@@ -3,7 +3,7 @@
 // cancellazione di una singola settimana), le proprie prenotazioni
 // (tennis/squash/padel, sola lettura) e il credito residuo da eventuali
 // annullamenti. Nessun login staff: si basa sullo stesso riconoscimento
-// dispositivo già usato da prenota-campo-v2.html (sessione Firebase Auth
+// dispositivo già usato da tcm.html (sessione Firebase Auth
 // ottenuta via attiva-socio.html) — se il dispositivo non è riconosciuto,
 // non c'è nulla da mostrare qui.
 //

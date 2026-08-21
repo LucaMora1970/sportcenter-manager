@@ -449,7 +449,7 @@ function aggiungiAlCalendario(data) {
   // tennis/squash/padel in un solo ingresso, non serve più distinguere
   // per disciplina come quando padel aveva ancora la sua pagina a parte.
   const tornaLink = document.getElementById("torna-prenotazione-link");
-  tornaLink.href = "prenota-campo-v2.html";
+  tornaLink.href = "tcm.html";
   tornaLink.setAttribute("aria-label", "Torna alla prenotazione");
 
   // Dopo il salvataggio, si riporta l'utente su un link deciso in

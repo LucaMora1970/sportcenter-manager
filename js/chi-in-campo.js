@@ -1,7 +1,7 @@
 // ============================================================
 // chi-in-campo.js — vista sociale di sola lettura: chi sta giocando ora
 // e più tardi oggi, su tutti gli sport (tennis, squash, padel). Non serve
-// a scegliere un campo (per quello c'è prenota-campo-v2.html/prenota-padel.html),
+// a scegliere un campo (per quello c'è tcm.html/prenota-padel.html),
 // solo a "vedere chi c'è" — Layout 1 scelto esplicitamente: "in campo ora"
 // in evidenza, resto della giornata secondario.
 //
@@ -125,7 +125,7 @@ async function caricaERenderizza() {
   listEl.innerHTML = html;
 }
 
-// Si arriva qui sia da prenota-padel.html sia da prenota-campo-v2.html:
+// Si arriva qui sia da prenota-padel.html sia da tcm.html:
 // invece di scegliere una destinazione fissa, torna semplicemente alla
 // pagina di provenienza (browser back) — l'href statico nell'HTML resta
 // solo come fallback per chi apre questa pagina direttamente (link

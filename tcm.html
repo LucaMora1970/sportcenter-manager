@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Prenota campo — Tennis Club Mendrisio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script>if(localStorage.getItem("sportos-tema")==="light")document.documentElement.setAttribute("data-theme","light");</script>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest-cliente.json">
+<meta name="theme-color" content="#0d1f30">
+<style>
+  .gruppo-pills { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 12px; }
+  .gruppo-pills button {
+    flex: 0 0 auto; font-size: 0.78rem; font-weight: 600; padding: 8px 14px;
+    border-radius: 999px; border: 1px solid var(--court-blue-700); background: var(--court-blue-900);
+    color: var(--chalk-grey); white-space: nowrap;
+  }
+  .gruppo-pills button[aria-pressed="true"] { background: var(--ball); border-color: var(--ball); color: #0d1f30; }
+  /* Stesso distacco che c'è sopra il day-strip (.gruppo-pills padding-bottom
+     12px + .sticky-selectors padding-top 4px) — qui sopra Interno/Esterno
+     c'era solo il padding-bottom:4px del day-strip, molto più stretto. */
+  #posizione-tennis-pills { margin-top: 12px; }
+  /* Tennis/Padel/Squash sono il primo tocco della pagina — stesso
+     trattamento prominente di "90 minuti" nella griglia (Oswald, più
+     grande) invece del testo piccolo generico di .gruppo-pills, che qui
+     sotto resta invariato per gli altri usi (Interno/Esterno). */
+  #gruppo-pills button {
+    font-family: 'Oswald', sans-serif; font-size: 1rem; font-weight: 600; padding: 10px 18px;
+  }
+
+  .socio-box { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    background: var(--court-blue-900); border: 1px solid var(--court-blue-700); border-radius: var(--radius);
+    padding: 10px 14px; margin-bottom: 14px; font-size: 0.8rem; }
+  .socio-box a { color: var(--ball); }
+  .profilo-select { margin-bottom: 14px; }
+
+  /* ---------- Griglia campi/durata × orari ---------- */
+  /* Niente più overflow-x:auto qui: un contenitore con l'overflow
+     impostato (anche solo in orizzontale) diventa il riferimento per gli
+     elementi sticky al suo interno — l'intestazione sotto si sarebbe
+     agganciata a questo div invece che alla pagina, cioè non si sarebbe
+     mai fermata sotto la barra dei giorni scorrendo. I campi in griglia
+     sono pochi, la larghezza resta comunque gestibile senza scroll
+     orizzontale dedicato. */
+  .grid-wrap { margin-bottom: 8px; }
+  table.slot-grid { width: 100%; border-collapse: collapse; font-family: 'Space Mono', monospace; }
+  table.slot-grid th {
+    padding: 6px 3px 10px;
+  }
+  /* La riga di intestazione (numeri campo, o "90 minuti"/"60 minuti" per
+     il padel) resta fissa mentre si scorrono gli orari sotto — sticky
+     invece di scomparire in cima come il resto della tabella. Ferma
+     appena sotto la barra giorni+pillole (anche lei sticky, sopra):
+     l'offset --griglia-sticky-top è calcolato in JS ad ogni render()
+     (l'altezza di quella barra cambia tra le viste, es. il tennis ha in
+     più il toggle Interno/Esterno) invece di un valore fisso qui, che
+     sarebbe stato giusto solo per una vista. Sfondo pieno, altrimenti le
+     righe sotto si vedrebbero scorrere in trasparenza dietro i numeri. */
+  table.slot-grid tr:first-child th {
+    position: sticky; top: var(--griglia-sticky-top, 0px); z-index: 4;
+    background: var(--court-blue-950);
+  }
+  /* Stessa lingua visiva dei tab disciplina (.gruppo-pills) e del day-strip
+     (.day-btn): pillola con accento --ball, non più testo grigio piatto —
+     lega visivamente l'intestazione ai bottoni-slot verdi sotto. */
+  table.slot-grid th .th-pill {
+    display: inline-block; font-family: 'Inter', sans-serif; font-weight: 700; font-size: 0.72rem;
+    color: var(--ball); background: color-mix(in srgb, var(--ball) 16%, transparent);
+    border-radius: 999px; padding: 4px 10px;
+  }
+  :root[data-theme="light"] table.slot-grid th .th-pill { color: var(--ball-dim); }
+  /* Padel: 90'/60' più prominenti, stessa taglia/font del numero giorno
+     nel day-strip (.day-btn .n) invece del testo piccolo dei campi. */
+  table.slot-grid th .th-pill.th-pill-durata {
+    font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 1.05rem; padding: 6px 14px;
+  }
+  table.slot-grid th:first-child { text-align: left; width: 54px; }
+  table.slot-grid td { padding: 4px 3px; text-align: center; }
+  /* Stesso font/peso del numero giorno nel day-strip (.day-btn .n:
+     'Oswald' 600) invece di Space Mono, sia per l'orario "capitolo" che
+     per il testo dentro i bottoni slot. */
+  table.slot-grid td.time-cell {
+    font-family: 'Oswald', sans-serif; font-size: 0.95rem; font-weight: 600;
+    color: var(--line-white); text-align: left; padding-left: 2px;
+  }
+  /* Stesso stile dei bottoni giorno (.day-btn): sfondo/bordo/colore testo
+     identici da riposo, verde pieno quando selezionato — solo il font dei
+     numeri (Oswald 500) resta quello deciso sopra per gli orari/slot. */
+  .slot-btn {
+    display: block; width: 100%; padding: 8px 2px; border-radius: var(--radius);
+    border: 1px solid var(--court-blue-700); background: var(--court-blue-900); color: var(--chalk-grey);
+    font-family: 'Oswald', sans-serif; font-size: 0.8rem; font-weight: 500; cursor: pointer;
+    line-height: 1.3;
+  }
+  /* Colonna 60' (padel): sfondo leggermente diverso, per distinguerla a
+     colpo d'occhio dalla 90' senza introdurre un secondo colore. */
+  .slot-btn.dur-60 { background: var(--court-blue-800); }
+  /* Dopo .dur-60 nel foglio: a parità di specificità vince l'ultima
+     regola — un bottone 60' selezionato deve mostrare lo stato
+     "selezionato" pieno, non il tono della colonna. */
+  .slot-btn.selected {
+    background: var(--ball); border-color: var(--ball); color: var(--court-blue-950);
+  }
+  .slot-empty { display: block; padding: 8px 0; text-align: center; color: var(--chalk-grey-dim); font-size: 0.8rem; }
+
+  .prenota-panel { background: var(--court-blue-900); border: 1px solid var(--court-blue-700); border-radius: var(--radius);
+    padding: 16px; margin-top: 10px; }
+  /* Una volta scelto lo slot, orario e prezzo pesano uguale — prima
+     l'orario era piccolo e grigio, il prezzo grande: ora sono alla pari. */
+  .prenota-panel .pp-orario, .prenota-panel .pp-prezzo {
+    font-family: 'Space Mono', monospace; font-size: 1.1rem; font-weight: 700; color: var(--ball);
+  }
+  .prenota-panel .pp-orario { display: block; margin-top: 2px; }
+  .prenota-panel .pp-prezzo { display: block; margin: 0 0 14px; }
+  :root[data-theme="light"] .prenota-panel .pp-orario,
+  :root[data-theme="light"] .prenota-panel .pp-prezzo { color: var(--ball-dim); }
+  .g2-esito { font-size: 0.76rem; margin-top: 4px; }
+  .g2-esito.ok { color: var(--ball); }
+  .g2-esito.no { color: var(--chalk-grey); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <div>
+      <div class="topbar-kicker" id="centro-kicker">Tennis Club Mendrisio</div>
+      <h1>Prenota campo</h1>
+    </div>
+    <div></div>
+    <div class="topbar-actions">
+      <div class="menu-utente-wrap">
+        <button type="button" class="topbar-link" id="menu-utente-btn" aria-label="Menu" aria-expanded="false">☰</button>
+        <div class="menu-utente-dropdown hidden" id="menu-utente-dropdown">
+          <a href="tcm.html">Prenota campo</a>
+          <a href="abbonamento.html">La mia area</a>
+          <a href="attiva-socio.html">Attiva dispositivo</a>
+          <a href="iscrizione-socio.html">Diventa socio</a>
+          <a href="iscrizione-corso.html">Iscrizione corsi</a>
+          <a href="buono-regalo.html">Regala un buono campo</a>
+          <a href="chi-in-campo.html">Chi c'è in campo</a>
+        </div>
+      </div>
+      <button type="button" class="topbar-link" id="theme-toggle-btn">Tema chiaro</button>
+    </div>
+  </div>
+
+  <main>
+
+    <div class="socio-box" id="socio-box">
+      <span id="socio-box-testo">Stai prenotando come utente esterno</span>
+      <a href="attiva-socio.html">Sei socio/studente/azienda partner?</a>
+    </div>
+    <p style="margin:0 0 6px;"><a href="buono-regalo.html" style="color:var(--ball);font-size:0.8rem;">Regala un buono campo →</a></p>
+    <p style="margin:0 0 14px;"><a href="chi-in-campo.html" style="color:var(--ball);font-size:0.8rem;">Chi c'è in campo adesso →</a></p>
+
+    <div class="field profilo-select hidden" id="profilo-select-box">
+      <label for="profilo-select">Prenoti per</label>
+      <select id="profilo-select"></select>
+    </div>
+
+    <div class="gruppo-pills" id="gruppo-pills"></div>
+
+    <div class="sticky-selectors" id="stickySelectors">
+      <div class="day-strip" id="dayStrip" role="tablist"></div>
+      <div id="subToggleContainer"></div>
+    </div>
+
+    <div id="slot-list">
+      <div class="empty-state"><div class="display">Caricamento…</div></div>
+    </div>
+
+    <div class="error-msg" id="prenota-error"></div>
+
+  </main>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/prenota-campo-v2.js"></script>
+</body>
+</html>

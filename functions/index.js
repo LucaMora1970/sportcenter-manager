@@ -3616,7 +3616,7 @@ exports.creaPrenotazioneCampo = onCall(
           currency: "CHF",
           merchantReference: bookingRef.id,
           successUrl: `${APP_URL}biglietto.html?t=${token}`,
-          failedUrl: `${APP_URL}prenota-campo-v2.html?pagamento=fallito`,
+          failedUrl: `${APP_URL}tcm.html?pagamento=fallito`,
           lineItems: [{
             uniqueId: bookingRef.id,
             name: `Campo ${disciplina} ${date} ${startTime}–${endTime}`,
