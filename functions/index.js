@@ -1197,15 +1197,17 @@ exports.annullaPrenotazioneCliente = onCall(async (request) => {
     throw new HttpsError("failed-precondition", "Questa prenotazione non è (più) annullabile.");
   }
 
+  const discSnap = ticket.disciplina ? await db.collection("discipline").doc(ticket.disciplina).get() : null;
+  const discData = (discSnap && discSnap.exists) ? discSnap.data() : {};
   let oreAnnullamento;
   if (booking.forfaitSocioIds && booking.forfaitSocioIds.length > 0) {
-    // Prenotazione della stagione forfettaria tennis: preavviso proprio,
-    // non quello generico della disciplina (qui non c'è nulla da
-    // rimborsare, vedi emettiCreditoAnnullamento).
-    ({ oreAnnullamento } = await impostazioniForfaitTennis());
+    // Prenotazione della stagione forfettaria: preavviso proprio per
+    // disciplina (discipline/{id}.forfaitOreAnnullamento), separato da
+    // quello a tariffa piena — qui non c'è nulla da rimborsare, vedi
+    // emettiCreditoAnnullamento.
+    oreAnnullamento = discData.forfaitOreAnnullamento != null ? discData.forfaitOreAnnullamento : 24;
   } else {
-    const discSnap = ticket.disciplina ? await db.collection("discipline").doc(ticket.disciplina).get() : null;
-    oreAnnullamento = (discSnap && discSnap.exists && discSnap.data().oreAnnullamento != null) ? discSnap.data().oreAnnullamento : 24;
+    oreAnnullamento = discData.oreAnnullamento != null ? discData.oreAnnullamento : 24;
   }
 
   const oreRimanenti = (zurigoAEpoch(booking.date, booking.startTime) - Date.now()) / 3600000;
@@ -3235,18 +3237,15 @@ async function forfaitAttivoPer({ disciplina, posizione, categoria, dataIso }) {
   });
 }
 
-// Impostazioni della stagione forfettaria tennis (Configurazione →
-// Stagione forfettaria tennis): quante ore future non ancora giocate un
-// socio può avere in sospeso, e con quanto preavviso può annullarle da
-// solo — separato dal preavviso generico di discipline/{id}.oreAnnullamento,
-// perché durante il forfait non c'è nulla da rimborsare.
+// Tetto ore forfait tennis (Configurazione → Forfait stagionale): quante
+// ore future non ancora giocate un socio può avere in sospeso — solo per
+// il tennis, non generalizzato alle altre discipline (a differenza del
+// preavviso di annullo, discipline/{id}.forfaitOreAnnullamento, che è per
+// disciplina).
 async function impostazioniForfaitTennis() {
   const snap = await db.collection("impostazioni").doc("generale").get();
   const g = snap.exists ? snap.data() : {};
-  return {
-    oreMassimePendenti: g.forfaitTennisOreMassimePendenti ?? 3,
-    oreAnnullamento: g.forfaitTennisOreAnnullamento ?? 24
-  };
+  return { oreMassimePendenti: g.forfaitTennisOreMassimePendenti ?? 3 };
 }
 
 // Somma le ore (interno+esterno insieme) delle prenotazioni tennis

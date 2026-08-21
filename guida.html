@@ -168,9 +168,9 @@
       </div>
 
       <div class="voce">
-        <span class="dove">Configurazione → Discipline → modifica una disciplina → "Ore minime di preavviso per annullare una prenotazione"</span>
+        <span class="dove">Configurazione → Discipline → modifica una disciplina → "Ore di preavviso per annullare — tariffa piena" / "— stagione forfait"</span>
         <div class="cosa">Entro quanto tempo una prenotazione è annullabile gratuitamente</div>
-        <div class="come">Un valore per disciplina (tennis/padel/squash possono averne uno diverso). Fino a quel numero di ore prima dell'inizio, chi ha prenotato può annullare da solo dal biglietto e riceve subito un credito automatico. Campo vuoto = default 24 ore. Passata la soglia, l'annullo self-service dal biglietto non è più possibile: serve contattare il centro. Vedi anche <a href="#biglietto">Biglietto</a>.</div>
+        <div class="come">Due valori indipendenti per disciplina (tennis/padel/squash possono averne di diversi, e anche il tariffa-piena può differire dal forfait della stessa disciplina). Fino a quel numero di ore prima dell'inizio, chi ha prenotato può annullare da solo dal biglietto: nel periodo a tariffa piena riceve subito un credito automatico, nel periodo forfait si libera solo lo slot (non ha pagato nulla, vedi <a href="#forfait">Forfait stagionale</a>). Campo vuoto = default 24 ore per entrambi. Passata la soglia, l'annullo self-service dal biglietto non è più possibile: serve contattare il centro. Vedi anche <a href="#biglietto">Biglietto</a>.</div>
       </div>
 
     </div>
@@ -225,12 +225,6 @@
         <span class="dove">Configurazione → Forfait stagionale → "Solo per il tennis" (in cima alla sezione)</span>
         <div class="cosa">Ore future prenotabili in anticipo, non ancora giocate (solo tennis)</div>
         <div class="come">Durante il periodo forfettario non c'è un tetto di partite totali, ma un socio non può avere più di queste ore — interno ed esterno sommati insieme — ancora da giocare in un dato momento. Appena una prenotazione passa (o viene annullata in tempo), il conteggio scende e può prenotarne un'altra. Default 3 ore se non impostato. Chi supera il tetto non può prenotare oltre, punto: nessuna tariffa piena di ripiego.</div>
-      </div>
-
-      <div class="voce">
-        <span class="dove">Configurazione → Forfait stagionale → "Ore minime di preavviso per annullare" (in cima alla sezione)</span>
-        <div class="cosa">Preavviso di annullamento self-service, specifico per il forfait tennis</div>
-        <div class="come">Separato dal preavviso generico di <a href="#discipline">Discipline</a>: durante il forfait non c'è nulla da rimborsare (il socio non ha pagato nulla), quindi l'annullamento libera solo lo slot, senza credito. Default 24 ore se non impostato.</div>
       </div>
 
     </div>

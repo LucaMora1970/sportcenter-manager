@@ -306,7 +306,8 @@ async function loadDisciplineList() {
   let discipline = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
   const migrated = await migrateDisciplineOrderIfMissing(discipline);
-  if (migrated) {
+  const migratedForfait = await migraForfaitOreAnnullamentoSeAssente(discipline);
+  if (migrated || migratedForfait) {
     snap = await db.collection("discipline").get();
     discipline = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   }
@@ -337,6 +338,7 @@ function startEditDisciplina(item) {
   document.getElementById("new-disciplina-nome").value = item.nome || "";
   document.getElementById("new-disciplina-ordine").value = item.ordine != null ? item.ordine : "";
   document.getElementById("new-disciplina-ore-annullamento").value = item.oreAnnullamento != null ? item.oreAnnullamento : "";
+  document.getElementById("new-disciplina-forfait-ore-annullamento").value = item.forfaitOreAnnullamento != null ? item.forfaitOreAnnullamento : "";
   document.getElementById("create-disciplina-btn").textContent = "Salva modifiche";
   document.getElementById("cancel-edit-disciplina-btn").classList.remove("hidden");
   document.getElementById("new-disciplina-form").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -363,14 +365,16 @@ async function onCreateDisciplina(e) {
   const ordine = ordineRaw !== "" ? parseInt(ordineRaw, 10) : 99;
   const oreAnnullamentoRaw = document.getElementById("new-disciplina-ore-annullamento").value;
   const oreAnnullamento = oreAnnullamentoRaw !== "" ? parseInt(oreAnnullamentoRaw, 10) : null;
+  const forfaitOreAnnullamentoRaw = document.getElementById("new-disciplina-forfait-ore-annullamento").value;
+  const forfaitOreAnnullamento = forfaitOreAnnullamentoRaw !== "" ? parseInt(forfaitOreAnnullamentoRaw, 10) : null;
 
   try {
     if (!nome) throw new Error("Inserisci un nome.");
     if (editingDisciplinaId) {
-      await db.collection("discipline").doc(editingDisciplinaId).update({ nome, ordine, oreAnnullamento });
+      await db.collection("discipline").doc(editingDisciplinaId).update({ nome, ordine, oreAnnullamento, forfaitOreAnnullamento });
     } else {
       if (!id) throw new Error("Inserisci un ID disciplina (es. mental-coach).");
-      await db.collection("discipline").doc(id).set({ nome, ordine, oreAnnullamento, attivo: true });
+      await db.collection("discipline").doc(id).set({ nome, ordine, oreAnnullamento, forfaitOreAnnullamento, attivo: true });
     }
     cancelEditDisciplina();
     await loadDisciplineList();
@@ -1728,7 +1732,23 @@ async function loadForfaitTennisImpostazioni() {
   const snap = await db.collection("impostazioni").doc("generale").get();
   const g = snap.exists ? snap.data() : {};
   document.getElementById("ft-ore-massime-pendenti").value = g.forfaitTennisOreMassimePendenti ?? 3;
-  document.getElementById("ft-ore-annullamento").value = g.forfaitTennisOreAnnullamento ?? 24;
+}
+
+// Il preavviso per annullare durante il forfait era, prima, un unico
+// valore globale "solo tennis" (impostazioni/generale.forfaitTennisOreAnnullamento)
+// — ora è un campo per disciplina come l'analogo a tariffa piena (vedi
+// discipline/{id}.forfaitOreAnnullamento). Chi aveva già configurato un
+// valore diverso dal default lo ritrova qui, copiato una sola volta sul
+// tennis, invece di doverlo reinserire — mai sovrascrive un valore già
+// presente sul tennis (es. da un run precedente di questa stessa migrazione).
+async function migraForfaitOreAnnullamentoSeAssente(discipline) {
+  const tennis = discipline.find(d => d.id === "tennis");
+  if (!tennis || tennis.forfaitOreAnnullamento != null) return false;
+  const snap = await db.collection("impostazioni").doc("generale").get();
+  const valore = snap.exists ? snap.data().forfaitTennisOreAnnullamento : null;
+  if (valore == null) return false;
+  await db.collection("discipline").doc("tennis").update({ forfaitOreAnnullamento: valore });
+  return true;
 }
 
 async function onSaveForfaitTennisImpostazioni(e) {
@@ -1739,11 +1759,9 @@ async function onSaveForfaitTennisImpostazioni(e) {
   btn.disabled = true;
   try {
     const forfaitTennisOreMassimePendenti = parseInt(document.getElementById("ft-ore-massime-pendenti").value, 10);
-    const forfaitTennisOreAnnullamento = parseInt(document.getElementById("ft-ore-annullamento").value, 10);
     if (!forfaitTennisOreMassimePendenti || forfaitTennisOreMassimePendenti < 1) throw new Error("Inserisci un numero di ore valido.");
-    if (isNaN(forfaitTennisOreAnnullamento) || forfaitTennisOreAnnullamento < 0) throw new Error("Inserisci un preavviso valido.");
     await db.collection("impostazioni").doc("generale").set(
-      { forfaitTennisOreMassimePendenti, forfaitTennisOreAnnullamento }, { merge: true }
+      { forfaitTennisOreMassimePendenti }, { merge: true }
     );
   } catch (err) {
     showError(errorEl, "Errore: " + err.message);
