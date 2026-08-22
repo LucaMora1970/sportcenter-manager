@@ -308,22 +308,17 @@ function renderAllievi(lista) {
   const el = document.getElementById("allievi-list-report");
 
   if (lista.length === 0) {
-    el.innerHTML = `<div class="empty-state"><div class="display">Nessuna voce nel periodo</div></div>`;
+    el.innerHTML = `<div class="empty-state"><div class="display">Nessun allievo nel periodo</div></div>`;
     return;
   }
 
   el.innerHTML = lista.map(a => `
-    <div class="dipendente-block" data-aid="${a.aid}">
-      <div class="entry-card">
-        <div class="entry-main">
-          <div class="entry-tipo">${escapeHtml(a.nome)}</div>
-        </div>
-        <div class="entry-ore">${a.totale.toFixed(1)}h</div>
-      </div>
-      <div class="dipendente-actions">
-        <button type="button" class="btn btn-ghost toggle-dettaglio-allievo-btn" data-aid="${a.aid}">Dettaglio</button>
-        <button type="button" class="btn btn-ghost stampa-allievo-btn" data-aid="${a.aid}">Stampa / PDF</button>
-      </div>
+    <div class="allievo-block" data-aid="${a.aid}">
+      <button type="button" class="allievo-row toggle-dettaglio-allievo-btn" data-aid="${a.aid}" aria-expanded="false">
+        <span class="allievo-nome">${escapeHtml(a.nome)}</span>
+        <span class="allievo-ore">${a.totale.toFixed(1)}h</span>
+        <span class="allievo-toggle-icon">+</span>
+      </button>
       <div class="dettaglio-giorni hidden" id="dettaglio-allievo-${a.aid}"></div>
     </div>
   `).join("");
@@ -331,22 +326,36 @@ function renderAllievi(lista) {
   el.querySelectorAll(".toggle-dettaglio-allievo-btn").forEach(btn => {
     btn.addEventListener("click", () => toggleDettaglioAllievo(btn.dataset.aid));
   });
-  el.querySelectorAll(".stampa-allievo-btn").forEach(btn => {
-    btn.addEventListener("click", () => stampaReportAllievo(btn.dataset.aid));
-  });
+}
+
+// Filtra perAllievo per nome (case-insensitive) in base al campo ricerca
+// e ridisegna la lista — puramente client-side, i dati sono già in memoria.
+function filtraERenderAllievi() {
+  const tutti = (ultimoTutti && ultimoTutti.perAllievo) || [];
+  const query = document.getElementById("allievi-search-input").value.trim().toLowerCase();
+  const filtrati = query ? tutti.filter(a => a.nome.toLowerCase().includes(query)) : tutti;
+  renderAllievi(filtrati);
 }
 
 function toggleDettaglioAllievo(aid) {
   const container = document.getElementById(`dettaglio-allievo-${aid}`);
+  const row = document.querySelector(`.toggle-dettaglio-allievo-btn[data-aid="${aid}"]`);
+  const icon = row ? row.querySelector(".allievo-toggle-icon") : null;
   if (!container) return;
 
   if (!container.classList.contains("hidden")) {
     container.classList.add("hidden");
+    if (row) row.setAttribute("aria-expanded", "false");
+    if (icon) icon.textContent = "+";
     return;
   }
 
   const allievo = (ultimoTutti.perAllievo || []).find(a => a.aid === aid);
-  container.innerHTML = renderDettaglioGiorniHtml(allievo);
+  container.innerHTML = `
+    <button type="button" class="btn btn-ghost stampa-allievo-btn" data-aid="${aid}" style="margin-bottom:10px;">Stampa / PDF</button>
+    ${renderDettaglioGiorniHtml(allievo, { mostraMaestro: true })}
+  `;
+  container.querySelector(".stampa-allievo-btn").addEventListener("click", () => stampaReportAllievo(aid));
   container.querySelectorAll(".delete-diario-btn").forEach(btn => {
     btn.addEventListener("click", async () => {
       if (!confirm("Eliminare questa voce? L'operazione non è reversibile.")) return;
@@ -361,6 +370,8 @@ function toggleDettaglioAllievo(aid) {
     });
   });
   container.classList.remove("hidden");
+  if (row) row.setAttribute("aria-expanded", "true");
+  if (icon) icon.textContent = "−";
 }
 
 function stampaReportAllievo(aid) {
@@ -371,7 +382,7 @@ function stampaReportAllievo(aid) {
 
 // Raggruppa le voci di un dipendente per data (più recente prima), con
 // un mini-totale per giorno, riusando lo stesso stile card del diario.
-function renderDettaglioGiorniHtml(dipendente) {
+function renderDettaglioGiorniHtml(dipendente, opts = {}) {
   if (!dipendente || dipendente.entries.length === 0) {
     return `<div class="empty-state"><div class="display">Nessuna voce</div></div>`;
   }
@@ -389,16 +400,17 @@ function renderDettaglioGiorniHtml(dipendente) {
     const totaleGiorno = entries.reduce((s, en) => s + (en.ore || 0), 0);
     return `
       <div class="row-label">${formatDataBreve(data)} · ${totaleGiorno.toFixed(1)}h</div>
-      ${entries.map(en => entryRowHtml(en)).join("")}
+      ${entries.map(en => entryRowHtml(en, opts)).join("")}
     `;
   }).join("");
 }
 
-function entryRowHtml(en) {
+function entryRowHtml(en, opts = {}) {
   const metaParts = [];
   if (en.campoNumero) metaParts.push("Campo " + en.campoNumero);
   if (en.tipoGruppoNome) metaParts.push(en.tipoGruppoNome);
   if (nomiAllievi(en)) metaParts.push("Allievo: " + nomiAllievi(en));
+  if (opts.mostraMaestro && en.userNome) metaParts.push("Maestro: " + en.userNome);
   if (en.oraInizio || en.oraFine) metaParts.push(`${en.oraInizio || "—"}–${en.oraFine || "—"}`);
   if (en.note) metaParts.push(en.note);
 
@@ -615,6 +627,38 @@ function stampaRiepilogoCompleto() {
   window.print();
 }
 
+// Listato compatto (nome + ore) di tutti gli allievi correntemente
+// mostrati (rispetta il filtro di ricerca), per stampa/PDF — separato
+// dallo stampa-singolo-allievo, che porta invece il dettaglio giorno per
+// giorno di un solo allievo.
+function stampaListaAllievi() {
+  const query = document.getElementById("allievi-search-input").value.trim().toLowerCase();
+  const tutti = (ultimoTutti && ultimoTutti.perAllievo) || [];
+  const lista = query ? tutti.filter(a => a.nome.toLowerCase().includes(query)) : tutti;
+  if (lista.length === 0) return;
+
+  const righe = lista.map(a => `
+    <tr>
+      <td>${escapeHtml(a.nome)}</td>
+      <td>${a.totale.toFixed(2)}</td>
+    </tr>
+  `).join("");
+
+  const totOre = lista.reduce((s, a) => s + a.totale, 0);
+
+  document.getElementById("print-area").innerHTML = `
+    <h1>Lista allievi</h1>
+    <p>Periodo: ${formatDataBreve(ultimoPeriodo.dal)} – ${formatDataBreve(ultimoPeriodo.al)}</p>
+    <table>
+      <thead><tr><th>Allievo</th><th>Ore</th></tr></thead>
+      <tbody>${righe}</tbody>
+      <tfoot><tr><th>Totale</th><th>${totOre.toFixed(2)}</th></tr></tfoot>
+    </table>
+  `;
+
+  window.print();
+}
+
 function renderPerTipoAttivita(lista) {
   const el = document.getElementById("tipoattivita-list");
 
@@ -662,7 +706,7 @@ async function calcola() {
       renderDipendenti(tutti.perDipendente);
       renderRiepilogoContabilita(tutti.perDipendente);
       renderPerTipoAttivita(tutti.perTipoAttivita);
-      renderAllievi(tutti.perAllievo);
+      filtraERenderAllievi();
 
       document.getElementById("totale-complessivo-ore").innerHTML = `${tutti.totaleOre.toFixed(1)}<small>h</small>`;
       document.getElementById("totale-complessivo-costo").textContent = `CHF ${tutti.totaleCosto.toFixed(2)}`;
@@ -729,6 +773,8 @@ requireAuth(async (profile) => {
   });
 
   document.getElementById("stampa-tutti-btn").addEventListener("click", stampaRiepilogoCompleto);
+  document.getElementById("allievi-search-input").addEventListener("input", filtraERenderAllievi);
+  document.getElementById("stampa-lista-allievi-btn").addEventListener("click", stampaListaAllievi);
 
   await loadDiscipline();
   await loadImpostazioni();

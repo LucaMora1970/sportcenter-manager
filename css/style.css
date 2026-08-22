@@ -669,6 +669,122 @@ select:focus, input:focus, textarea:focus {
 .semaforo-dot[data-selected="true"].verde { background: #7f9e4a; }
 .dettaglio-giorni .entry-card { margin-bottom: 8px; }
 
+/* Resoconto: riga allievo compatta ("Per allievo"), un tocco per
+   espandere invece dei due bottoni pieni "Dettaglio"/"Stampa" sempre
+   visibili — la lista può contenere molti più nomi che dipendenti. */
+.allievo-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  background: var(--court-blue-900);
+  border: 1px solid var(--court-blue-700);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+.allievo-block:has(.dettaglio-giorni:not(.hidden)) .allievo-row {
+  border-radius: var(--radius) var(--radius) 0 0;
+  margin-bottom: 0;
+  border-bottom: none;
+}
+.allievo-nome { font-size: 0.88rem; font-weight: 600; color: var(--line-white); flex: 1; min-width: 0; }
+.allievo-ore { font-family: 'Space Mono', monospace; font-size: 0.95rem; color: var(--ball); white-space: nowrap; }
+.allievo-toggle-icon {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--court-blue-700);
+  border-radius: 50%;
+  font-size: 0.9rem;
+  line-height: 1;
+  color: var(--chalk-grey);
+}
+.allievo-block .dettaglio-giorni { margin-bottom: 10px; }
+
+/* Configurazione: slot foto fissi (discipline, sponsor) — anteprima
+   quadrata a sinistra, campo file + bottone a destra. */
+.foto-slot-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  background: var(--court-blue-900);
+  border: 1px solid var(--court-blue-700);
+  border-radius: var(--radius);
+  padding: 12px;
+  margin-bottom: 10px;
+}
+.foto-slot-preview {
+  width: 72px;
+  height: 72px;
+  flex: 0 0 auto;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--court-blue-700);
+}
+.foto-slot-preview-vuota {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 0.65rem;
+  color: var(--chalk-grey);
+  padding: 4px;
+}
+.foto-slot-main { flex: 1; min-width: 0; }
+.foto-slot-main input[type="file"] { display: block; width: 100%; font-size: 0.75rem; color: var(--chalk-grey); margin: 6px 0; }
+.foto-slot-main .btn { width: auto; padding: 8px 12px; font-size: 0.7rem; }
+
+/* Prenota campo (tcm.html): foto della disciplina/posizione scelta, per
+   far vedere al cliente dove giocherà prima ancora di scegliere l'orario.
+   Nascosta finché non c'è una foto configurata per quella scheda. */
+.hero-foto-disciplina {
+  width: 100%;
+  height: 130px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-bottom: 14px;
+  background: var(--court-blue-900);
+  border: 1px solid var(--court-blue-700);
+}
+.hero-foto-disciplina img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  opacity: 1;
+  transition: opacity 0.25s ease;
+}
+.hero-foto-disciplina img.hero-foto-caricamento { opacity: 0; }
+
+/* Banner sponsor: carosello a scomparsa in fondo alle pagine pubbliche,
+   periodo dal/al gestito da Configurazione. */
+.sponsor-banner {
+  margin-top: 20px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--court-blue-700);
+  position: relative;
+  height: 70px;
+}
+.sponsor-banner-slide {
+  position: absolute;
+  inset: 0;
+  display: block;
+  opacity: 0;
+  transition: opacity 0.6s ease;
+  pointer-events: none;
+}
+.sponsor-banner-slide.attiva { opacity: 1; pointer-events: auto; }
+.sponsor-banner-slide img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
 /* Tabella riepilogo contabilità (in-app, tema scuro) */
 .app-table {
   width: 100%;

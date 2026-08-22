@@ -219,7 +219,7 @@ async function onRimuoviFestivo(data) {
 
 // ---------- Helper lista generica con toggle attivo ----------
 
-function renderSimpleList(containerId, items, labelFn, metaFn, collectionName, reloadFn, onEdit, onDuplicate) {
+function renderSimpleList(containerId, items, labelFn, metaFn, collectionName, reloadFn, onEdit, onDuplicate, imageFn) {
   const list = document.getElementById(containerId);
 
   if (items.length === 0) {
@@ -229,6 +229,7 @@ function renderSimpleList(containerId, items, labelFn, metaFn, collectionName, r
 
   list.innerHTML = items.map(it => `
     <div class="entry-card" data-id="${it.id}">
+      ${imageFn && imageFn(it) ? `<img class="foto-slot-preview" src="${imageFn(it)}" alt="">` : ""}
       <div class="entry-main">
         <div class="entry-tipo">${escapeHtml(labelFn(it))}</div>
         <div class="entry-meta">${escapeHtml(metaFn(it))}</div>
@@ -416,6 +417,132 @@ async function onCreateDisciplina(e) {
     await loadDisciplineList();
     await loadDiscipline();
     refreshDisciplinaSelects();
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ---------- Foto discipline ----------
+
+const FOTO_DISCIPLINE_SLOTS = [
+  { key: "tennisInterno", label: "Tennis — Interno", storagePath: "discipline/tennis-interno.jpg" },
+  { key: "tennisEsterno", label: "Tennis — Esterno", storagePath: "discipline/tennis-esterno.jpg" },
+  { key: "padel", label: "Padel", storagePath: "discipline/padel.jpg" },
+  { key: "squash", label: "Squash", storagePath: "discipline/squash.jpg" }
+];
+
+async function loadFotoDisciplineForm() {
+  await loadFotoDiscipline();
+
+  document.getElementById("foto-discipline-list").innerHTML = FOTO_DISCIPLINE_SLOTS.map(slot => `
+    <div class="foto-slot-row">
+      ${FOTO_DISCIPLINE[slot.key]
+        ? `<img class="foto-slot-preview" src="${FOTO_DISCIPLINE[slot.key]}" alt="${escapeHtml(slot.label)}">`
+        : `<div class="foto-slot-preview foto-slot-preview-vuota">Nessuna foto</div>`}
+      <div class="foto-slot-main">
+        <div class="entry-tipo">${escapeHtml(slot.label)}</div>
+        <input type="file" accept="image/*" id="foto-disciplina-input-${slot.key}">
+        <button type="button" class="btn btn-ghost foto-disciplina-upload-btn" data-key="${slot.key}">Carica foto</button>
+      </div>
+    </div>
+  `).join("");
+
+  document.querySelectorAll(".foto-disciplina-upload-btn").forEach(btn => {
+    btn.addEventListener("click", () => onUploadFotoDisciplina(btn.dataset.key));
+  });
+}
+
+async function onUploadFotoDisciplina(key) {
+  const slot = FOTO_DISCIPLINE_SLOTS.find(s => s.key === key);
+  const input = document.getElementById(`foto-disciplina-input-${key}`);
+  const errorEl = document.getElementById("foto-discipline-error");
+  const btn = document.querySelector(`.foto-disciplina-upload-btn[data-key="${key}"]`);
+  errorEl.textContent = "";
+
+  const file = input.files[0];
+  if (!file) { showError(errorEl, "Scegli prima un file immagine."); return; }
+
+  btn.disabled = true;
+  btn.textContent = "Caricamento…";
+  try {
+    const url = await uploadCompressedImage(file, slot.storagePath, { maxWidth: 1600, maxHeight: 900, quality: 0.78 });
+    await db.collection("impostazioni").doc("fotoDiscipline").set({ [key]: url }, { merge: true });
+    await loadFotoDisciplineForm();
+  } catch (err) {
+    showError(errorEl, "Errore nel caricamento: " + err.message);
+    btn.disabled = false;
+    btn.textContent = "Carica foto";
+  }
+}
+
+// ---------- Sponsor ----------
+
+let editingSponsorId = null;
+let editingSponsorImageUrl = "";
+
+async function loadSponsorList() {
+  const list = document.getElementById("sponsor-list");
+  list.innerHTML = `<div class="empty-state"><div class="display">Caricamento…</div></div>`;
+
+  const snap = await db.collection("sponsor").get();
+  const sponsor = sortByOrdine(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+
+  const metaFn = it => `dal ${it.dal || "—"} al ${it.al || "—"}${it.link ? " · " + it.link : ""}`;
+  renderSimpleList("sponsor-list", sponsor, it => it.nome, metaFn, "sponsor", loadSponsorList, startEditSponsor, null, it => it.imageUrl);
+}
+
+function startEditSponsor(item) {
+  editingSponsorId = item.id;
+  editingSponsorImageUrl = item.imageUrl || "";
+  document.getElementById("new-sponsor-nome").value = item.nome || "";
+  document.getElementById("new-sponsor-link").value = item.link || "";
+  document.getElementById("new-sponsor-dal").value = item.dal || "";
+  document.getElementById("new-sponsor-al").value = item.al || "";
+  document.getElementById("new-sponsor-ordine").value = item.ordine != null ? item.ordine : "";
+  document.getElementById("create-sponsor-btn").textContent = "Salva modifiche";
+  document.getElementById("cancel-edit-sponsor-btn").classList.remove("hidden");
+  document.getElementById("new-sponsor-form").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function cancelEditSponsor() {
+  editingSponsorId = null;
+  editingSponsorImageUrl = "";
+  document.getElementById("new-sponsor-form").reset();
+  document.getElementById("create-sponsor-btn").textContent = "+ Aggiungi sponsor";
+  document.getElementById("cancel-edit-sponsor-btn").classList.add("hidden");
+}
+
+async function onCreateSponsor(e) {
+  e.preventDefault();
+  const btn = document.getElementById("create-sponsor-btn");
+  const errorEl = document.getElementById("new-sponsor-error");
+  errorEl.textContent = "";
+  btn.disabled = true;
+
+  const nome = document.getElementById("new-sponsor-nome").value.trim();
+  const link = document.getElementById("new-sponsor-link").value.trim();
+  const dal = document.getElementById("new-sponsor-dal").value;
+  const al = document.getElementById("new-sponsor-al").value;
+  const ordineRaw = document.getElementById("new-sponsor-ordine").value;
+  const ordine = ordineRaw !== "" ? parseInt(ordineRaw, 10) : 99;
+  const file = document.getElementById("new-sponsor-immagine").files[0];
+
+  try {
+    if (!nome) throw new Error("Inserisci un nome.");
+    if (!dal || !al) throw new Error("Inserisci dal e al.");
+    if (!editingSponsorId && !file) throw new Error("Carica un'immagine.");
+
+    const id = editingSponsorId || db.collection("sponsor").doc().id;
+    let imageUrl = editingSponsorImageUrl;
+    if (file) {
+      imageUrl = await uploadCompressedImage(file, `sponsor/${id}.jpg`, { maxWidth: 1200, maxHeight: 500, quality: 0.78 });
+    }
+
+    await db.collection("sponsor").doc(id).set({ nome, imageUrl, link, dal, al, ordine, attivo: true }, { merge: true });
+    cancelEditSponsor();
+    await loadSponsorList();
   } catch (err) {
     showError(errorEl, "Errore: " + err.message);
   } finally {
@@ -2060,6 +2187,8 @@ requireAuth(async (profile) => {
   document.getElementById("cancel-edit-disciplina-btn").addEventListener("click", cancelEditDisciplina);
   document.getElementById("new-allievo-form").addEventListener("submit", onCreateAllievo);
   document.getElementById("cancel-edit-allievo-btn").addEventListener("click", cancelEditAllievo);
+  document.getElementById("new-sponsor-form").addEventListener("submit", onCreateSponsor);
+  document.getElementById("cancel-edit-sponsor-btn").addEventListener("click", cancelEditSponsor);
   document.getElementById("new-tipoutenza-form").addEventListener("submit", onCreateTipoUtenza);
   document.getElementById("cancel-edit-tipoutenza-btn").addEventListener("click", cancelEditTipoUtenza);
   document.getElementById("new-campo-form").addEventListener("submit", onCreateCampo);
@@ -2097,6 +2226,8 @@ requireAuth(async (profile) => {
   await loadImpostazioniForm();
   await loadDatiCentroForm();
   await loadDisciplineList();
+  await loadFotoDisciplineForm();
+  await loadSponsorList();
   await loadAllievi();
   await loadTipiUtenza();
   await loadCampi();

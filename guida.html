@@ -176,6 +176,34 @@
     </div>
     </details>
 
+    <!-- ===================== Foto discipline ===================== -->
+    <details class="config-section" id="foto-discipline">
+    <summary><h2>Foto discipline</h2></summary>
+    <div class="config-section-body">
+
+      <div class="voce">
+        <span class="dove">Configurazione → Foto discipline</span>
+        <div class="cosa">Foto mostrate su <code>tcm.html</code> (pagina pubblica "Prenota campo")</div>
+        <div class="come">Quattro slot fissi: Tennis Interno, Tennis Esterno, Padel, Squash — cambiano in base alla disciplina/posizione scelta dal cliente, prima ancora che scelga l'orario. Formato consigliato: orizzontale (paesaggio), JPG, almeno 1200×600 px. Al caricamento l'immagine viene ridimensionata e compressa automaticamente lato browser (max 1600×900 px) prima di salire su Firebase Storage — non serve prepararla a mano, e non appesantisce il caricamento della pagina pubblica. Slot senza foto = nessun banner mostrato per quella scheda (non uno spazio vuoto/rotto).</div>
+      </div>
+
+    </div>
+    </details>
+
+    <!-- ===================== Sponsor ===================== -->
+    <details class="config-section" id="sponsor">
+    <summary><h2>Sponsor</h2></summary>
+    <div class="config-section-body">
+
+      <div class="voce">
+        <span class="dove">Configurazione → Sponsor</span>
+        <div class="cosa">Banner sponsor sulle pagine pubbliche</div>
+        <div class="come">Nome, immagine, link facoltativo (dove porta il tap), e un periodo "dal"/"al" — lo sponsor è visibile solo mentre la data odierna cade in quel periodo, così si possono preparare più campagne in anticipo senza doverle attivare/disattivare a mano il giorno giusto. Con più sponsor attivi contemporaneamente, il banner li fa scorrere in un carosello automatico. Stessa compressione automatica delle foto disciplina; formato consigliato: orizzontale (paesaggio), JPG, circa 1200×400 px.</div>
+      </div>
+
+    </div>
+    </details>
+
     <!-- ===================== Campi ===================== -->
     <details class="config-section" id="campi">
     <summary><h2>Campi</h2></summary>

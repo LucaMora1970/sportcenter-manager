@@ -245,6 +245,16 @@ service cloud.firestore {
       allow write: if hasPermission("config:gestisci");
     }
 
+    // Sponsor: banner con foto/link/periodo (dal/al) mostrato sulle
+    // pagine pubbliche di prenotazione. Stesso ragionamento di lettura
+    // pubblica delle altre collection di configurazione non sensibili;
+    // il filtro sul periodo attivo è fatto lato client, qui basta poter
+    // leggere l'elenco senza login.
+    match /sponsor/{id} {
+      allow read: if true;
+      allow write: if hasPermission("config:gestisci");
+    }
+
     // Quote campo: importo dovuto dal collaboratore al circolo per l'uso
     // del campo, in base a disciplina/posizione/periodo (e per il padel
     // durata+fascia oraria). Stesso pattern di lettura/scrittura delle

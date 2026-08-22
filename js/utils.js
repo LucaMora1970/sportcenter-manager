@@ -121,6 +121,21 @@ async function loadDatiCentro() {
   }
 }
 
+// Popolate da loadFotoDiscipline() (doc Firestore "impostazioni/fotoDiscipline",
+// configurabile da Configurazione → Foto discipline). Slot fissi (non una
+// per disciplina configurabile dinamicamente: solo le 4 che si prenotano
+// davvero da tcm.html) — url vuoto finché nessuno carica una foto.
+let FOTO_DISCIPLINE = { tennisInterno: "", tennisEsterno: "", padel: "", squash: "" };
+
+async function loadFotoDiscipline() {
+  try {
+    const doc = await db.collection("impostazioni").doc("fotoDiscipline").get();
+    if (doc.exists) FOTO_DISCIPLINE = { ...FOTO_DISCIPLINE, ...doc.data() };
+  } catch (err) {
+    console.warn("loadFotoDiscipline: nessuna foto, lettura fallita:", err.message);
+  }
+}
+
 // Indirizzo e contatti del centro come due righe di testo pronte
 // all'uso, ovunque serva un'intestazione compatta oltre alla stampa
 // (es. biglietto a schermo, PNG scaricabile) — stessa formattazione di

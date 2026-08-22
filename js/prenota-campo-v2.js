@@ -362,7 +362,80 @@ function selezionaGruppo(key) {
   state.gruppoKey = key;
   const disciplinaAttiva = gruppoAttivo()?.disciplina;
   document.querySelectorAll("#gruppo-pills button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.disciplina === disciplinaAttiva)));
+  aggiornaHeroFoto();
   ascoltaPrenotazioniGiorno();
+}
+
+// ---------- Banner sponsor ----------
+
+// Solo sponsor attivi e nel periodo dal/al odierno (confronto stringa,
+// stesso formato ISO "YYYY-MM-DD" usato altrove nell'app) — la pagina è
+// pubblica, senza login, quindi il filtro va rifatto a ogni caricamento
+// invece di fidarsi di uno stato salvato. Se manca la foto (upload non
+// ancora fatto) lo sponsor viene comunque escluso: niente banner rotto.
+async function caricaSponsorBanner() {
+  const wrap = document.getElementById("sponsor-banner");
+  if (!wrap) return;
+
+  try {
+    const snap = await db.collection("sponsor").get();
+    const oggi = toISO(new Date());
+    const attivi = snap.docs
+      .map(d => d.data())
+      .filter(s => s.attivo !== false && s.imageUrl && s.dal && s.al && s.dal <= oggi && s.al >= oggi)
+      .sort((a, b) => (a.ordine != null ? a.ordine : 99) - (b.ordine != null ? b.ordine : 99));
+
+    if (attivi.length === 0) { wrap.classList.add("hidden"); return; }
+
+    wrap.innerHTML = attivi.map((s, i) => `
+      <a class="sponsor-banner-slide${i === 0 ? " attiva" : ""}" href="${escapeHtml(s.link || "#")}" ${s.link ? 'target="_blank" rel="noopener"' : "onclick=\"return false;\""} aria-label="${escapeHtml(s.nome)}">
+        <img src="${s.imageUrl}" alt="${escapeHtml(s.nome)}">
+      </a>
+    `).join("");
+    wrap.classList.remove("hidden");
+
+    if (attivi.length > 1) {
+      let indice = 0;
+      setInterval(() => {
+        const slides = wrap.querySelectorAll(".sponsor-banner-slide");
+        slides[indice].classList.remove("attiva");
+        indice = (indice + 1) % slides.length;
+        slides[indice].classList.add("attiva");
+      }, 5000);
+    }
+  } catch (err) {
+    console.warn("caricaSponsorBanner: lettura fallita:", err.message);
+    wrap.classList.add("hidden");
+  }
+}
+
+// ---------- Foto disciplina (hero) ----------
+
+// Tennis ha due foto (interno/esterno, stesso sub-toggle Indoor/Outdoor);
+// le altre discipline prenotabili ne hanno una sola. Le chiavi vengono
+// da FOTO_DISCIPLINE (utils.js, doc "impostazioni/fotoDiscipline"),
+// caricato una volta in init().
+function urlFotoPerGruppo(gruppo) {
+  if (!gruppo) return "";
+  if (gruppo.disciplina === "tennis") return gruppo.posizione === "esterno" ? FOTO_DISCIPLINE.tennisEsterno : FOTO_DISCIPLINE.tennisInterno;
+  return FOTO_DISCIPLINE[gruppo.disciplina] || "";
+}
+
+// Nessuna foto configurata per la disciplina attiva → il banner resta
+// nascosto invece di mostrare uno spazio vuoto/rotto.
+function aggiornaHeroFoto() {
+  const wrap = document.getElementById("hero-foto-disciplina");
+  const img = document.getElementById("hero-foto-disciplina-img");
+  if (!wrap || !img) return;
+
+  const url = urlFotoPerGruppo(gruppoAttivo());
+  if (!url) { wrap.classList.add("hidden"); return; }
+
+  wrap.classList.remove("hidden");
+  if (img.getAttribute("src") === url) return;
+  img.classList.add("hero-foto-caricamento");
+  img.onload = () => img.classList.remove("hero-foto-caricamento");
+  img.src = url;
 }
 
 // ---------- Day strip ----------
@@ -933,6 +1006,8 @@ async function caricaProfiliDispositivo() {
 (async function init() {
   await loadDatiCentro();
   await loadImpostazioni();
+  await loadFotoDiscipline();
+  caricaSponsorBanner();
   document.getElementById("centro-kicker").textContent = DATI_CENTRO.nome;
 
   const esitoPagamento = new URLSearchParams(location.search).get("pagamento");
@@ -969,6 +1044,7 @@ async function caricaProfiliDispositivo() {
 
   state.gruppoKey = GRUPPI[0].key;
   document.querySelector("#gruppo-pills button")?.setAttribute("aria-pressed", "true");
+  aggiornaHeroFoto();
   state.data = toISO(new Date());
   buildDayStrip();
 

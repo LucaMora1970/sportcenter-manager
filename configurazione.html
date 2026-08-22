@@ -315,6 +315,58 @@
       </details>
 
       <details class="config-section">
+      <summary><h2>Foto discipline</h2></summary>
+      <div class="config-section-body">
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Foto mostrate su <code>tcm.html</code> (pagina pubblica "Prenota campo"): cambiano in base a disciplina/posizione scelta dal cliente, per fargli vedere dove giocherà. Formato consigliato: orizzontale (paesaggio), JPG, almeno 1200×600 px — al caricamento viene ridimensionata e compressa automaticamente (max 1600×900 px), non serve prepararla a mano.</p>
+      <div id="foto-discipline-list"></div>
+      <div class="error-msg" id="foto-discipline-error"></div>
+      </div>
+      </details>
+
+      <details class="config-section">
+      <summary><h2>Sponsor</h2></summary>
+      <div class="config-section-body">
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Banner sponsor mostrato sulle pagine pubbliche, visibile solo nel periodo dal/al indicato — utile per campagne stagionali senza doverli disattivare/riattivare a mano. Formato immagine consigliato: orizzontale (paesaggio), JPG, circa 1200×400 px — al caricamento viene ridimensionata e compressa automaticamente. Se l'immagine è linkabile, il tap sul banner porta al link indicato (es. la pagina dello sponsor).</p>
+      <div id="sponsor-list">
+        <div class="empty-state"><div class="display">Caricamento…</div></div>
+      </div>
+      <form id="new-sponsor-form">
+        <div class="row2">
+          <div class="field">
+            <label for="new-sponsor-nome">Nome sponsor</label>
+            <input type="text" id="new-sponsor-nome" required placeholder="es. Banca Regionale">
+          </div>
+          <div class="field">
+            <label for="new-sponsor-ordine">Ordine (facoltativo)</label>
+            <input type="number" id="new-sponsor-ordine" step="1" placeholder="es. 1">
+          </div>
+        </div>
+        <div class="field">
+          <label for="new-sponsor-link">Link (facoltativo — dove porta il tap sull'immagine)</label>
+          <input type="url" id="new-sponsor-link" placeholder="https://...">
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label for="new-sponsor-dal">Visibile dal</label>
+            <input type="date" id="new-sponsor-dal" required>
+          </div>
+          <div class="field">
+            <label for="new-sponsor-al">Visibile al</label>
+            <input type="date" id="new-sponsor-al" required>
+          </div>
+        </div>
+        <div class="field">
+          <label for="new-sponsor-immagine">Immagine banner</label>
+          <input type="file" accept="image/*" id="new-sponsor-immagine">
+        </div>
+        <div class="error-msg" id="new-sponsor-error"></div>
+        <button type="submit" class="btn btn-ghost" id="create-sponsor-btn">+ Aggiungi sponsor</button>
+        <button type="button" class="btn btn-ghost hidden" id="cancel-edit-sponsor-btn" style="margin-top:10px;">Annulla modifica</button>
+      </form>
+      </div>
+      </details>
+
+      <details class="config-section">
       <summary><h2>Allievi</h2></summary>
       <div class="config-section-body">
       <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Anagrafica nomi per la fatturazione (es. sparring). Chiunque inserisca il diario può aggiungerne di nuovi al volo; qui puoi rinominarli o disattivarli.</p>
@@ -955,9 +1007,11 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
 <script src="js/firebase-config.js"></script>
 <script src="js/utils.js"></script>
 <script src="js/auth.js"></script>
+<script src="js/image-upload.js"></script>
 <script src="js/configurazione.js"></script>
 </body>
 </html>
