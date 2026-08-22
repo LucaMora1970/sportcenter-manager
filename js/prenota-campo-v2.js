@@ -213,7 +213,7 @@ let IMPOSTAZIONI_PC = { settimaneVisibili: 4 };
 let PROFILI = []; // sociDevices.profili
 let profiloScelto = null; // socioId scelto, o null = esterno/primo profilo
 
-const state = { gruppoKey: null, data: null, bookingsPerCourt: {}, apertoPerCourtSlot: null, durataPadel: 90, tennisPosizione: "interno" };
+const state = { gruppoKey: null, data: null, bookingsPerCourt: {}, apertoPerCourtSlot: null, durataPadel: 90, tennisPosizione: "interno", pseudonimi: {} };
 let bookingsUnsub = null;
 
 function disciplinaLabel(d) { return { tennis: "Tennis", squash: "Squash", padel: "Padel" }[d] || d; }
@@ -512,15 +512,45 @@ function ascoltaPrenotazioniGiorno() {
     .onSnapshot(
       (snap) => {
         state.bookingsPerCourt = {};
-        snap.docs.map(d => d.data())
+        snap.docs.map(d => ({ id: d.id, ...d.data() }))
           .filter(b => (b.status === "PENDING_PAYMENT" && !pendingScaduto(b)) || b.status === "CONFIRMED" || b.status === "COMPLETED")
           .forEach(b => {
             (state.bookingsPerCourt[b.courtId] = state.bookingsPerCourt[b.courtId] || []).push(b);
           });
         render();
+        caricaPseudonimiVisibili();
       },
       (err) => showError(document.getElementById("prenota-error"), "Errore nel caricamento: " + err.message)
     );
+}
+
+// Pseudonimi (scelti dai soci) sugli slot già prenotati — solo tennis/
+// squash, solo se chi guarda è a sua volta un socio riconosciuto (mai
+// staff, mai esterno anonimo: la Cloud Function pseudonimiPrenotazioni
+// rifiuta chiunque altro). Fire-and-forget: non deve bloccare il render
+// veloce della disponibilità, che parte subito da state.bookingsPerCourt
+// — i nomi compaiono un istante dopo, quando la chiamata si risolve.
+// Cache a vita di sessione (state.pseudonimi, mai svuotata): un id
+// booking è univoco, e il volume giornaliero di un piccolo circolo è
+// trascurabile — salva anche gli esiti "risolto ma senza pseudonimo"
+// (null) così non vengono richiesti di nuovo.
+async function caricaPseudonimiVisibili() {
+  if (sessioneStaff || PROFILI.length === 0) return;
+
+  const bookingIds = Object.values(state.bookingsPerCourt)
+    .flat()
+    .map(b => b.id)
+    .filter(id => !(id in state.pseudonimi));
+  if (bookingIds.length === 0) return;
+
+  try {
+    const fn = cloudFunctions().httpsCallable("pseudonimiPrenotazioni");
+    const { data } = await fn({ bookingIds });
+    bookingIds.forEach(id => { state.pseudonimi[id] = data.pseudonimi[id] || null; });
+    render();
+  } catch (err) {
+    console.warn("caricaPseudonimiVisibili: lettura fallita:", err.message);
+  }
 }
 
 // ---------- Render griglia (v2): campi/durata come colonne, orario come
@@ -626,6 +656,18 @@ function prezzoTestoSlot(disciplina, posizione, orario, durataMinuti) {
   return `da ${formatoPrezzo(min)}`;
 }
 
+// Slot occupato: se chi guarda è un socio riconosciuto e il pseudonimo è
+// già arrivato (vedi caricaPseudonimiVisibili), mostra chi ha prenotato
+// al posto del semplice "—" — per lo staff/esterni resta sempre "—",
+// perché state.pseudonimi non viene mai popolato per loro.
+function cellaOccupataHtml(booking) {
+  const p = state.pseudonimi[booking.id];
+  const nomi = p ? [p.principale, p.secondario].filter(Boolean) : [];
+  if (nomi.length === 0) return `<span class="slot-empty">—</span>`;
+  const testo = nomi.join(" / ");
+  return `<span class="slot-pseudonimo" title="${escapeHtml(testo)}">${escapeHtml(testo)}</span>`;
+}
+
 function renderGrigliaCampi(el, gruppo) {
   const ora = oraLocaleZurigo();
   const oggi = state.data === ora.dataIso;
@@ -638,9 +680,13 @@ function renderGrigliaCampi(el, gruppo) {
     return;
   }
 
+  // find invece di some: serve l'oggetto booking (per risalire al suo id
+  // e cercare il pseudonimo in state.pseudonimi), non solo se la cella è
+  // occupata — un booking è truthy, undefined è falsy, quindi il check
+  // "every(Boolean)" sotto resta valido senza modifiche.
   const occupatoMatrix = campi.map(campo => {
     const occupati = state.bookingsPerCourt[campo.id] || [];
-    return fissi.map(slot => occupati.some(b => sovrapposto(slot.inizio, slot.fine, b.startTime, b.endTime)));
+    return fissi.map(slot => occupati.find(b => sovrapposto(slot.inizio, slot.fine, b.startTime, b.endTime)));
   });
   if (occupatoMatrix.every(riga => riga.every(Boolean))) {
     el.innerHTML = `<div class="empty-state"><div class="display">Nessun orario libero</div><p>Prova un altro giorno.</p></div>${renderSaltaPosizione(gruppo)}`;
@@ -654,8 +700,9 @@ function renderGrigliaCampi(el, gruppo) {
     const prezzoTesto = prezzoTestoSlot(gruppo.disciplina, gruppo.posizione, slot.inizio, durataMinuti);
     html += `<tr><td class="time-cell">${slot.inizio}</td>`;
     campi.forEach((campo, col) => {
-      html += occupatoMatrix[col][row]
-        ? `<td><span class="slot-empty">—</span></td>`
+      const booking = occupatoMatrix[col][row];
+      html += booking
+        ? `<td>${cellaOccupataHtml(booking)}</td>`
         : `<td><button type="button" class="slot-btn apri-prenota-btn" data-row="${row}" data-col="${col}">${prezzoTesto}</button></td>`;
     });
     html += `</tr>`;
@@ -1073,6 +1120,11 @@ async function caricaProfiliDispositivo() {
   firebase.auth().onAuthStateChanged(async () => {
     await caricaProfiliDispositivo();
     render();
+    // sessioneStaff/PROFILI potrebbero non essere ancora pronti la prima
+    // volta che ascoltaPrenotazioniGiorno() ha già ricevuto uno snapshot
+    // (le due chiamate partono in parallelo, non in sequenza) — rivalutato
+    // qui il gate "socio riconosciuto" appena il riconoscimento si risolve.
+    caricaPseudonimiVisibili();
   });
 
   ascoltaPrenotazioniGiorno();

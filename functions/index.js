@@ -2220,7 +2220,7 @@ exports.listaSoci = onCall(async (request) => {
     via: s.via || null, cap: s.cap || null, localita: s.localita || null,
     categoria: s.categoria, tessera: s.tessera || null, dataNascita: s.dataNascita || null,
     scadenza: s.scadenza || null, attivo: s.attivo !== false, consensoPrivacy: s.consensoPrivacy === true,
-    attivato: !!s.authUid, pagamentoMetodo: s.pagamentoMetodo || null
+    attivato: !!s.authUid, pagamentoMetodo: s.pagamentoMetodo || null, pseudonimo: s.pseudonimo || null
   }));
   return { risultati };
 });
@@ -2236,7 +2236,7 @@ exports.aggiornaSocioAdmin = onCall(async (request) => {
     throw new HttpsError("permission-denied", "Permesso mancante.");
   }
 
-  const { socioId, nome, cognome, email, telefono, via, cap, localita, categoria, tessera, dataNascita, scadenza, attivo } = request.data || {};
+  const { socioId, nome, cognome, email, telefono, via, cap, localita, categoria, tessera, dataNascita, scadenza, attivo, pseudonimo } = request.data || {};
   if (!socioId || !nome || !cognome || !email || !categoria || !dataNascita) {
     throw new HttpsError("invalid-argument", "Dati mancanti.");
   }
@@ -2255,7 +2255,11 @@ exports.aggiornaSocioAdmin = onCall(async (request) => {
     telefono: telefono || null, via: via || null, cap: cap || null, localita: localita || null,
     categoria, tessera: tessera || null, dataNascita,
     scadenza: scadenza ? new Date(scadenza) : null,
-    attivo: attivo !== false
+    attivo: attivo !== false,
+    // Il socio lo imposta da solo (vedi impostaPseudonimo) — qui solo
+    // per permettere allo staff di azzerarlo se qualcuno sceglie
+    // qualcosa di inopportuno, non un campo che l'admin compila di norma.
+    pseudonimo: (pseudonimo || "").trim().slice(0, 30) || null
   });
   return { ok: true };
 });
@@ -3242,6 +3246,77 @@ exports.dettagliGiocatori = onCall(async (request) => {
     dettagli[id] = { nome1: d.prenotanteNome || null, altri };
   }));
   return { dettagli };
+});
+
+// Gate comune alle due funzioni sotto: stesso ordine di verifica di
+// risolviCategoriaPrenotante (prima "users", perché lo staff non ha mai
+// un profilo "soci"), ma qui lo STAFF VIENE ESCLUSO invece che smistato
+// su una categoria — a differenza di dettagliGiocatori sopra (occupazione
+// LIVE, visibile anche allo staff), il pseudonimo sugli slot FUTURI è
+// riservato ai soli dispositivi socio riconosciuti: prenotazioni non
+// ancora avvenute sono più sensibili di un semplice "chi c'è adesso".
+async function profiliSocioRiconosciuto(auth) {
+  if (!auth) throw new HttpsError("unauthenticated", "Dispositivo non riconosciuto.");
+  const userSnap = await db.collection("users").doc(auth.uid).get();
+  if (userSnap.exists) throw new HttpsError("permission-denied", "Riservato ai soci.");
+  const deviceSnap = await db.collection("sociDevices").doc(auth.uid).get();
+  const profili = deviceSnap.exists ? (deviceSnap.data().profili || []) : [];
+  if (profili.length === 0) throw new HttpsError("permission-denied", "Riservato ai soci.");
+  return profili;
+}
+
+// Pseudonimi (scelti dai soci stessi, mai il nome vero) da mostrare sugli
+// slot già prenotati nella griglia pubblica tcm.html — solo tennis/squash
+// per ora, solo a chi chiama è a sua volta un socio riconosciuto (vedi
+// profiliSocioRiconosciuto). Il secondo giocatore tennis è incluso
+// quando è anche lui un socio riconosciuto (giocatore2SocioId, già
+// persistito da creaPrenotazioneCampo) — praticamente gratis da leggere
+// visto che è già lì.
+exports.pseudonimiPrenotazioni = onCall(async (request) => {
+  await profiliSocioRiconosciuto(request.auth);
+
+  const { bookingIds } = request.data || {};
+  if (!Array.isArray(bookingIds) || bookingIds.length === 0) return { pseudonimi: {} };
+
+  const pseudonimi = {};
+  await Promise.all(bookingIds.slice(0, 50).map(async (id) => {
+    const snap = await db.collection("bookingDettagli").doc(id).get();
+    if (!snap.exists) return;
+    const d = snap.data();
+    const socioIdPrincipale = ((d.prezzoDettaglio || [])[0] || {}).socioId || null;
+    const socioIdSecondario = d.giocatore2SocioId || null;
+
+    const [principaleSnap, secondarioSnap] = await Promise.all([
+      socioIdPrincipale ? db.collection("soci").doc(socioIdPrincipale).get() : Promise.resolve(null),
+      socioIdSecondario ? db.collection("soci").doc(socioIdSecondario).get() : Promise.resolve(null)
+    ]);
+
+    const voce = {};
+    if (principaleSnap && principaleSnap.exists && principaleSnap.data().pseudonimo) voce.principale = principaleSnap.data().pseudonimo;
+    if (secondarioSnap && secondarioSnap.exists && secondarioSnap.data().pseudonimo) voce.secondario = secondarioSnap.data().pseudonimo;
+    if (voce.principale || voce.secondario) pseudonimi[id] = voce;
+  }));
+
+  return { pseudonimi };
+});
+
+// Il socio imposta/azzera il proprio pseudonimo, self-service da "La mia
+// area" (abbonamento.html). Stringa vuota = azzera esplicitamente (non
+// solo un trim di una stringa non vuota): deve poter tornare indietro
+// senza passare dallo staff. "socioId" deve essere uno dei profili già
+// collegati al dispositivo chiamante (copre anche i device famiglia con
+// più profili) — mai un id arbitrario passato dal client.
+exports.impostaPseudonimo = onCall(async (request) => {
+  const profili = await profiliSocioRiconosciuto(request.auth);
+
+  const { socioId, pseudonimo } = request.data || {};
+  if (!profili.some(p => p.socioId === socioId)) {
+    throw new HttpsError("permission-denied", "Puoi modificare solo il tuo profilo.");
+  }
+
+  const testo = (pseudonimo || "").trim().slice(0, 30);
+  await db.collection("soci").doc(socioId).update({ pseudonimo: testo || null });
+  return { pseudonimo: testo || null };
 });
 
 // Giorno della settimana come codice "lun".."dom" (stesso vocabolario di

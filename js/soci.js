@@ -113,6 +113,7 @@ function startEditSocio(socio) {
   document.getElementById("socio-tessera").value = socio.tessera || "";
   document.getElementById("socio-scadenza").value = socio.scadenza && socio.scadenza._seconds
     ? new Date(socio.scadenza._seconds * 1000).toISOString().slice(0, 10) : "";
+  document.getElementById("socio-pseudonimo").value = socio.pseudonimo || "";
   document.getElementById("socio-attivo").checked = socio.attivo !== false;
 
   document.getElementById("socio-form-title").querySelector("h2").textContent = `Modifica ${socio.nome} ${socio.cognome}`;
@@ -148,7 +149,8 @@ async function onSubmitSocio(e) {
     categoria: document.getElementById("socio-categoria").value,
     tessera: document.getElementById("socio-tessera").value.trim() || null,
     scadenza: document.getElementById("socio-scadenza").value || null,
-    attivo: document.getElementById("socio-attivo").checked
+    attivo: document.getElementById("socio-attivo").checked,
+    pseudonimo: document.getElementById("socio-pseudonimo").value.trim() || null
   };
 
   try {

@@ -127,6 +127,15 @@
     background: var(--ball); border-color: var(--ball); color: var(--court-blue-950);
   }
   .slot-empty { display: block; padding: 8px 0; text-align: center; color: var(--chalk-grey-dim); font-size: 0.8rem; }
+  /* Pseudonimo di chi ha prenotato (visibile solo ai soci, vedi
+     caricaPseudonimiVisibili in prenota-campo-v2.js) — colonne strette
+     con più campi affiancati, quindi tronca invece di andare a capo o
+     rompere la griglia; il title mostra il testo completo al tocco lungo. */
+  .slot-pseudonimo {
+    display: block; padding: 8px 2px; text-align: center; color: var(--chalk-grey);
+    font-family: 'Inter', sans-serif; font-size: 0.68rem; font-weight: 600;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
 
   .prenota-panel { background: var(--court-blue-900); border: 1px solid var(--court-blue-700); border-radius: var(--radius);
     padding: 16px; margin-top: 10px; }

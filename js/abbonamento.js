@@ -138,10 +138,63 @@ async function onCancellaSettimana(btn) {
   }
 }
 
+// ---------- Pseudonimo (vedi impostaPseudonimo/pseudonimiPrenotazioni
+// lato server) — self-service, non leggibile qui: il valore attuale non
+// viene precompilato al caricamento (stesso motivo per cui non lo è
+// "soci" lato client, tutto passa da Cloud Function), accettabile per un
+// campo opzionale raramente ricontrollato.
+
+let PROFILI_PSEUDONIMO = []; // sociDevices.profili di questo dispositivo, per il selettore famiglia
+
+async function caricaProfiliPerPseudonimo(uid) {
+  try {
+    const doc = await db.collection("sociDevices").doc(uid).get();
+    PROFILI_PSEUDONIMO = doc.exists ? (doc.data().profili || []) : [];
+  } catch {
+    PROFILI_PSEUDONIMO = [];
+  }
+
+  const box = document.getElementById("pseudonimo-profilo-box");
+  if (PROFILI_PSEUDONIMO.length > 1) {
+    box.classList.remove("hidden");
+    document.getElementById("pseudonimo-profilo-select").innerHTML =
+      PROFILI_PSEUDONIMO.map(p => `<option value="${p.socioId}">${escapeHtml(p.nome)} (${escapeHtml(p.categoria)})</option>`).join("");
+  } else {
+    box.classList.add("hidden");
+  }
+}
+
+async function onSalvaPseudonimo() {
+  const btn = document.getElementById("salva-pseudonimo-btn");
+  const errorEl = document.getElementById("pseudonimo-error");
+  errorEl.textContent = "";
+
+  const socioId = PROFILI_PSEUDONIMO.length > 1
+    ? document.getElementById("pseudonimo-profilo-select").value
+    : (PROFILI_PSEUDONIMO[0] || {}).socioId;
+  if (!socioId) {
+    errorEl.textContent = "Nessun profilo socio collegato a questo dispositivo.";
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = "Salvataggio…";
+  try {
+    const fn = cloudFunctions().httpsCallable("impostaPseudonimo");
+    await fn({ socioId, pseudonimo: document.getElementById("pseudonimo-input").value });
+  } catch (err) {
+    errorEl.textContent = "Errore: " + err.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Salva";
+  }
+}
+
 (async function init() {
   await loadDatiCentro();
   document.getElementById("centro-kicker").textContent = DATI_CENTRO.nome;
   await caricaCampiLabel();
+  document.getElementById("salva-pseudonimo-btn").addEventListener("click", onSalvaPseudonimo);
 
   firebase.auth().onAuthStateChanged(async (user) => {
     if (!user) {
@@ -149,6 +202,7 @@ async function onCancellaSettimana(btn) {
       return;
     }
     mostraStato("area-content");
+    await caricaProfiliPerPseudonimo(user.uid);
     await Promise.all([caricaAbbonamenti(), caricaPrenotazioniECredito()]);
   });
 })();

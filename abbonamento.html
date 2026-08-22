@@ -89,6 +89,21 @@
 
     <div id="area-content" class="hidden">
 
+      <div class="abb-card">
+        <div class="titolo">Il tuo pseudonimo</div>
+        <div class="meta">Visibile solo agli altri soci sugli slot che prenoti (tennis/squash) — mai il tuo nome vero, e mai a staff o visitatori esterni. Lascia vuoto per non essere identificato.</div>
+        <div class="field hidden" id="pseudonimo-profilo-box">
+          <label for="pseudonimo-profilo-select">Profilo</label>
+          <select id="pseudonimo-profilo-select"></select>
+        </div>
+        <div class="field">
+          <label for="pseudonimo-input">Pseudonimo</label>
+          <input type="text" id="pseudonimo-input" maxlength="30" placeholder="es. Luca M.">
+        </div>
+        <div class="error-msg" id="pseudonimo-error"></div>
+        <button type="button" class="btn btn-ghost" id="salva-pseudonimo-btn">Salva</button>
+      </div>
+
       <div id="credito-box" class="hidden abb-card credito-box">
         <div class="titolo">Credito disponibile</div>
         <div class="meta" id="credito-lista"></div>
