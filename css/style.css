@@ -772,7 +772,11 @@ select:focus, input:focus, textarea:focus {
   overflow: hidden;
   border: 1px solid var(--court-blue-700);
   position: relative;
-  height: 70px;
+  /* Stesso rapporto 3:1 (1200×400) consigliato in Configurazione →
+     Sponsor — un'altezza fissa qui scollegata da quel rapporto tagliava
+     l'immagine con object-fit:cover appena la larghezza dello schermo
+     non produceva casualmente lo stesso 3:1. */
+  aspect-ratio: 3 / 1;
 }
 .sponsor-banner-slide {
   position: absolute;
