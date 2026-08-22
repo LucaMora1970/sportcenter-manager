@@ -80,7 +80,14 @@
     font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 1.05rem; padding: 6px 14px;
   }
   table.slot-grid th:first-child { text-align: left; width: 54px; }
-  table.slot-grid td { padding: 4px 3px; text-align: center; }
+  /* Filetto leggero tra un orario e l'altro — border-collapse fonde i
+     bordi delle celle di una riga in un'unica riga continua, così non
+     serve applicarlo per riga (tr) ma basta su ogni td. Niente riga dopo
+     l'ultimo orario: sotto la griglia c'è già altro contenuto (pulsante
+     "salta posizione" o banner sponsor), un filetto in più lì sarebbe
+     solo rumore. */
+  table.slot-grid td { padding: 4px 3px; text-align: center; border-bottom: 1px solid var(--court-blue-800); }
+  table.slot-grid tr:last-child td { border-bottom: none; }
   /* Stesso font/peso del numero giorno nel day-strip (.day-btn .n:
      'Oswald' 600) invece di Space Mono, sia per l'orario "capitolo" che
      per il testo dentro i bottoni slot. */
