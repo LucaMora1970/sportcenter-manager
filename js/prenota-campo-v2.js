@@ -967,7 +967,7 @@ async function caricaProfiliDispositivo() {
   const selectBox = document.getElementById("profilo-select-box");
 
   if (!user) {
-    boxTesto.textContent = "Stai prenotando come utente esterno";
+    boxTesto.textContent = "Ciao!";
     sessioneStaff = false;
     PROFILI = [];
     profiloScelto = null;
@@ -975,14 +975,20 @@ async function caricaProfiliDispositivo() {
     return;
   }
 
+  let nomeStaff = "";
   try {
     const userSnap = await db.collection("users").doc(user.uid).get();
     sessioneStaff = userSnap.exists;
+    if (sessioneStaff) nomeStaff = userSnap.data().nome || "Maestro";
   } catch {
     sessioneStaff = false;
   }
   if (sessioneStaff) {
-    boxTesto.textContent = "Stai prenotando come membro dello staff (categoria Maestro)";
+    // Non solo un saluto: "(Maestro)" dice a chi prenota quale tariffa
+    // gli sta applicando il sistema — informazione funzionale, non solo
+    // decorativa. Stesso pattern "nome (categoria)" già usato sotto per
+    // il selettore profili (PROFILI.map...).
+    boxTesto.textContent = `Ciao ${nomeStaff} (Maestro)`;
     PROFILI = [];
     profiloScelto = null;
     selectBox.classList.add("hidden");
@@ -997,7 +1003,7 @@ async function caricaProfiliDispositivo() {
   }
 
   if (PROFILI.length === 0) {
-    boxTesto.textContent = "Stai prenotando come utente esterno";
+    boxTesto.textContent = "Ciao!";
     profiloScelto = null;
     selectBox.classList.add("hidden");
     return;

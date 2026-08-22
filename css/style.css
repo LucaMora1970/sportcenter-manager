@@ -746,13 +746,34 @@ select:focus, input:focus, textarea:focus {
    far vedere al cliente dove giocherà prima ancora di scegliere l'orario.
    Nascosta finché non c'è una foto configurata per quella scheda. */
 .hero-foto-disciplina {
+  position: relative;
   width: 100%;
   height: 130px;
   border-radius: var(--radius);
   overflow: hidden;
   margin-bottom: 14px;
   background: var(--court-blue-900);
-  border: 1px solid var(--court-blue-700);
+  /* Niente bordo qui apposta: un filetto attorno al riquadro ricreerebbe
+     lo stesso taglio netto che la dissolvenza sotto è pensata per
+     evitare — il bordo del riquadro deve restare invisibile perché la
+     foto sfumi nello sfondo della card, non in un box definito. */
+}
+/* Dissolvenza solo sul perimetro (il centro della foto resta nitido):
+   un'ombra interna sfocata dello stesso colore dello sfondo della card
+   (--court-blue-900). Deve stare su uno pseudo-elemento separato sopra
+   la foto, non sull'<img> stesso o sul contenitore: un box-shadow è
+   disegnato PRIMA del contenuto proprio dell'elemento (l'immagine ci
+   dipinge sopra), quindi su <img> resterebbe sempre coperto e
+   invisibile — provato, non funzionava per questo. Lo pseudo-elemento
+   invece è un elemento a sé, impilato sopra l'<img> nel normale ordine
+   di stacking, con pointer-events:none per non intercettare il tocco. */
+.hero-foto-disciplina::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: inset 0 0 65px 10px var(--court-blue-900);
 }
 .hero-foto-disciplina img {
   width: 100%;
@@ -797,18 +818,25 @@ select:focus, input:focus, textarea:focus {
   animation-iteration-count: infinite;
 }
 .sponsor-track a { flex: 0 0 auto; aspect-ratio: 3 / 1; display: block; }
-/* In bianco e nero a riposo — non deve competere con l'azione primaria
-   della pagina (prenotare) — a colori pieni al tocco/hover, che attiva
-   anche il link. Su mobile (device principale dell'app) non c'è un vero
-   hover: :active copre almeno il breve istante della pressione. */
+/* Virato sul blu notte del sito a riposo (non un grigio neutro: resta
+   coerente con la palette invece di un tono estraneo) — non deve
+   competere con l'azione primaria della pagina (prenotare) né leggersi
+   come uno stato "selezionato" (quello usa --ball, verde). A colori
+   pieni al tocco/hover, che attiva anche il link. Su mobile (device
+   principale dell'app) non c'è un vero hover: :active copre almeno il
+   breve istante della pressione.
+   Ricetta duotone via filter: grayscale azzera il colore originale,
+   sepia+hue-rotate lo ritingono sull'hue di --court-blue-700 (~208°,
+   quello di sepia è ~50° → rotazione di ~160°), saturate/brightness
+   rendono il blu leggibile invece di lavato. */
 .sponsor-track img {
   width: 100%; height: 100%; object-fit: cover; display: block;
-  filter: grayscale(1);
+  filter: grayscale(1) sepia(0.4) hue-rotate(165deg) saturate(2.2) brightness(0.85);
   transition: filter 0.2s ease;
 }
 .sponsor-track a:hover img,
 .sponsor-track a:focus img,
-.sponsor-track a:active img { filter: grayscale(0); }
+.sponsor-track a:active img { filter: none; }
 @keyframes sponsor-scroll {
   from { transform: translateX(0); }
   to { transform: translateX(-50%); }
