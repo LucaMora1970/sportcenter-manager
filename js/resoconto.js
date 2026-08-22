@@ -196,10 +196,20 @@ async function loadTutti(dal, al) {
       ? e.allievoNomi
       : (e.allievoNome ? [e.allievoNome] : []);
     idsAllievo.forEach((aid, i) => {
-      const nome = nomiAllievoArr[i] || aid;
-      if (!perAllievo[aid]) perAllievo[aid] = { aid, nome, totale: 0, entries: [] };
-      perAllievo[aid].totale += ore;
-      perAllievo[aid].entries.push(e);
+      const nome = (nomiAllievoArr[i] || aid || "").toString();
+      // Raggruppato per nome normalizzato, non per allievoId: la stessa
+      // persona può avere più record "allievi" (creati al volo dal
+      // diario se il nome non trovava una corrispondenza esatta, es.
+      // maiuscole/spazi diversi) — senza questo, lo stesso allievo
+      // comparirebbe come righe separate invece di una sola con le ore
+      // sommate. "aid" resta il nome normalizzato: usato solo come chiave
+      // opaca per data-aid/toggle/stampa qui sotto, mai come vero id
+      // Firestore — niente spazi (finiscono anche in un id HTML, dove
+      // uno spazio letterale non è valido anche se i browser lo tollerano).
+      const chiave = nome.trim().toLowerCase().replace(/\s+/g, "-");
+      if (!perAllievo[chiave]) perAllievo[chiave] = { aid: chiave, nome: nome.trim(), totale: 0, entries: [] };
+      perAllievo[chiave].totale += ore;
+      perAllievo[chiave].entries.push(e);
     });
 
     const tipoAttivitaDoc = e.tipoAttivitaId ? tipiById[e.tipoAttivitaId] : null;

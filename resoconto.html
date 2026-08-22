@@ -13,6 +13,14 @@
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0d1f30">
+<style>
+  /* .scoreboard .value di default è 2.4rem (css/style.css) — pensato per
+     il diario, dove c'è un solo numero grande in evidenza. Qui in
+     Resoconto ci sono molti totali diversi uno sotto l'altro, alcuni con
+     importi lunghi (es. "CHF 1234.56"): più piccolo così le cifre
+     restano leggibili invece di sembrare appiccicate al bordo/tra loro. */
+  .scoreboard .value { font-size: 1.4rem; }
+</style>
 </head>
 <body>
 <div class="app">
@@ -108,7 +116,7 @@
         </div>
         <div>
           <div class="label">Totale costi</div>
-          <div class="value" id="totale-complessivo-costo" style="font-size:1.7rem;">CHF 0.00</div>
+          <div class="value" id="totale-complessivo-costo">CHF 0.00</div>
         </div>
       </div>
 
@@ -116,7 +124,7 @@
       <div class="scoreboard">
         <div>
           <div class="label">Quota campo totale (dovuta al circolo)</div>
-          <div class="value" id="totale-quotacampo" style="font-size:1.7rem;">CHF 0.00</div>
+          <div class="value" id="totale-quotacampo">CHF 0.00</div>
         </div>
       </div>
       <div id="quotacampo-warning" class="error-msg" style="color:var(--chalk-grey);"></div>
@@ -125,7 +133,7 @@
       <div class="scoreboard">
         <div>
           <div class="label">Compenso totale (dovuto ai collaboratori)</div>
-          <div class="value" id="totale-compenso" style="font-size:1.7rem;">CHF 0.00</div>
+          <div class="value" id="totale-compenso">CHF 0.00</div>
         </div>
       </div>
       <div id="compenso-warning" class="error-msg" style="color:var(--chalk-grey);"></div>
@@ -134,7 +142,7 @@
       <div class="scoreboard">
         <div>
           <div class="label">Pagato online dai clienti (lezioni)</div>
-          <div class="value" id="totale-pagato-online" style="font-size:1.7rem;">CHF 0.00</div>
+          <div class="value" id="totale-pagato-online">CHF 0.00</div>
         </div>
       </div>
     </div>
