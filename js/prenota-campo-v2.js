@@ -373,9 +373,13 @@ function selezionaGruppo(key) {
 // pubblica, senza login, quindi il filtro va rifatto a ogni caricamento
 // invece di fidarsi di uno stato salvato. Se manca la foto (upload non
 // ancora fatto) lo sponsor viene comunque escluso: niente banner rotto.
+// Striscia continua (marquee) invece del crossfade di prima: contenuto
+// duplicato una volta nel DOM così l'animazione CSS translateX(-50%) è
+// sempre un giro esatto, qualunque sia il numero di sponsor.
 async function caricaSponsorBanner() {
-  const wrap = document.getElementById("sponsor-banner");
-  if (!wrap) return;
+  const sectionEl = document.getElementById("sponsor-section");
+  const trackEl = document.getElementById("sponsor-track");
+  if (!sectionEl || !trackEl) return;
 
   try {
     const snap = await db.collection("sponsor").get();
@@ -385,29 +389,41 @@ async function caricaSponsorBanner() {
       .filter(s => s.attivo !== false && s.imageUrl && s.dal && s.al && s.dal <= oggi && s.al >= oggi)
       .sort((a, b) => (a.ordine != null ? a.ordine : 99) - (b.ordine != null ? b.ordine : 99));
 
-    if (attivi.length === 0) { wrap.classList.add("hidden"); return; }
+    if (attivi.length === 0) { sectionEl.classList.add("hidden"); return; }
 
-    wrap.innerHTML = attivi.map((s, i) => `
-      <a class="sponsor-banner-slide${i === 0 ? " attiva" : ""}" href="${escapeHtml(s.link || "#")}" ${s.link ? 'target="_blank" rel="noopener"' : "onclick=\"return false;\""} aria-label="${escapeHtml(s.nome)}">
+    const tileHtml = s => `
+      <a href="${escapeHtml(s.link || "#")}" ${s.link ? 'target="_blank" rel="noopener"' : "onclick=\"return false;\""} aria-label="${escapeHtml(s.nome)}">
         <img src="${s.imageUrl}" alt="${escapeHtml(s.nome)}">
       </a>
-    `).join("");
-    wrap.classList.remove("hidden");
+    `;
+    trackEl.innerHTML = attivi.map(tileHtml).join("") + attivi.map(tileHtml).join("");
+    // Velocità di scorrimento costante indipendentemente da quanti
+    // sponsor ci sono: più tile da percorrere in un giro = animazione più
+    // lunga, invece di una durata fissa che li farebbe sfrecciare via con
+    // tanti sponsor attivi.
+    trackEl.style.animationDuration = `${attivi.length * 4}s`;
+    sectionEl.classList.remove("hidden");
 
-    if (attivi.length > 1) {
-      let indice = 0;
-      setInterval(() => {
-        const slides = wrap.querySelectorAll(".sponsor-banner-slide");
-        slides[indice].classList.remove("attiva");
-        indice = (indice + 1) % slides.length;
-        slides[indice].classList.add("attiva");
-      }, 5000);
-    }
+    aggiornaLarghezzaSponsorBanner();
   } catch (err) {
     console.warn("caricaSponsorBanner: lettura fallita:", err.message);
-    wrap.classList.add("hidden");
+    sectionEl.classList.add("hidden");
   }
 }
+
+// Due sponsor visibili alla larghezza per volta: ogni tile è impostata a
+// metà della larghezza del banner (misurata in JS — vedi commento in
+// css/style.css su .sponsor-track sul perché non basta una percentuale
+// CSS). Rifatta anche al resize (rotazione schermo, finestra
+// ridimensionata) per restare corretta.
+function aggiornaLarghezzaSponsorBanner() {
+  const bannerEl = document.getElementById("sponsor-banner");
+  const trackEl = document.getElementById("sponsor-track");
+  if (!bannerEl || !trackEl || bannerEl.offsetParent === null) return;
+  const larghezzaTile = bannerEl.clientWidth / 2;
+  trackEl.querySelectorAll("a").forEach(a => { a.style.width = `${larghezzaTile}px`; });
+}
+window.addEventListener("resize", aggiornaLarghezzaSponsorBanner);
 
 // ---------- Foto disciplina (hero) ----------
 

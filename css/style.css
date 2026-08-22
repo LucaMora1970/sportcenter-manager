@@ -764,30 +764,55 @@ select:focus, input:focus, textarea:focus {
 }
 .hero-foto-disciplina img.hero-foto-caricamento { opacity: 0; }
 
-/* Banner sponsor: carosello a scomparsa in fondo alle pagine pubbliche,
-   periodo dal/al gestito da Configurazione. */
+/* Banner sponsor: striscia che scorre in continuo da destra a sinistra
+   in fondo alle pagine pubbliche, periodo dal/al gestito da
+   Configurazione. Due sponsor visibili alla larghezza per volta (la
+   larghezza di ciascuna tile viene impostata in JS — vedi
+   aggiornaLarghezzaSponsorBanner in prenota-campo-v2.js — perché con
+   .sponsor-track largo "quanto basta" una percentuale in CSS sarebbe
+   relativa a se stesso, non al contenitore visibile). */
+.sponsor-section { margin-top: 20px; }
+.sponsor-titolo {
+  font-family: 'Oswald', sans-serif;
+  font-weight: 600;
+  font-size: 0.78rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--chalk-grey);
+  margin-bottom: 8px;
+}
 .sponsor-banner {
-  margin-top: 20px;
   border-radius: var(--radius);
   overflow: hidden;
   border: 1px solid var(--court-blue-700);
-  position: relative;
-  /* Stesso rapporto 3:1 (1200×400) consigliato in Configurazione →
-     Sponsor — un'altezza fissa qui scollegata da quel rapporto tagliava
-     l'immagine con object-fit:cover appena la larghezza dello schermo
-     non produceva casualmente lo stesso 3:1. */
-  aspect-ratio: 3 / 1;
 }
-.sponsor-banner-slide {
-  position: absolute;
-  inset: 0;
-  display: block;
-  opacity: 0;
-  transition: opacity 0.6s ease;
-  pointer-events: none;
+.sponsor-track {
+  display: flex;
+  width: max-content;
+  /* Il contenuto è duplicato una volta in JS: -50% è sempre esattamente
+     un giro completo, qualunque sia il numero di sponsor attivi, senza
+     doverlo ricalcolare qui. */
+  animation-name: sponsor-scroll;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
 }
-.sponsor-banner-slide.attiva { opacity: 1; pointer-events: auto; }
-.sponsor-banner-slide img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.sponsor-track a { flex: 0 0 auto; aspect-ratio: 3 / 1; display: block; }
+/* In bianco e nero a riposo — non deve competere con l'azione primaria
+   della pagina (prenotare) — a colori pieni al tocco/hover, che attiva
+   anche il link. Su mobile (device principale dell'app) non c'è un vero
+   hover: :active copre almeno il breve istante della pressione. */
+.sponsor-track img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+  filter: grayscale(1);
+  transition: filter 0.2s ease;
+}
+.sponsor-track a:hover img,
+.sponsor-track a:focus img,
+.sponsor-track a:active img { filter: grayscale(0); }
+@keyframes sponsor-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
 
 /* Tabella riepilogo contabilità (in-app, tema scuro) */
 .app-table {
