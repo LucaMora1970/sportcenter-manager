@@ -850,6 +850,11 @@
         </div>
         <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Giorni di anticipo con cui ciascuna categoria può prenotare (priorità ai soci) — un campo per ciascuna voce definita in "Categorie socio":</p>
         <div id="pc-anticipo-container" style="display:flex;flex-wrap:wrap;gap:12px;"></div>
+        <div class="checkbox-row" style="margin-bottom:16px;">
+          <input type="checkbox" id="pc-ripartizione-giocatori">
+          <label for="pc-ripartizione-giocatori">Mostra ripartizione tra i giocatori (tennis, squash, padel)</label>
+        </div>
+        <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Chi prenota paga sempre l'intero importo, come oggi — nessun pagamento separato attraverso l'app. Se attivo, il biglietto mostra anche quanto varrebbe la quota di ciascun giocatore (tennis/squash: già calcolata per la vera categoria di ciascuno; padel: il campo si gioca sempre in 4, quindi il totale diventa la somma delle tariffe reali dei 4 posti — i posti non nominati usano la categoria di chi prenota, così prenotare senza indicare nessuno costa come oggi), così chi prenota sa esattamente quanto chiedere a chi senza doverlo calcolare a mano. Il compagno riconosciuto come socio (con email in anagrafica) riceve comunque un'email di cortesia con la propria quota indicativa, ma il pagamento resta un accordo diretto tra loro, fuori dall'app.</p>
         <div class="error-msg" id="prenotazionicampi-error"></div>
         <button type="submit" class="btn btn-ghost" id="salva-prenotazionicampi-btn">Salva</button>
       </form>

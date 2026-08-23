@@ -153,6 +153,17 @@ function renderBiglietto(data, token) {
     correctLevel: QRCode.CorrectLevel.M
   });
 
+  // Solo informativa (vedi Configurazione → "Mostra ripartizione tra i
+  // giocatori"): chi ha il biglietto ha già pagato l'intero importo,
+  // questa non è una richiesta di pagamento — serve solo a sapere quanto
+  // chiedere a ciascun compagno.
+  if (Array.isArray(data.ripartizione) && data.ripartizione.length > 1) {
+    document.getElementById("ripartizione-list").innerHTML = data.ripartizione.map(r => `
+      <div class="ticket-row"><span class="k">${escapeHtml(r.nome || "—")}</span><span class="v">CHF ${(r.importo || 0).toFixed(2)}</span></div>
+    `).join("");
+    document.getElementById("ripartizione-box").classList.remove("hidden");
+  }
+
   document.getElementById("stato-caricamento").classList.add("hidden");
   document.getElementById("ticket-content").classList.remove("hidden");
   document.getElementById("ticket-save-bar").classList.remove("hidden");

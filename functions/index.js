@@ -428,57 +428,61 @@ async function padelCampoNumero() {
   return snap.empty ? COURT_ID : (snap.docs[0].data().numero || COURT_ID);
 }
 
+// Avvisa via email chi è stato aggiunto come compagno a una prenotazione
+// (secondo/terzo/quarto giocatore) — letti da bookingDettagli.prezzoDettaglio,
+// sempre indice 0 = prenotante, righe successive = compagni (stessa forma
+// per tennis/squash/padel, non più campi top-level per-disciplina come
+// prima: quelli non erano mai scritti dal padel, un gap preesistente che
+// così si risolve da solo). Solo per chi è un socio riconosciuto CON email
+// in anagrafica: un nome libero non risolto non ha un indirizzo a cui
+// scrivere. Mai al prenotante stesso (ha già il biglietto).
+//
+// Puramente informativa: chi prenota paga sempre l'intero importo (vedi
+// creaPrenotazioneCampo/creaPrenotazionePubblica) — qui indichiamo anche
+// la quota indicativa di ciascun compagno (se la ripartizione è attiva)
+// solo perché sappia quanto deve a chi ha prenotato, non per chiedergli
+// di pagare qualcosa attraverso l'app.
+async function notificaGiocatoriAggiunti(bookingId, { disciplina, campoLabel, date, startTime, endTime }) {
+  const dettSnap = await db.collection("bookingDettagli").doc(bookingId).get();
+  if (!dettSnap.exists) return;
+  const dett = dettSnap.data();
+  const prezzoDettaglio = dett.prezzoDettaglio || [];
+  const compagni = prezzoDettaglio.slice(1).filter(riga => riga.socioId);
+  if (compagni.length === 0) return;
+
+  const DISCIPLINA_LABEL_EMAIL = { tennis: "Tennis", squash: "Squash", padel: "Padel" };
+  const dataLeggibile = new Date(date + "T00:00:00")
+    .toLocaleDateString("it-CH", { weekday: "long", day: "numeric", month: "long" });
+  const etichettaSlot = `${DISCIPLINA_LABEL_EMAIL[disciplina] || disciplina}${campoLabel ? " — " + campoLabel : ""}, ${dataLeggibile}, ${startTime}–${endTime}`;
+
+  for (const riga of compagni) {
+    try {
+      const socioSnap = await db.collection("soci").doc(riga.socioId).get();
+      if (!socioSnap.exists || !socioSnap.data().email) continue;
+      const socio = socioSnap.data();
+      const rigaQuota = dett.ripartizioneAttiva && riga.importo > 0
+        ? `<p>La tua quota indicativa è <strong>CHF ${riga.importo.toFixed(2)}</strong> — accordati direttamente con chi ha prenotato.</p>`
+        : "";
+      await inviaEmail({
+        to: socio.email,
+        subject: "Sei stato aggiunto a una prenotazione",
+        html: `<p>Ciao ${socio.nome || ""}, sei stato aggiunto come giocatore a una prenotazione ${etichettaSlot}.</p>${rigaQuota}`
+      });
+    } catch (err) {
+      console.error("notificaGiocatoriAggiunti: invio fallito per", riga.socioId, err);
+    }
+  }
+}
+
 // Scrive tutto ciò che rende "reale" una prenotazione confermata:
-// biglietto privato, indice codice→prenotazione, mirror del pagamento, e
-// se c'è un credito coinvolto lo scala e lo registra. Chiamata sia dal
-// caso "credito copre tutto" (creaPrenotazionePubblica, sincrono) sia dal
-// webhook (dopo la conferma PostFinance).
+// biglietto, indice codice→prenotazione, mirror del pagamento, ed
+// eventuale credito scalato — chiamata sia dal caso "credito copre
+// tutto" (sincrono) sia dal webhook dopo la conferma PostFinance.
 // disciplina/campoLabel sono facoltativi (assenti = null): il flusso
 // padel esistente non li passa e biglietto.js ricade sul suo default
 // "Padel"/"Campo {courtId}" — per tennis/squash (dove courtId è l'id
 // interno del doc "campi", non il numero mostrato) servono per mostrare
 // un'etichetta leggibile sul biglietto.
-// Avvisa via email chi è stato aggiunto come secondo/terzo/quarto
-// giocatore a una prenotazione — tennis/squash hanno solo
-// giocatore2SocioId (vedi creaPrenotazioneCampo), il padel fino a
-// giocatore4SocioId ("fino a 4 nominativi", vedi creaPrenotazionePubblica)
-// — letti da bookingDettagli, già scritto da entrambi i flussi prima
-// della conferma. Solo per chi è un socio riconosciuto CON email in
-// anagrafica: un nome libero non risolto non ha un indirizzo a cui
-// scrivere. Mai al prenotante stesso (ha già il biglietto).
-async function notificaGiocatoriAggiunti(bookingId, { disciplina, campoLabel, date, startTime, endTime }) {
-  const dettSnap = await db.collection("bookingDettagli").doc(bookingId).get();
-  if (!dettSnap.exists) return;
-  const dett = dettSnap.data();
-  const prenotanteSocioId = ((dett.prezzoDettaglio || [])[0] || {}).socioId || null;
-
-  const socioIds = [...new Set(
-    [dett.giocatore2SocioId, dett.giocatore3SocioId, dett.giocatore4SocioId]
-      .filter(id => id && id !== prenotanteSocioId)
-  )];
-  if (socioIds.length === 0) return;
-
-  const DISCIPLINA_LABEL_EMAIL = { tennis: "Tennis", squash: "Squash", padel: "Padel" };
-  const dataLeggibile = new Date(date + "T00:00:00")
-    .toLocaleDateString("it-CH", { weekday: "long", day: "numeric", month: "long" });
-
-  for (const socioId of socioIds) {
-    try {
-      const socioSnap = await db.collection("soci").doc(socioId).get();
-      if (!socioSnap.exists || !socioSnap.data().email) continue;
-      const socio = socioSnap.data();
-      await inviaEmail({
-        to: socio.email,
-        subject: "Sei stato aggiunto a una prenotazione",
-        html: `<p>Ciao ${socio.nome || ""}, sei stato aggiunto come giocatore a una prenotazione ${DISCIPLINA_LABEL_EMAIL[disciplina] || disciplina}${campoLabel ? " — " + campoLabel : ""}.</p>`
-          + `<p><strong>${dataLeggibile}, ${startTime}–${endTime}</strong></p>`
-      });
-    } catch (err) {
-      console.error("notificaGiocatoriAggiunti: invio fallito per", socioId, err);
-    }
-  }
-}
-
 async function confermaPrenotazionePubblica({ bookingId, courtId, date, startTime, endTime, prezzo, token, paymentId, creditCode, creditoScalato, disciplina, campoLabel }) {
   const bookingCode = await generaCodicePrenotazioneUnivoco();
 
@@ -488,6 +492,24 @@ async function confermaPrenotazionePubblica({ bookingId, courtId, date, startTim
   // fallisce silenziosamente (biglietto mai creato).
   const paymentIdStr = paymentId != null ? String(paymentId) : null;
 
+  // Ripartizione per il biglietto: solo nome+importo di ciascun
+  // giocatore, mai socioId/categoria interna — pubblica per lo stesso
+  // motivo di "bookingTickets" (leggibile da chiunque conosca il token).
+  // Chi prenota paga sempre l'intero prezzo (vedi creaPrenotazioneCampo/
+  // creaPrenotazionePubblica): questa è solo la trasparenza di quanto
+  // varrebbe la quota di ciascuno, non un pagamento separato da incassare.
+  // Due filtri, non uno: rispetta il flag di Configurazione (tennis/
+  // squash calcolano comunque sempre una riga "secondo giocatore" anche
+  // senza nessuno indicato — mostrarla sempre ignorerebbe il flag), e
+  // scarta le righe senza un nome vero (nessun compagno nominato) — non
+  // ha senso mostrare una riga "—: CHF X" per un posto che non esiste.
+  const dettSnap = await db.collection("bookingDettagli").doc(bookingId).get();
+  const dettPerRipartizione = dettSnap.exists ? dettSnap.data() : {};
+  const righeConNome = (dettPerRipartizione.prezzoDettaglio || []).filter(riga => riga.nome);
+  const ripartizione = (dettPerRipartizione.ripartizioneAttiva && righeConNome.length > 1)
+    ? righeConNome.map(riga => ({ nome: riga.nome, importo: riga.importo }))
+    : [];
+
   const batch = db.batch();
   batch.update(db.collection("bookings").doc(bookingId), { status: "CONFIRMED" });
   batch.set(db.collection("bookingTickets").doc(token), {
@@ -495,6 +517,7 @@ async function confermaPrenotazionePubblica({ bookingId, courtId, date, startTim
     price: prezzo, currency: "CHF", paymentId: paymentIdStr,
     disciplina: disciplina || null,
     campoLabel: campoLabel || null,
+    ripartizione,
     createdAt: FieldValue.serverTimestamp()
   });
   batch.set(db.collection("bookingCodes").doc(bookingCode), { bookingId, token });
@@ -558,9 +581,10 @@ exports.creaPrenotazionePubblica = onCall(
     // se poi il giorno risulta chiuso — nel caso raro (giorno chiuso) sono
     // solo letture in più, il cui risultato viene semplicemente ignorato
     // dal controllo subito sotto.
-    const [chiuso, generaleSnap, preSnap, prenotante, creditoSnap, g2Snap, g3Snap, g4Snap] = await Promise.all([
+    const [chiuso, generaleSnap, prenotazioniCampiSnap, preSnap, prenotante, creditoSnap, g2Snap, g3Snap, g4Snap] = await Promise.all([
       giornoChiuso(date),
       db.collection("impostazioni").doc("generale").get(),
+      db.collection("impostazioni").doc("prenotazioniCampi").get(),
       db.collection("bookings").where("date", "==", date).where("courtId", "==", court).get(),
       risolviCategoriaPrenotante(request.auth, profiloId),
       creditCode ? db.collection("credits").doc(creditCode).get() : Promise.resolve(null),
@@ -601,16 +625,20 @@ exports.creaPrenotazionePubblica = onCall(
       { nome: giocatore4Nome, socioId: giocatore4SocioId, snap: g4Snap }
     ].filter(g => g.nome || g.socioId);
 
-    // I nominativi dei compagni servono solo per il tabellone/record (chi
-    // gioca), non per il prezzo: la tariffa padel è per l'intero campo, non
-    // per giocatore — un solo calcolo qui sotto, in base alla categoria di
-    // chi prenota, indipendente da quanti (e chi) giocano con lui.
+    // I nominativi dei compagni servono al tabellone/record (chi gioca) e,
+    // con la ripartizione per categoria attiva, anche a calcolare la
+    // tariffa reale di ciascuno (vedi sotto) — mai fidandosi della
+    // categoria dichiarata dal client, sempre verificata contro "soci".
     const altriGiocatoriRisolti = altriGiocatoriInput.map(g => {
       let nomeRisolto = g.nome || null;
+      let socioIdRisolto = null;
+      let categoriaRisolta = "esterno";
       if (g.snap && g.snap.exists && g.snap.data().attivo !== false) {
         nomeRisolto = `${g.snap.data().nome} ${g.snap.data().cognome}`;
+        socioIdRisolto = g.socioId;
+        categoriaRisolta = g.snap.data().categoria;
       }
-      return { nome: nomeRisolto };
+      return { nome: nomeRisolto, socioId: socioIdRisolto, categoria: categoriaRisolta };
     });
 
     let quotaPrenotante = await quotaCategoria({
@@ -625,8 +653,51 @@ exports.creaPrenotazionePubblica = onCall(
       categoria: categoriaPrenotante, socioId: prenotante.socioId || null, prezzo: quotaPrenotante,
       disciplina: "padel", posizione: null, dataIso: date, startTime, durataMinuti: durationMinutes, festivi
     }));
-    const prezzo = quotaPrenotante;
-    const prezzoDettaglio = [{ ruolo: "campo", categoria: categoriaPrenotante, importo: quotaPrenotante, socioId: prenotante.socioId || null }];
+
+    let prezzo = quotaPrenotante;
+    const prezzoDettaglio = [{
+      ruolo: "prenotante", categoria: categoriaPrenotante, importo: quotaPrenotante,
+      socioId: prenotante.socioId || null, nome: prenotante.nome || null
+    }];
+
+    // Ripartizione per categoria reale: il padel si gioca sempre in 4
+    // (regola del gioco, non una scelta nostra) — quando attiva, il
+    // totale non è più la sola tariffa di chi prenota ma la somma delle
+    // tariffe reali dei 4 posti, ciascuna divisa per 4 (mai sommata per
+    // intero — stessa identica logica del tennis, qui estesa a 4 anziché
+    // 2). I posti NON nominati (chi prenota può indicare da 0 a 3
+    // compagni, è facoltativo) usano la categoria di chi prenota, non
+    // "esterno": prenotare senza nominare nessuno deve costare
+    // esattamente come oggi, non di più — cambia solo nominando compagni
+    // con una categoria diversa dalla propria.
+    const ripartizioneAttiva = !!(prenotazioniCampiSnap.exists && prenotazioniCampiSnap.data().ripartizioneGiocatoriAttiva);
+    if (ripartizioneAttiva) {
+      const POSTI_PADEL = 4;
+      const postiNonNominati = POSTI_PADEL - 1 - altriGiocatoriRisolti.length;
+      const quotaOrganizzatorePerTesta = quotaPrenotante / POSTI_PADEL;
+
+      let totale = quotaOrganizzatorePerTesta * (1 + postiNonNominati);
+      prezzoDettaglio[0].importo = totale;
+
+      for (const g of altriGiocatoriRisolti) {
+        let quotaCompagno = await quotaCategoria({
+          disciplina: "padel", posizione: null, categoria: g.categoria,
+          dataIso: date, startTime, durataMinuti: durationMinutes, festivi
+        });
+        if (quotaCompagno == null) {
+          throw new HttpsError("failed-precondition", "Tariffa non configurata per la categoria di un compagno.");
+        }
+        let categoriaCompagno = g.categoria;
+        ({ categoria: categoriaCompagno, prezzo: quotaCompagno } = await applicaTettoAzienda({
+          categoria: categoriaCompagno, socioId: g.socioId, prezzo: quotaCompagno,
+          disciplina: "padel", posizione: null, dataIso: date, startTime, durataMinuti: durationMinutes, festivi
+        }));
+        const quotaCompagnoPerTesta = quotaCompagno / POSTI_PADEL;
+        prezzoDettaglio.push({ ruolo: "compagno", categoria: categoriaCompagno, importo: quotaCompagnoPerTesta, socioId: g.socioId, nome: g.nome });
+        totale += quotaCompagnoPerTesta;
+      }
+      prezzo = totale;
+    }
 
     let creditoDaScalare = 0;
     if (creditCode) {
@@ -675,6 +746,7 @@ exports.creaPrenotazionePubblica = onCall(
         tx.set(db.collection("bookingDettagli").doc(bookingRef.id), {
           prenotanteNome: prenotante.nome || null,
           altriGiocatori: altriGiocatoriRisolti.map(g => g.nome).filter(Boolean),
+          ripartizioneAttiva,
           prezzoDettaglio
         });
       }
@@ -3551,14 +3623,14 @@ exports.creaPrenotazioneCampo = onCall(
     const scadute = preSnap.docs.filter(d => pendingScaduto(d.data()));
     if (scadute.length > 0) await Promise.all(scadute.map(d => d.ref.delete()));
 
-    // Prezzo: sempre ricalcolato lato server. Per il tennis si gioca in
-    // due — mai fidarsi del nome libero del secondo giocatore, si
+    // Prezzo: sempre ricalcolato lato server. Tennis e squash si giocano
+    // in due — mai fidarsi del nome libero del secondo giocatore, si
     // riverifica sempre giocatore2SocioId contro "soci" (se non risolto,
     // resta "esterno").
     let giocatore2Categoria = "esterno";
     let giocatore2NomeRisolto = giocatore2Nome || null;
     let giocatore2SocioIdVerificato = null;
-    if (disciplina === "tennis" && g2Snap && g2Snap.exists && g2Snap.data().attivo !== false) {
+    if ((disciplina === "tennis" || disciplina === "squash") && g2Snap && g2Snap.exists && g2Snap.data().attivo !== false) {
       giocatore2Categoria = g2Snap.data().categoria;
       giocatore2NomeRisolto = `${g2Snap.data().nome} ${g2Snap.data().cognome}`;
       giocatore2SocioIdVerificato = giocatore2SocioId;
@@ -3580,9 +3652,9 @@ exports.creaPrenotazioneCampo = onCall(
       fattoreCondivisione: disciplina === "tennis" ? 0.5 : 1
     }));
     let prezzo = quota1;
-    const prezzoDettaglio = [{ ruolo: "prenotante", categoria: categoria1, importo: quota1, socioId: prenotante.socioId || null }];
+    const prezzoDettaglio = [{ ruolo: "prenotante", categoria: categoria1, importo: quota1, socioId: prenotante.socioId || null, nome: prenotante.nome || null }];
 
-    if (disciplina === "tennis") {
+    if (disciplina === "tennis" || disciplina === "squash") {
       let quota2 = await quotaCategoria({ disciplina, posizione, categoria: giocatore2Categoria, dataIso: date, startTime, durataMinuti, festivi });
       if (quota2 == null) throw new HttpsError("failed-precondition", "Tariffa non configurata per il secondo giocatore.");
       let categoria2 = giocatore2Categoria;
@@ -3593,13 +3665,13 @@ exports.creaPrenotazioneCampo = onCall(
       }));
       // La tariffa configurata (Tariffe campi) è già il prezzo dell'intero
       // slot, non a testa — con due giocatori si divide a metà ciascuno,
-      // MAI si somma (altrimenti un tennis tra due esterni costerebbe il
-      // doppio della tariffa configurata). Categorie miste: ognuno paga
-      // metà della propria tariffa — socio+socio resta la tariffa socio
-      // intera, non raddoppiata.
+      // MAI si somma (altrimenti un tennis/squash tra due esterni
+      // costerebbe il doppio della tariffa configurata). Categorie miste:
+      // ognuno paga metà della propria tariffa — socio+socio resta la
+      // tariffa socio intera, non raddoppiata.
       prezzo = quota1 / 2 + quota2 / 2;
       prezzoDettaglio[0].importo = quota1 / 2;
-      prezzoDettaglio.push({ ruolo: "secondo giocatore", categoria: categoria2, importo: quota2 / 2, socioId: giocatore2SocioIdVerificato });
+      prezzoDettaglio.push({ ruolo: "secondo giocatore", categoria: categoria2, importo: quota2 / 2, socioId: giocatore2SocioIdVerificato, nome: giocatore2NomeRisolto });
     }
 
     // Un maestro soggetto a quota campo (come per il padel STAFF_EXEMPT)
@@ -3643,6 +3715,13 @@ exports.creaPrenotazioneCampo = onCall(
       }
     }
 
+    // Congelato alla creazione (non ricalcolato più avanti se lo staff
+    // cambia il flag prima della conferma): decide solo se biglietto.html
+    // mostra la ripartizione tra i giocatori — chi prenota paga sempre
+    // l'intero prezzo, il flag non tocca l'addebito, solo la trasparenza
+    // di cosa mostrare.
+    const ripartizioneAttiva = !!impostazioni.ripartizioneGiocatoriAttiva;
+
     const token = generaToken();
     const bookingRef = db.collection("bookings").doc();
     await db.runTransaction(async (tx) => {
@@ -3668,8 +3747,9 @@ exports.creaPrenotazioneCampo = onCall(
       });
       tx.set(db.collection("bookingDettagli").doc(bookingRef.id), {
         prenotanteNome: prenotante.nome || null,
-        giocatore2Nome: disciplina === "tennis" ? giocatore2NomeRisolto : null,
-        giocatore2SocioId: disciplina === "tennis" && giocatore2Categoria !== "esterno" ? giocatore2SocioId : null,
+        giocatore2Nome: (disciplina === "tennis" || disciplina === "squash") ? giocatore2NomeRisolto : null,
+        giocatore2SocioId: (disciplina === "tennis" || disciplina === "squash") && giocatore2Categoria !== "esterno" ? giocatore2SocioId : null,
+        ripartizioneAttiva,
         prezzoDettaglio
       });
     });

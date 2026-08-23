@@ -835,14 +835,14 @@ function render() {
 // ---------- Pannello di conferma prenotazione ----------
 //
 // Numero di campi "altro giocatore" mostrati, per disciplina: 1 per il
-// tennis (la tariffa configurata è per l'intero slot, divisa a metà tra i
-// due giocatori — ognuno la propria metà, secondo la propria categoria:
-// stessa categoria per entrambi = tariffa intera invariata, categorie
-// miste = media delle due), 3 per il padel (fino a 4 nominativi, solo per
-// il tabellone — il prezzo è per il campo, non cambia in base a chi/quanti
-// giocano), nessuno per lo squash.
+// tennis e squash (la tariffa configurata è per l'intero slot, divisa a
+// metà tra i due giocatori — ognuno la propria metà, secondo la propria
+// categoria: stessa categoria per entrambi = tariffa intera invariata,
+// categorie miste = media delle due), 3 per il padel (fino a 4
+// nominativi — il prezzo per il campo non cambia in base a chi/quanti
+// giocano, a meno che il pagamento diviso non sia attivo, vedi sotto).
 function numeroCampiGiocatore(disciplina) {
-  if (disciplina === "tennis") return 1;
+  if (disciplina === "tennis" || disciplina === "squash") return 1;
   if (disciplina === "padel") return 3;
   return 0;
 }
@@ -869,11 +869,28 @@ function apriPannelloPrenota(slot) {
   const prezzoLabel = prezzo == null ? "—" : formatoPrezzo(prezzo);
   const prezzoTitolo = slot.campo.disciplina === "tennis" ? "Prezzo indicativo" : "Prezzo";
 
-  const etichetta = slot.campo.disciplina === "tennis" ? "Nome del secondo giocatore" : "Nome giocatore";
-  const introPadel = nCampi > 0 && slot.campo.disciplina === "padel"
+  const etichetta = (slot.campo.disciplina === "tennis" || slot.campo.disciplina === "squash") ? "Nome del secondo giocatore" : "Nome giocatore";
+  // Il prezzo varia in base alla categoria del compagno per tennis/squash
+  // sempre (comportamento di sempre, non legato al flag), per il padel
+  // solo se la ripartizione per categoria è attiva in Configurazione —
+  // in entrambi i casi il totale è definitivo al pagamento, va detto
+  // chiaramente prima, non scoperto dopo.
+  const prezzoVariabilePerCompagno = slot.campo.disciplina === "tennis" || slot.campo.disciplina === "squash"
+    || (slot.campo.disciplina === "padel" && IMPOSTAZIONI_PC.ripartizioneGiocatoriAttiva);
+
+  const introPadel = nCampi > 0 && slot.campo.disciplina === "padel" && !IMPOSTAZIONI_PC.ripartizioneGiocatoriAttiva
     ? `<p style="color:var(--chalk-grey);font-size:0.78rem;margin:0 0 10px;">Chi gioca con te? (facoltativo — il prezzo è per il campo, non cambia in base al numero di giocatori).</p>` : "";
-  const introTennis = slot.campo.disciplina === "tennis"
+  const introPadelRipartizione = nCampi > 0 && slot.campo.disciplina === "padel" && IMPOSTAZIONI_PC.ripartizioneGiocatoriAttiva
+    ? `<p style="color:var(--chalk-grey);font-size:0.78rem;margin:0 0 10px;">Il padel si gioca in 4: indica chi gioca con te (facoltativo) — la tariffa finale è la somma delle quote reali dei 4 posti, in base alla categoria di ciascuno. I posti non nominati contano come la tua categoria, quindi prenotare senza indicare nessuno costa come sempre.</p>` : "";
+  const introTennisSquash = (slot.campo.disciplina === "tennis" || slot.campo.disciplina === "squash")
     ? `<p style="color:var(--chalk-grey);font-size:0.78rem;margin:0 0 10px;">Il prezzo mostrato è indicativo: se il secondo giocatore ha una categoria diversa dalla tua, la tariffa finale si adegua di conseguenza.</p>` : "";
+  const avvisoDefinitivo = nCampi > 0 && prezzoVariabilePerCompagno
+    ? `<p style="color:var(--chalk-grey);font-size:0.78rem;margin:0 0 10px;">Il prezzo diventa definitivo al momento del pagamento — dopo, non sono ammesse riduzioni retroattive se correggi o aggiungi un nominativo.</p>` : "";
+  const consensoRipartizione = nCampi > 0 && prezzoVariabilePerCompagno
+    ? `<div class="checkbox-row" style="margin-bottom:14px;">
+        <input type="checkbox" id="consenso-ripartizione-${idx}">
+        <label for="consenso-ripartizione-${idx}">Ho controllato i nominativi inseriti — il prezzo finale è definitivo al pagamento.</label>
+      </div>` : "";
 
   panel.innerHTML = `
     <div class="prenota-panel">
@@ -886,7 +903,9 @@ function apriPannelloPrenota(slot) {
         <button type="button" class="btn btn-ghost chiudi-prenota-btn" style="width:auto;padding:4px 10px;font-size:0.9rem;line-height:1;" aria-label="Chiudi">✕</button>
       </div>
       ${introPadel}
-      ${introTennis}
+      ${introPadelRipartizione}
+      ${introTennisSquash}
+      ${avvisoDefinitivo}
       ${Array.from({ length: nCampi }).map((_, n) => `
         <div class="field" id="g-campo-${idx}-${n}">
           <label for="g-nome-${idx}-${n}">${etichetta}${nCampi > 1 ? " " + (n + 2) : ""}</label>
@@ -900,6 +919,7 @@ function apriPannelloPrenota(slot) {
           <button type="button" class="btn btn-ghost cambia-giocatore-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-n="${n}">Cambia</button>
         </div>
       `).join("")}
+      ${consensoRipartizione}
       <div class="error-msg" id="conferma-error-${idx}"></div>
       <button type="button" class="btn btn-primary conferma-prenota-btn" data-idx="${idx}" style="margin-top:10px;">Conferma prenotazione</button>
     </div>
@@ -910,6 +930,17 @@ function apriPannelloPrenota(slot) {
     panel.innerHTML = "";
     selezionaBottoneGriglia(null);
   });
+
+  // Bottone disabilitato finché non si spunta il consenso — solo quando
+  // il prezzo può davvero variare in base al compagno (vedi
+  // prezzoVariabilePerCompagno sopra), altrimenti nessun checkbox è mai
+  // stato renderizzato e non c'è nulla da attendere.
+  if (nCampi > 0 && prezzoVariabilePerCompagno) {
+    const consensoInput = document.getElementById(`consenso-ripartizione-${idx}`);
+    const confermaBtn = panel.querySelector(".conferma-prenota-btn");
+    confermaBtn.disabled = true;
+    consensoInput.addEventListener("change", () => { confermaBtn.disabled = !consensoInput.checked; });
+  }
 
   const selezionaGiocatore = (n, socioId, nome) => {
     giocatoriRisolti[n] = { socioId, nomeVisualizzato: nome };

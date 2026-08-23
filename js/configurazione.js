@@ -1861,6 +1861,7 @@ async function loadPrenotazioniCampiForm() {
   const dati = doc.exists ? doc.data() : {};
   document.getElementById("pc-max-attive").value = dati.maxPrenotazioniAttivePerUtente ?? "";
   document.getElementById("pc-settimane-visibili").value = dati.settimaneVisibili ?? "";
+  document.getElementById("pc-ripartizione-giocatori").checked = dati.ripartizioneGiocatoriAttiva === true;
   prenotazioniCampiAnticipoCache = dati.giorniAnticipoPrenotazione || {};
   renderCampiAnticipoPrenotazione();
 }
@@ -1887,6 +1888,7 @@ async function onSavePrenotazioniCampi(e) {
     await db.collection("impostazioni").doc("prenotazioniCampi").set({
       maxPrenotazioniAttivePerUtente: numOrNull("pc-max-attive"),
       settimaneVisibili: numOrNull("pc-settimane-visibili"),
+      ripartizioneGiocatoriAttiva: document.getElementById("pc-ripartizione-giocatori").checked,
       giorniAnticipoPrenotazione
     }, { merge: true });
   } catch (err) {

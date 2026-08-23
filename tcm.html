@@ -61,7 +61,7 @@
      sono pochi, la larghezza resta comunque gestibile senza scroll
      orizzontale dedicato. */
   .grid-wrap { margin-bottom: 8px; }
-  table.slot-grid { width: 100%; border-collapse: collapse; font-family: 'Space Mono', monospace; }
+  table.slot-grid { width: 100%; border-collapse: collapse; font-family: 'Space Mono', monospace; table-layout: fixed; }
   table.slot-grid th {
     padding: 6px 3px 10px;
   }
@@ -128,14 +128,15 @@
   }
   .slot-empty { display: block; padding: 8px 0; text-align: center; color: var(--chalk-grey-dim); font-size: 0.8rem; }
   /* Nome di chi ha prenotato (pseudonimo per un socio, nome vero per lo
-     staff, vedi caricaNomiOccupati in prenota-campo-v2.js) — colonne
-     strette con più campi affiancati, quindi tronca invece di andare a
-     capo o rompere la griglia; il title mostra il testo completo al
-     tocco lungo. */
+     staff, vedi caricaNomiOccupati in prenota-campo-v2.js) — table-layout:
+     fixed qui sopra mantiene tutte le colonne della griglia della stessa
+     larghezza a prescindere da quanto è lungo un nome; qui il testo va a
+     capo invece di troncare, la riga si allarga in altezza se serve
+     invece di rompere l'allineamento tra le colonne. */
   .slot-occupante-nome {
     display: block; padding: 8px 2px; text-align: center; color: var(--chalk-grey);
     font-family: 'Inter', sans-serif; font-size: 0.68rem; font-weight: 600;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    overflow-wrap: break-word;
   }
 
   .prenota-panel { background: var(--court-blue-900); border: 1px solid var(--court-blue-700); border-radius: var(--radius);
