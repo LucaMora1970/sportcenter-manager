@@ -213,7 +213,7 @@ let IMPOSTAZIONI_PC = { settimaneVisibili: 4 };
 let PROFILI = []; // sociDevices.profili
 let profiloScelto = null; // socioId scelto, o null = esterno/primo profilo
 
-const state = { gruppoKey: null, data: null, bookingsPerCourt: {}, apertoPerCourtSlot: null, durataPadel: 90, tennisPosizione: "interno", pseudonimi: {} };
+const state = { gruppoKey: null, data: null, bookingsPerCourt: {}, apertoPerCourtSlot: null, durataPadel: 90, tennisPosizione: "interno", nomiOccupati: {} };
 let bookingsUnsub = null;
 
 function disciplinaLabel(d) { return { tennis: "Tennis", squash: "Squash", padel: "Padel" }[d] || d; }
@@ -518,38 +518,56 @@ function ascoltaPrenotazioniGiorno() {
             (state.bookingsPerCourt[b.courtId] = state.bookingsPerCourt[b.courtId] || []).push(b);
           });
         render();
-        caricaPseudonimiVisibili();
+        caricaNomiOccupati();
       },
       (err) => showError(document.getElementById("prenota-error"), "Errore nel caricamento: " + err.message)
     );
 }
 
-// Pseudonimi (scelti dai soci) sugli slot già prenotati — solo tennis/
-// squash, solo se chi guarda è a sua volta un socio riconosciuto (mai
-// staff, mai esterno anonimo: la Cloud Function pseudonimiPrenotazioni
-// rifiuta chiunque altro). Fire-and-forget: non deve bloccare il render
-// veloce della disponibilità, che parte subito da state.bookingsPerCourt
-// — i nomi compaiono un istante dopo, quando la chiamata si risolve.
-// Cache a vita di sessione (state.pseudonimi, mai svuotata): un id
-// booking è univoco, e il volume giornaliero di un piccolo circolo è
-// trascurabile — salva anche gli esiti "risolto ma senza pseudonimo"
-// (null) così non vengono richiesti di nuovo.
-async function caricaPseudonimiVisibili() {
-  if (sessioneStaff || PROFILI.length === 0) return;
+// Nomi sugli slot già prenotati — solo tennis/squash, mai per gli
+// esterni anonimi. Due binari diversi a seconda di chi guarda, non lo
+// stesso dato per tutti:
+// - un socio riconosciuto vede lo PSEUDONIMO (scelto dal socio stesso,
+//   mai il nome vero) via pseudonimiPrenotazioni — protegge l'identità
+//   dagli altri soci.
+// - lo staff vede il NOME VERO via dettagliGiocatori (la stessa funzione
+//   che alimenta "Chi c'è in campo", non limitata al presente) — allo
+//   staff serve poter verificare sul posto chi ha davvero prenotato, per
+//   cui un semplice pseudonimo darebbe MENO informazione di quella che
+//   ha già oggi. Nessuna nuova funzione lato server per questo caso,
+//   dettagliGiocatori è già autorizzata per loro.
+// Fire-and-forget: non deve bloccare il render veloce della
+// disponibilità, che parte subito da state.bookingsPerCourt — i nomi
+// compaiono un istante dopo, quando la chiamata si risolve. Cache a vita
+// di sessione (state.nomiOccupati, mai svuotata): un id booking è
+// univoco, e il volume giornaliero di un piccolo circolo è trascurabile
+// — salva anche gli esiti "risolto ma senza nome" (null) così non
+// vengono richiesti di nuovo.
+async function caricaNomiOccupati() {
+  if (!sessioneStaff && PROFILI.length === 0) return;
 
   const bookingIds = Object.values(state.bookingsPerCourt)
     .flat()
     .map(b => b.id)
-    .filter(id => !(id in state.pseudonimi));
+    .filter(id => !(id in state.nomiOccupati));
   if (bookingIds.length === 0) return;
 
   try {
-    const fn = cloudFunctions().httpsCallable("pseudonimiPrenotazioni");
-    const { data } = await fn({ bookingIds });
-    bookingIds.forEach(id => { state.pseudonimi[id] = data.pseudonimi[id] || null; });
+    if (sessioneStaff) {
+      const fn = cloudFunctions().httpsCallable("dettagliGiocatori");
+      const { data } = await fn({ bookingIds });
+      bookingIds.forEach(id => {
+        const d = data.dettagli[id];
+        state.nomiOccupati[id] = d && d.nome1 ? { principale: d.nome1, secondario: (d.altri || [])[0] || null } : null;
+      });
+    } else {
+      const fn = cloudFunctions().httpsCallable("pseudonimiPrenotazioni");
+      const { data } = await fn({ bookingIds });
+      bookingIds.forEach(id => { state.nomiOccupati[id] = data.pseudonimi[id] || null; });
+    }
     render();
   } catch (err) {
-    console.warn("caricaPseudonimiVisibili: lettura fallita:", err.message);
+    console.warn("caricaNomiOccupati: lettura fallita:", err.message);
   }
 }
 
@@ -656,16 +674,16 @@ function prezzoTestoSlot(disciplina, posizione, orario, durataMinuti) {
   return `da ${formatoPrezzo(min)}`;
 }
 
-// Slot occupato: se chi guarda è un socio riconosciuto e il pseudonimo è
-// già arrivato (vedi caricaPseudonimiVisibili), mostra chi ha prenotato
-// al posto del semplice "—" — per lo staff/esterni resta sempre "—",
-// perché state.pseudonimi non viene mai popolato per loro.
+// Slot occupato: se il nome è già arrivato (vedi caricaNomiOccupati) lo
+// mostra al posto del semplice "—" — pseudonimo per un socio, nome vero
+// per lo staff, sempre "—" per un esterno anonimo (state.nomiOccupati
+// non viene mai popolato per loro).
 function cellaOccupataHtml(booking) {
-  const p = state.pseudonimi[booking.id];
+  const p = state.nomiOccupati[booking.id];
   const nomi = p ? [p.principale, p.secondario].filter(Boolean) : [];
   if (nomi.length === 0) return `<span class="slot-empty">—</span>`;
   const testo = nomi.join(" / ");
-  return `<span class="slot-pseudonimo" title="${escapeHtml(testo)}">${escapeHtml(testo)}</span>`;
+  return `<span class="slot-occupante-nome" title="${escapeHtml(testo)}">${escapeHtml(testo)}</span>`;
 }
 
 function renderGrigliaCampi(el, gruppo) {
@@ -681,7 +699,7 @@ function renderGrigliaCampi(el, gruppo) {
   }
 
   // find invece di some: serve l'oggetto booking (per risalire al suo id
-  // e cercare il pseudonimo in state.pseudonimi), non solo se la cella è
+  // e cercare il nome in state.nomiOccupati), non solo se la cella è
   // occupata — un booking è truthy, undefined è falsy, quindi il check
   // "every(Boolean)" sotto resta valido senza modifiche.
   const occupatoMatrix = campi.map(campo => {
@@ -1123,8 +1141,8 @@ async function caricaProfiliDispositivo() {
     // sessioneStaff/PROFILI potrebbero non essere ancora pronti la prima
     // volta che ascoltaPrenotazioniGiorno() ha già ricevuto uno snapshot
     // (le due chiamate partono in parallelo, non in sequenza) — rivalutato
-    // qui il gate "socio riconosciuto" appena il riconoscimento si risolve.
-    caricaPseudonimiVisibili();
+    // qui il gate (socio riconosciuto o staff) appena il riconoscimento si risolve.
+    caricaNomiOccupati();
   });
 
   ascoltaPrenotazioniGiorno();
