@@ -21,6 +21,12 @@
     color: var(--chalk-grey); white-space: nowrap;
   }
   .gruppo-pills button[aria-pressed="true"] { background: var(--ball); border-color: var(--ball); color: #0d1f30; }
+  /* Tema chiaro: sul verde --ball più scuro di questo tema, il testo
+     bianco è più leggibile del testo scuro ereditato dalla regola sopra
+     — per i tab disciplina (#gruppo-pills) e Campi INDOOR/OUTDOOR, non
+     per gli altri usi di .gruppo-pills (durata padel). */
+  :root[data-theme="light"] #gruppo-pills button[aria-pressed="true"],
+  :root[data-theme="light"] #posizione-tennis-pills button[aria-pressed="true"] { color: #fff; }
   /* Stesso distacco che c'è sopra il day-strip (.gruppo-pills padding-bottom
      12px + .sticky-selectors padding-top 4px) — qui sopra Interno/Esterno
      c'era solo il padding-bottom:4px del day-strip, molto più stretto. */
