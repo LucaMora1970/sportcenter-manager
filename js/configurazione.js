@@ -1619,13 +1619,59 @@ function loadTariffeCampiOrdine(it) {
   return (DISCIPLINE.find(d => d.id === it.disciplina) || {}).ordine ?? 99;
 }
 
+let ultimeTariffeCampiCache = [];
+
 async function loadTariffeCampi() {
   const snap = await db.collection("tariffeCampi").get();
   const tariffe = snap.docs.map(d => ({ id: d.id, ...d.data() }))
     .sort((a, b) => loadTariffeCampiOrdine(a) - loadTariffeCampiOrdine(b)
       || (a.posizione || "").localeCompare(b.posizione || "")
       || (CATEGORIA_LABEL[a.categoria] || a.categoria).localeCompare(CATEGORIA_LABEL[b.categoria] || b.categoria));
+  ultimeTariffeCampiCache = tariffe;
   renderSimpleList("tariffecampi-list", tariffe, tariffaCampoLabel, tariffaCampoMeta, "tariffeCampi", loadTariffeCampi, null, startDuplicaTariffaCampo);
+}
+
+// Tabella unica di tutte le tariffe campi (tutte le discipline/categorie
+// insieme), per un controllo rapido che la lista a card qui sopra non
+// permette senza scorrere — stesso pattern "riempi #print-area e
+// window.print()" già usato per gli altri documenti stampabili
+// dell'app (vedi stampaReport in resoconto.js): niente libreria PDF,
+// è la finestra di stampa del browser ("Salva come PDF") a generare il
+// file.
+function stampaTariffeCampi() {
+  if (ultimeTariffeCampiCache.length === 0) return;
+
+  const righe = ultimeTariffeCampiCache.map(it => {
+    const giorniLabel = (it.giorniSettimana || []).length
+      ? it.giorniSettimana.map(g => (GIORNI_SETTIMANA.find(x => x.id === g) || {}).label || g).join(",")
+      : "Tutti i giorni";
+    const orarioLabel = it.oraInizio && it.oraFine ? `${it.oraInizio}–${it.oraFine}` : "Tutta la giornata";
+    const posizioneLbl = it.disciplina === "padel" ? "—" : (it.posizione ? posizioneLabel(it.posizione) : "Tutti i campi");
+    return `
+      <tr>
+        <td>${escapeHtml(disciplinaLabel(it.disciplina))}</td>
+        <td>${escapeHtml(posizioneLbl)}</td>
+        <td>${escapeHtml(CATEGORIA_LABEL[it.categoria] || it.categoria)}</td>
+        <td>${escapeHtml(giorniLabel)}</td>
+        <td>${escapeHtml(orarioLabel)}</td>
+        <td>${it.durataMinuti ? it.durataMinuti + "'" : "Qualunque"}</td>
+        <td>CHF ${(it.prezzo || 0).toFixed(2)}</td>
+      </tr>
+    `;
+  }).join("");
+
+  document.getElementById("print-area").innerHTML = `
+    ${intestazioneStampaHtml()}
+    <h1>Tariffe campi — tutte le utenze</h1>
+    <table>
+      <thead>
+        <tr><th>Disciplina</th><th>Posizione</th><th>Categoria</th><th>Giorni</th><th>Orario</th><th>Durata</th><th>Prezzo a slot</th></tr>
+      </thead>
+      <tbody>${righe}</tbody>
+    </table>
+  `;
+
+  window.print();
 }
 
 // Nascosto per padel e squash: i campi di queste discipline non hanno mai
@@ -2211,6 +2257,7 @@ requireAuth(async (profile) => {
   document.getElementById("new-azienda-form").addEventListener("submit", onCreateAzienda);
   document.getElementById("cancel-edit-azienda-btn").addEventListener("click", cancelEditAzienda);
   document.getElementById("new-tariffacampo-form").addEventListener("submit", onCreateTariffaCampo);
+  document.getElementById("stampa-tariffecampi-btn").addEventListener("click", stampaTariffeCampi);
   document.getElementById("new-tariffacampo-disciplina").addEventListener("change", syncTariffaCampoPadelFields);
   syncTariffaCampoPadelFields();
   document.getElementById("new-forfaitcampo-form").addEventListener("submit", onCreateForfaitCampo);

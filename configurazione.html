@@ -698,6 +698,7 @@
       <summary><h2>Tariffe campi (tennis/squash/padel)</h2></summary>
       <div class="config-section-body">
       <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Prezzo a slot per disciplina, posizione e categoria di chi gioca. Nel tennis il prezzo dello slot è la somma delle tariffe dei due giocatori.</p>
+      <button type="button" id="stampa-tariffecampi-btn" class="btn btn-ghost" style="width:auto;padding:8px 12px;font-size:0.78rem;margin-bottom:10px;">Stampa tabella tariffe (PDF)</button>
       <div id="tariffecampi-list">
         <div class="empty-state"><div class="display">Caricamento…</div></div>
       </div>
@@ -1007,6 +1008,8 @@
   </script>
 
 </div>
+
+<div id="print-area"></div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
