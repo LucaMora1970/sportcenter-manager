@@ -117,20 +117,22 @@
         <form id="proponi-form" class="gp-card">
           <div class="row2">
             <div class="field"><label for="pr-data">Data</label><input type="date" id="pr-data" required></div>
-            <div class="field"><label for="pr-ora">Ora inizio</label><input type="time" id="pr-ora" required></div>
-          </div>
-          <div class="row2">
             <div class="field">
               <label for="pr-durata">Durata</label>
               <select id="pr-durata"><option value="60">60'</option><option value="90" selected>90'</option></select>
             </div>
-            <div class="field">
-              <label for="pr-headcount">Giocatori richiesti</label>
-              <select id="pr-headcount"><option value="4" selected>4 (doppio)</option><option value="2">2 (singolo)</option></select>
-            </div>
+          </div>
+          <div class="field">
+            <label for="pr-ora">Ora inizio</label>
+            <select id="pr-ora" required><option value="">Scegli prima data e durata…</option></select>
+          </div>
+          <div class="field">
+            <label for="pr-headcount">Giocatori richiesti</label>
+            <select id="pr-headcount"><option value="4" selected>4 (doppio)</option><option value="2">2 (singolo)</option></select>
           </div>
           <div class="field">
             <label>Invita dalla classifica</label>
+            <p style="color:var(--chalk-grey);font-size:0.78rem;margin:-4px 0 8px;">Facoltativo: seleziona qui sotto chi vuoi invitare tra i giocatori già registrati — genera un link personale per ciascuno. Se non selezioni nessuno puoi comunque condividere il link aperto generato dopo, oppure invitare via email qui sotto.</p>
             <div id="proponi-invitati-list" style="max-height:220px;overflow-y:auto;border:1px solid var(--court-blue-700);border-radius:var(--radius);padding:8px;"></div>
           </div>
           <div class="field">

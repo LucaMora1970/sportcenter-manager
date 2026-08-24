@@ -21,6 +21,171 @@ let classificaCache = [];
 
 const STATO_SESSIONE_LABEL = { aperta: "In attesa di conferme", confermata: "Confermata", scaduta: "Scaduta", annullata: "Annullata" };
 
+// ---------- Calcolo slot liberi (stessa identica logica anti-buco di
+// js/prenota-padel.js, duplicata anche lì e lato server in
+// functions/index.js — se cambia va cambiata ovunque) — qui serve per
+// proporre in "Proponi una sessione" solo orari realmente disponibili e
+// con tariffa configurata, invece di un orario libero che poi il server
+// rifiuterebbe. minutiToOrario()/IMPOSTAZIONI/loadImpostazioni() sono già
+// in js/utils.js, riusati direttamente. ----------
+
+const COURT_ID = "1";
+const OPEN = 8 * 60;
+const CLOSE = 23 * 60;
+const BOUNDARY = 17 * 60;
+const SLOT_FISSO_PRANZO = 12 * 60 + 15;
+const SLOT_FISSO_SERALE = 17 * 60 + 30;
+
+function oraLocaleZurigo() {
+  const parti = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Zurich",
+      year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false
+    }).formatToParts(new Date()).map(p => [p.type, p.value])
+  );
+  return { dataIso: `${parti.year}-${parti.month}-${parti.day}`, minuti: parseInt(parti.hour, 10) * 60 + parseInt(parti.minute, 10) };
+}
+function eOggi(dataIso) {
+  return dataIso === oraLocaleZurigo().dataIso;
+}
+function escludiOrariPassati(starts, dataIso) {
+  const ora = oraLocaleZurigo();
+  if (dataIso !== ora.dataIso) return starts;
+  return starts.filter(s => s > ora.minuti);
+}
+const PENDING_SCADUTO_MINUTI = 15;
+function pendingScaduto(booking) {
+  if (booking.status !== "PENDING_PAYMENT") return false;
+  if (!booking.createdAt || typeof booking.createdAt.toMillis !== "function") return false;
+  return (Date.now() - booking.createdAt.toMillis()) > PENDING_SCADUTO_MINUTI * 60000;
+}
+function orarioToMin(orario) {
+  const [h, m] = orario.split(":").map(Number);
+  return h * 60 + m;
+}
+function chiusuraGiorno(dataIso) {
+  const giorno = new Date(dataIso + "T00:00:00").getDay();
+  const chiusuraWeekend = orarioToMin(IMPOSTAZIONI.chiusuraWeekend || "20:30");
+  return (giorno === 0 || giorno === 6 || (IMPOSTAZIONI.festivi || []).includes(dataIso)) ? chiusuraWeekend : CLOSE;
+}
+function feriale(dataIso) {
+  const giorno = new Date(dataIso + "T00:00:00").getDay();
+  return giorno >= 1 && giorno <= 5 && !(IMPOSTAZIONI.festivi || []).includes(dataIso);
+}
+function freeIntervals(bookings, close) {
+  const sorted = [...bookings].sort((a, b) => a.start - b.start);
+  const free = [];
+  let cursor = OPEN;
+  sorted.forEach(b => {
+    if (b.start > cursor) free.push([cursor, b.start]);
+    cursor = Math.max(cursor, b.end);
+  });
+  if (cursor < close) free.push([cursor, close]);
+  return free;
+}
+function gapPrimaOk(t, a) {
+  const gap = t - a;
+  return gap === 0 || gap >= 60;
+}
+function slotsInInterval(a, b, duration, feriale, oggi) {
+  const starts = [];
+  if (duration === 90) {
+    for (let t = a; t < BOUNDARY && t + 90 <= b; t += 30) {
+      const remain = b - (t + 90);
+      if ((remain === 0 || remain >= 60) && gapPrimaOk(t, a)) starts.push(t);
+    }
+    [b - 90, b - 90 - 60].forEach(t => {
+      if (t >= a && t < BOUNDARY && !starts.includes(t) && gapPrimaOk(t, a)) {
+        const remain = b - (t + 90);
+        if (remain === 0 || remain >= 60) starts.push(t);
+      }
+    });
+    const primoChain = Math.max(a, BOUNDARY);
+    if (gapPrimaOk(primoChain, a)) {
+      const passo = oggi ? 15 : 90;
+      for (let t = primoChain; t + 90 <= b; t += passo) starts.push(t);
+    }
+    if (SLOT_FISSO_PRANZO >= a && SLOT_FISSO_PRANZO + 90 <= b && gapPrimaOk(SLOT_FISSO_PRANZO, a)) {
+      const remain = b - (SLOT_FISSO_PRANZO + 90);
+      if (remain === 0 || remain >= 60) starts.push(SLOT_FISSO_PRANZO);
+    }
+    if (feriale && SLOT_FISSO_SERALE >= a && SLOT_FISSO_SERALE + 90 <= b && gapPrimaOk(SLOT_FISSO_SERALE, a)) {
+      const remain = b - (SLOT_FISSO_SERALE + 90);
+      if (remain === 0 || remain >= 60) starts.push(SLOT_FISSO_SERALE);
+    }
+  } else {
+    const limit = Math.min(b, BOUNDARY + 30);
+    for (let t = a; t + 60 <= limit; t += 30) {
+      const remain = limit - (t + 60);
+      if ((remain === 0 || remain >= 60) && gapPrimaOk(t, a)) starts.push(t);
+    }
+    [limit - 60, limit - 60 - 60].forEach(t => {
+      if (t >= a && !starts.includes(t) && gapPrimaOk(t, a)) {
+        const remain = limit - (t + 60);
+        if (remain === 0 || remain >= 60) starts.push(t);
+      }
+    });
+    if (limit - a < 90) {
+      [a, limit - 60].forEach(t => {
+        if (t >= a && t + 60 <= limit && !starts.includes(t)) starts.push(t);
+      });
+    }
+    if (SLOT_FISSO_PRANZO >= a && SLOT_FISSO_PRANZO + 60 <= limit && gapPrimaOk(SLOT_FISSO_PRANZO, a)) {
+      const remain = limit - (SLOT_FISSO_PRANZO + 60);
+      if (remain === 0 || remain >= 60) starts.push(SLOT_FISSO_PRANZO);
+    }
+  }
+  return starts;
+}
+function validStarts(bookings, duration, close, feriale, oggi) {
+  const free = freeIntervals(bookings, close);
+  let starts = [];
+  free.forEach(([a, b]) => { starts = starts.concat(slotsInInterval(a, b, duration, feriale, oggi)); });
+  return [...new Set(starts)].sort((x, y) => x - y);
+}
+
+let CHIUSURE_PADEL = new Set();
+async function caricaChiusurePadel() {
+  const snap = await db.collection("chiusurePadel").get();
+  CHIUSURE_PADEL = new Set(snap.docs.map(d => d.id));
+}
+
+async function slotDisponibiliPadel(dataIso, durationMinutes) {
+  if (CHIUSURE_PADEL.has(dataIso)) return [];
+  const close = chiusuraGiorno(dataIso);
+  const snap = await db.collection("bookings").where("date", "==", dataIso).where("courtId", "==", COURT_ID).get();
+  const bookings = snap.docs
+    .map(d => d.data())
+    .filter(b => !pendingScaduto(b))
+    .filter(b => b.status === "PENDING_PAYMENT" || b.status === "PENDING_CONFIRMATION" || b.status === "CONFIRMED" || b.status === "COMPLETED")
+    .map(b => ({ start: orarioToMin(b.startTime), end: orarioToMin(b.endTime) }));
+  const starts = validStarts(bookings, durationMinutes, close, feriale(dataIso), eOggi(dataIso));
+  return escludiOrariPassati(starts, dataIso);
+}
+
+async function aggiornaSlotOra() {
+  const select = document.getElementById("pr-ora");
+  const dataIso = document.getElementById("pr-data").value;
+  const durata = parseInt(document.getElementById("pr-durata").value, 10);
+  if (!dataIso) {
+    select.innerHTML = `<option value="">Scegli prima data e durata…</option>`;
+    return;
+  }
+  select.innerHTML = `<option value="">Caricamento orari…</option>`;
+  select.disabled = true;
+  try {
+    const starts = await slotDisponibiliPadel(dataIso, durata);
+    select.innerHTML = starts.length > 0
+      ? `<option value="">Scegli un orario…</option>` + starts.map(s => `<option value="${minutiToOrario(s)}">${minutiToOrario(s)}</option>`).join("")
+      : `<option value="">Nessuno slot libero in questa data</option>`;
+  } catch (err) {
+    select.innerHTML = `<option value="">Errore nel caricamento orari</option>`;
+    console.error("aggiornaSlotOra:", err);
+  } finally {
+    select.disabled = false;
+  }
+}
+
 function mostraStato(id) {
   ["stato-caricamento", "stato-verifica-email", "stato-invito", "stato-registrazione", "area-content"].forEach(s => {
     document.getElementById(s).classList.toggle("hidden", s !== id);
@@ -329,17 +494,28 @@ function attivaTab(tab) {
 
 async function mostraAreaContent() {
   mostraStato("area-content");
-  document.getElementById("pr-data").min = new Date().toISOString().slice(0, 10);
+  const oggi = new Date();
+  const domani = new Date(oggi);
+  domani.setDate(oggi.getDate() + 1);
+  document.getElementById("pr-data").min = oggi.toISOString().slice(0, 10);
+  if (!document.getElementById("pr-data").value) {
+    document.getElementById("pr-data").value = domani.toISOString().slice(0, 10);
+  }
   await caricaClassifica();
+  await aggiornaSlotOra();
   attivaTab("classifica");
 }
 
 (async function init() {
   await loadDatiCentro();
   document.getElementById("centro-kicker").textContent = DATI_CENTRO.nome;
+  await loadImpostazioni();
+  await caricaChiusurePadel();
 
   document.getElementById("registrazione-form").addEventListener("submit", onSubmitRegistrazione);
   document.getElementById("proponi-form").addEventListener("submit", onSubmitProponi);
+  document.getElementById("pr-data").addEventListener("change", aggiornaSlotOra);
+  document.getElementById("pr-durata").addEventListener("change", aggiornaSlotOra);
   document.querySelectorAll(".gp-tab-btn").forEach(b => b.addEventListener("click", () => attivaTab(b.dataset.tab)));
 
   const params = new URLSearchParams(location.search);
