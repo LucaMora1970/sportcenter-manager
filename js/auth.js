@@ -83,6 +83,7 @@ function requireAuth(callback) {
 }
 
 function logout() {
+  sessionStorage.removeItem("sportos-test-come");
   auth.signOut().then(() => {
     window.location.href = "index.html";
   });

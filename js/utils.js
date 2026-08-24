@@ -428,4 +428,68 @@ function initMenuUtente() {
     if (!dropdown.classList.contains("hidden") && !dropdown.contains(e.target)) chiudi();
   });
 }
+
+// ---------- Modalità test (un admin autenticato come un altro utente) ----------
+//
+// Avviata da un pulsante "Prova come questo utente" (soci.js/users.js,
+// solo per chi è vero admin — vedi isAdmin() in auth.js): chiama la Cloud
+// Function impersonaUtente, che verifica di nuovo lato server che il
+// chiamante sia admin e restituisce un customToken per l'account REALE
+// del socio/utente scelto — non una simulazione, l'admin si autentica
+// davvero come quella persona, quindi vede tariffe e regole Firestore
+// esattamente come le vedrebbe lei. Non c'è sessione parallela: per
+// tornare al proprio account bisogna rifare login, per questo il flag di
+// avviso in sessionStorage (sopravvive alla navigazione tra pagine nella
+// stessa scheda, sparisce alla chiusura) serve solo a non perdere di
+// vista che si sta navigando come qualcun altro.
+async function onProvaComeUtente(btn, tipo, id, nome) {
+  if (!confirm(`Avviare un test come "${nome}"?\n\nVerrai disconnesso dal tuo account admin e autenticato come questo utente: per tornare dovrai rifare il login.`)) return;
+
+  const testoOriginale = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Avvio…";
+  try {
+    const fn = cloudFunctions().httpsCallable("impersonaUtente");
+    const { data } = await fn({ tipo, id });
+
+    sessionStorage.setItem("sportos-test-come", data.nome || nome);
+    await firebase.auth().signInWithCustomToken(data.customToken);
+
+    if (tipo === "socio") {
+      location.href = "tcm.html";
+    } else {
+      const profile = typeof getCurrentUserProfile === "function" ? await getCurrentUserProfile() : null;
+      location.href = profile && typeof paginaIniziale === "function" ? paginaIniziale(profile) : "diario.html";
+    }
+  } catch (err) {
+    alert("Errore: " + err.message);
+    btn.disabled = false;
+    btn.textContent = testoOriginale;
+  }
+}
+
+// Banner fisso in cima alla pagina finché il flag di modalità test resta
+// in sessionStorage — nessun markup da aggiungere pagina per pagina,
+// no-op se il flag non c'è (stesso approccio di initMenuUtente sopra).
+function renderBannerModalitaTest() {
+  const nome = sessionStorage.getItem("sportos-test-come");
+  if (!nome) return;
+
+  const banner = document.createElement("div");
+  banner.style.cssText = "position:sticky;top:0;z-index:9999;background:#c6df2e;color:#0d1f30;padding:8px 14px;font-size:0.8rem;font-weight:600;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:10px;";
+  banner.innerHTML = `<span>Modalità test: stai navigando come ${escapeHtml(nome)}</span>`;
+
+  const exitBtn = document.createElement("button");
+  exitBtn.type = "button";
+  exitBtn.textContent = "Esci dalla modalità test";
+  exitBtn.style.cssText = "background:#0d1f30;color:#c6df2e;border:none;border-radius:6px;padding:6px 10px;font-size:0.78rem;font-weight:600;cursor:pointer;";
+  exitBtn.addEventListener("click", () => {
+    sessionStorage.removeItem("sportos-test-come");
+    firebase.auth().signOut().then(() => { location.href = "index.html"; });
+  });
+  banner.appendChild(exitBtn);
+
+  document.body.prepend(banner);
+}
+renderBannerModalitaTest();
 initMenuUtente();

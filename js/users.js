@@ -122,6 +122,9 @@ async function loadUsers() {
     const roleLabel = u.ruoloNome || u.ruoloId || "—";
     const tariffe = tariffeSummary(u);
     const attivo = u.attivo !== false;
+    const ruolo = rolesCache.find(r => r.id === u.ruoloId);
+    const targetIsAdmin = !!(ruolo && (ruolo.permessi || []).includes("*"));
+    const mostraProvaCome = isAdmin(currentProfile) && !targetIsAdmin && attivo && u.id !== currentProfile.uid;
     return `
       <div class="team-card" data-uid="${u.id}">
         <div class="team-card-header">
@@ -177,6 +180,11 @@ async function loadUsers() {
           <button class="btn btn-danger delete-user-btn" data-uid="${u.id}" data-nome="${escapeHtml(u.nome || u.id)}">
             Elimina utente
           </button>
+          ${mostraProvaCome ? `
+          <button class="btn btn-ghost prova-come-btn" data-uid="${u.id}" data-nome="${escapeHtml(u.nome || u.id)}">
+            Prova come questo utente
+          </button>
+          ` : ""}
         </div>
       </div>
     `;
@@ -202,6 +210,9 @@ async function loadUsers() {
   });
   list.querySelectorAll(".delete-user-btn").forEach(btn => {
     btn.addEventListener("click", onDeleteUser);
+  });
+  list.querySelectorAll(".prova-come-btn").forEach(btn => {
+    btn.addEventListener("click", () => onProvaComeUtente(btn, "staff", btn.dataset.uid, btn.dataset.nome));
   });
 }
 

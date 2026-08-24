@@ -2541,6 +2541,88 @@ exports.collegaSocioAlDispositivo = onCall(async (request) => {
   }
 });
 
+// ---------- Test come un altro utente (solo admin) ----------
+//
+// Permette a un vero amministratore di autenticarsi temporaneamente come un
+// socio o un membro dello staff reale, per verificare tariffe e dinamiche
+// di prenotazione esattamente come le vedrebbe quella persona: stesso
+// account, stesse regole Firestore, non una simulazione lato client. Per
+// tornare al proprio account serve un nuovo login — niente sessione
+// parallela, stesso limite di un browser con un solo utente Firebase Auth
+// alla volta. Ogni utilizzo viene loggato in auditImpersonazioni.
+exports.impersonaUtente = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+  const { isAdmin: chiamanteAdmin, userData: chiamante } = await permessiUtente(request.auth.uid);
+  if (!chiamanteAdmin) {
+    throw new HttpsError("permission-denied", "Solo un amministratore può avviare un test come un altro utente.");
+  }
+
+  const { tipo, id } = request.data || {};
+  if (!tipo || !id) throw new HttpsError("invalid-argument", "Parametri mancanti.");
+
+  try {
+    let uid, nome;
+
+    if (tipo === "staff") {
+      const userSnap = await db.collection("users").doc(id).get();
+      if (!userSnap.exists) throw new HttpsError("not-found", "Utente non trovato.");
+      const target = userSnap.data();
+      let targetPermessi = [];
+      if (target.ruoloId) {
+        const roleSnap = await db.collection("roles").doc(target.ruoloId).get();
+        if (roleSnap.exists) targetPermessi = roleSnap.data().permessi || [];
+      }
+      if (targetPermessi.includes("*")) {
+        throw new HttpsError("permission-denied", "Non puoi avviare un test come un altro amministratore.");
+      }
+      uid = id;
+      nome = target.nome || target.email || id;
+    } else if (tipo === "socio") {
+      const socioRef = db.collection("soci").doc(id);
+      const socioSnap = await socioRef.get();
+      if (!socioSnap.exists || socioSnap.data().attivo === false) {
+        throw new HttpsError("not-found", "Socio non trovato.");
+      }
+      const socio = socioSnap.data();
+      uid = socio.authUid;
+      if (!uid) {
+        uid = `socio_${id}`;
+        try {
+          await getAuth().createUser({ uid });
+        } catch (err) {
+          if (err.code !== "auth/uid-already-exists") throw err;
+        }
+        await socioRef.update({ authUid: uid });
+      }
+      // Stesso collegamento che collegaSocioAlDispositivo fa al primo
+      // accesso reale del socio: senza, prenota-campo-v2.js non
+      // troverebbe alcun profilo in sociDevices/{uid} e tratterebbe il
+      // test come un visitatore anonimo invece che come quel socio.
+      const deviceRef = db.collection("sociDevices").doc(uid);
+      const deviceSnap = await deviceRef.get();
+      const profili = deviceSnap.exists ? (deviceSnap.data().profili || []) : [];
+      if (!profili.some(p => p.socioId === id)) {
+        profili.push({ socioId: id, nome: `${socio.nome} ${socio.cognome}`, categoria: socio.categoria });
+        await deviceRef.set({ profili, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      }
+      nome = `${socio.nome} ${socio.cognome}`;
+    } else {
+      throw new HttpsError("invalid-argument", "Tipo non valido.");
+    }
+
+    const customToken = await getAuth().createCustomToken(uid);
+    await db.collection("auditImpersonazioni").add({
+      adminUid: request.auth.uid, adminNome: (chiamante && chiamante.nome) || request.auth.uid,
+      targetTipo: tipo, targetId: id, targetUid: uid, targetNome: nome,
+      createdAt: FieldValue.serverTimestamp()
+    });
+    return { customToken, nome };
+  } catch (err) {
+    if (err instanceof HttpsError) throw err;
+    throw new HttpsError("internal", "Avvio test non riuscito: " + err.message);
+  }
+});
+
 // ---------- Aziende convenzionate: portale referente ----------
 //
 // Ogni azienda convenzionata è anche una categoria di prezzo a sé (righe in

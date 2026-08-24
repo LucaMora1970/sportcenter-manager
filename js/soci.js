@@ -83,11 +83,15 @@ async function cercaSoci() {
             <div class="entry-meta">${escapeHtml(categoria ? categoria.nome : s.categoria)}${s.tessera ? " · " + escapeHtml(s.tessera) : ""} · ${escapeHtml(s.email)}</div>
           </div>
           <button type="button" class="btn btn-ghost modifica-socio-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${s.id}">Modifica</button>
+          ${isAdmin(currentProfile) && s.attivo ? `<button type="button" class="btn btn-ghost prova-come-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${s.id}" data-nome="${escapeHtml(s.nome + " " + s.cognome)}">Prova come questo socio</button>` : ""}
         </div>
       `;
     }).join("");
     listEl.querySelectorAll(".modifica-socio-btn").forEach(btn => {
       btn.addEventListener("click", () => startEditSocio(ultimaRicercaSoci.find(s => s.id === btn.dataset.id)));
+    });
+    listEl.querySelectorAll(".prova-come-btn").forEach(btn => {
+      btn.addEventListener("click", () => onProvaComeUtente(btn, "socio", btn.dataset.id, btn.dataset.nome));
     });
   } catch (err) {
     showError(errorEl, "Errore: " + err.message);
