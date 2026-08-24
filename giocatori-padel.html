@@ -77,12 +77,17 @@
           <div class="field"><label for="reg-nome">Nome</label><input type="text" id="reg-nome" required></div>
           <div class="field"><label for="reg-cognome">Cognome</label><input type="text" id="reg-cognome" required></div>
         </div>
+        <div class="field">
+          <label for="reg-pseudonimo">Pseudonimo</label>
+          <input type="text" id="reg-pseudonimo" maxlength="30" required>
+        </div>
+        <p style="color:var(--chalk-grey);font-size:0.8rem;margin:-8px 0 14px;">Come vuoi essere riconosciuto da chi cerca un compagno di gioco — se preferisci il tuo nome vero, scrivilo qui tu stesso. Deve essere unico e non può contenere parole offensive.</p>
         <div class="row2">
           <div class="field"><label for="reg-telefono">Telefono</label><input type="tel" id="reg-telefono" required></div>
-          <div class="field"><label for="reg-email">Email (facoltativa)</label><input type="email" id="reg-email"></div>
+          <div class="field"><label for="reg-email">Email</label><input type="email" id="reg-email" required></div>
         </div>
         <div class="field">
-          <label for="reg-playtomic">Livello Playtomic (facoltativo)</label>
+          <label for="reg-playtomic">Livello aggiornato Playtomic o attribuito dal nostro Istruttore</label>
           <input type="number" id="reg-playtomic" min="0" max="7" step="0.01" placeholder="es. 3.5">
         </div>
         <div class="checkbox-row" style="margin:10px 0 16px;">

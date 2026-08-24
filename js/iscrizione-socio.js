@@ -115,6 +115,7 @@ async function onSubmitIscrizione(e) {
   const payload = {
     nome: document.getElementById("is-nome").value.trim(),
     cognome: document.getElementById("is-cognome").value.trim(),
+    pseudonimo: document.getElementById("is-pseudonimo").value.trim(),
     email: document.getElementById("is-email").value.trim(),
     telefono: document.getElementById("is-telefono").value.trim() || null,
     dataNascita: document.getElementById("is-datanascita").value,

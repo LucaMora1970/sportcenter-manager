@@ -80,6 +80,7 @@ async function onSubmitRegistrazione(e) {
     const payload = {
       nome: document.getElementById("reg-nome").value.trim(),
       cognome: document.getElementById("reg-cognome").value.trim(),
+      pseudonimo: document.getElementById("reg-pseudonimo").value.trim(),
       telefono: document.getElementById("reg-telefono").value.trim(),
       email: document.getElementById("reg-email").value.trim() || null,
       playtomicLivello: document.getElementById("reg-playtomic").value !== "" ? parseFloat(document.getElementById("reg-playtomic").value) : null,
@@ -253,9 +254,20 @@ async function onSubmitProponi(e) {
         </div>
       `;
     }).join("");
+    const rigaLinkAperto = data.linkAperto ? `
+      <div class="gp-invito-riga">
+        <span>Link aperto — per chiunque, primo arrivato primo servito</span>
+        <span>
+          <button type="button" class="btn btn-ghost copia-invito-btn" data-link="${escapeHtml(data.linkAperto)}" style="width:auto;padding:6px 10px;font-size:0.7rem;">Copia link</button>
+          <a href="https://wa.me/?text=${encodeURIComponent(data.linkAperto)}" target="_blank" rel="noopener" class="btn btn-ghost" style="width:auto;padding:6px 10px;font-size:0.7rem;display:inline-block;">WhatsApp</a>
+        </span>
+      </div>
+    ` : "";
     esitoEl.innerHTML = `
       <p><strong>Proposta lanciata.</strong> Condividi questi link con gli invitati:</p>
       ${righeInviti || `<p style="color:var(--chalk-grey);font-size:0.82rem;">Nessun invitato dalla classifica — controlla gli eventuali inviti via email.</p>`}
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:14px 0 0;">Oppure posta questo link dove vuoi (es. gruppo WhatsApp del circolo) — chi risponde per primo occupa i posti rimasti, fino al numero richiesto:</p>
+      ${rigaLinkAperto}
     `;
     esitoEl.querySelectorAll(".copia-invito-btn").forEach(b => b.addEventListener("click", () => copyToClipboard(b.dataset.link, b)));
 

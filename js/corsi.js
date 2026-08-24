@@ -151,28 +151,23 @@ async function loadCorsi() {
   renderCorsi();
 }
 
-function renderCorsi() {
-  const list = document.getElementById("corsi-list");
+// Foto disciplina già configurata in Configurazione → Foto discipline
+// (stesso FOTO_DISCIPLINE consumato da tcm.html) — Tennis non ha una
+// posizione a livello di corso (solo campiNumeri), quindi si preferisce
+// la foto Interno con ripiego su Esterno se mancante.
+function fotoDisciplinaCorsi(disciplinaId) {
+  if (disciplinaId === "tennis") return FOTO_DISCIPLINE.tennisInterno || FOTO_DISCIPLINE.tennisEsterno || "";
+  return FOTO_DISCIPLINE[disciplinaId] || "";
+}
 
-  if (corsiCache.length === 0) {
-    list.innerHTML = `<div class="empty-state"><div class="display">Nessun corso creato</div></div>`;
-    return;
-  }
+let filtroDisciplinaCorsi = "tutti";
 
-  const puoGestireTutti = hasPermission(currentProfile, "corsi:gestisci");
-  const puoGestirePadel = hasPermission(currentProfile, "corsi:gestisci_padel");
-  const puoApprovare = hasPermission(currentProfile, "corsi:approva");
-  const puoVedereIscrizioniTutte = hasPermission(currentProfile, "iscrizioni:gestisci");
-  const puoVedereIscrizioniPadel = hasPermission(currentProfile, "iscrizioni:gestisci_padel");
-
-  list.innerHTML = corsiCache.map(c => {
-    const puoGestire = puoGestireTutti || (puoGestirePadel && c.disciplina === "padel");
-    const puoVedereIscrizioni = puoVedereIscrizioniTutte || (puoVedereIscrizioniPadel && c.disciplina === "padel");
-    const giorniOrariRighe = Object.entries(c.giorniOrari || {})
-      .map(([g, orari]) => `<div class="entry-meta">${(GIORNI_SETTIMANA.find(x => x.id === g) || {}).label || g}: ${orari.join(", ")}</div>`)
-      .join("") || `<div class="entry-meta">—</div>`;
-    const campiLabel = (c.campiNumeri || []).map(n => "Campo " + n).join(", ") || "—";
-    return `
+function corsoCardHtml(c, { puoGestire, puoVedereIscrizioni, puoApprovare }) {
+  const giorniOrariRighe = Object.entries(c.giorniOrari || {})
+    .map(([g, orari]) => `<div class="entry-meta">${(GIORNI_SETTIMANA.find(x => x.id === g) || {}).label || g}: ${orari.join(", ")}</div>`)
+    .join("") || `<div class="entry-meta">—</div>`;
+  const campiLabel = (c.campiNumeri || []).map(n => "Campo " + n).join(", ") || "—";
+  return `
     <div class="dipendente-block corso-card" data-id="${c.id}">
       <div class="entry-card">
         <div class="entry-main">
@@ -203,6 +198,60 @@ function renderCorsi() {
       ${puoVedereIscrizioni && c.approvato ? `<div class="dettaglio-giorni hidden" id="storico-${c.id}"></div>` : ""}
     </div>
   `;
+}
+
+function renderCorsi() {
+  const list = document.getElementById("corsi-list");
+  const pillsEl = document.getElementById("corsi-filtro-pills");
+
+  if (corsiCache.length === 0) {
+    pillsEl.classList.add("hidden");
+    list.innerHTML = `<div class="empty-state"><div class="display">Nessun corso creato</div></div>`;
+    return;
+  }
+
+  const puoGestireTutti = hasPermission(currentProfile, "corsi:gestisci");
+  const puoGestirePadel = hasPermission(currentProfile, "corsi:gestisci_padel");
+  const puoApprovare = hasPermission(currentProfile, "corsi:approva");
+  const puoVedereIscrizioniTutte = hasPermission(currentProfile, "iscrizioni:gestisci");
+  const puoVedereIscrizioniPadel = hasPermission(currentProfile, "iscrizioni:gestisci_padel");
+  // Istruttore Padel (solo permessi scoped, niente pieno): la vista si
+  // riduce a Padel + le discipline trasversali, per non affollarla di
+  // sezioni che comunque non può gestire.
+  const soloVistaPadel = !puoGestireTutti && !puoVedereIscrizioniTutte && (puoGestirePadel || puoVedereIscrizioniPadel);
+
+  const disciplineConCorsi = DISCIPLINE.filter(d => corsiCache.some(c => c.disciplina === d.id));
+  const sezioni = soloVistaPadel
+    ? disciplineConCorsi.filter(d => d.id === "padel" || d.trasversale)
+    : disciplineConCorsi;
+  const isTrasversale = (filtroId) => sezioni.some(d => d.id === filtroId && d.trasversale);
+
+  pillsEl.classList.toggle("hidden", sezioni.length <= 1);
+  pillsEl.innerHTML = [{ id: "tutti", label: "Tutti" }, ...sezioni.map(d => ({ id: d.id, label: d.label }))]
+    .map(d => `<button type="button" data-filtro="${d.id}" aria-pressed="${d.id === filtroDisciplinaCorsi}">${escapeHtml(d.label)}</button>`)
+    .join("");
+  pillsEl.querySelectorAll("button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      filtroDisciplinaCorsi = btn.dataset.filtro;
+      renderCorsi();
+    });
+  });
+
+  list.innerHTML = sezioni.map(d => {
+    const corsiSezione = corsiCache.filter(c => c.disciplina === d.id);
+    if (corsiSezione.length === 0) return "";
+    const visibile = filtroDisciplinaCorsi === "tutti" || filtroDisciplinaCorsi === d.id
+      || (d.trasversale && !isTrasversale(filtroDisciplinaCorsi));
+    const foto = fotoDisciplinaCorsi(d.id);
+    const headerHtml = foto
+      ? `<div class="corsi-sezione-header con-foto" style="background-image:url('${foto}')"><h3>${escapeHtml(d.label)}</h3></div>`
+      : `<div class="corsi-sezione-header"><h3>${escapeHtml(d.label)}</h3></div>`;
+    const cardsHtml = corsiSezione.map(c => corsoCardHtml(c, {
+      puoGestire: puoGestireTutti || (puoGestirePadel && c.disciplina === "padel"),
+      puoVedereIscrizioni: puoVedereIscrizioniTutte || (puoVedereIscrizioniPadel && c.disciplina === "padel"),
+      puoApprovare
+    })).join("");
+    return `<div class="corsi-sezione${visibile ? "" : " hidden"}" data-disciplina="${d.id}">${headerHtml}${cardsHtml}</div>`;
   }).join("");
 
   list.querySelectorAll(".giorni-toggle").forEach(el => {
@@ -1208,6 +1257,7 @@ requireAuth(async (profile) => {
   await loadDatiCentro();
   await loadDiscipline();
   await loadCampi();
+  await loadFotoDiscipline();
 
   populateSelect(document.getElementById("corso-disciplina"), DISCIPLINE);
 

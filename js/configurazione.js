@@ -376,6 +376,7 @@ function startEditDisciplina(item) {
   document.getElementById("new-disciplina-ordine").value = item.ordine != null ? item.ordine : "";
   document.getElementById("new-disciplina-ore-annullamento").value = item.oreAnnullamento != null ? item.oreAnnullamento : "";
   document.getElementById("new-disciplina-forfait-ore-annullamento").value = item.forfaitOreAnnullamento != null ? item.forfaitOreAnnullamento : "";
+  document.getElementById("new-disciplina-trasversale").checked = item.trasversale === true;
   document.getElementById("create-disciplina-btn").textContent = "Salva modifiche";
   document.getElementById("cancel-edit-disciplina-btn").classList.remove("hidden");
   document.getElementById("new-disciplina-form").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -404,14 +405,15 @@ async function onCreateDisciplina(e) {
   const oreAnnullamento = oreAnnullamentoRaw !== "" ? parseInt(oreAnnullamentoRaw, 10) : null;
   const forfaitOreAnnullamentoRaw = document.getElementById("new-disciplina-forfait-ore-annullamento").value;
   const forfaitOreAnnullamento = forfaitOreAnnullamentoRaw !== "" ? parseInt(forfaitOreAnnullamentoRaw, 10) : null;
+  const trasversale = document.getElementById("new-disciplina-trasversale").checked;
 
   try {
     if (!nome) throw new Error("Inserisci un nome.");
     if (editingDisciplinaId) {
-      await db.collection("discipline").doc(editingDisciplinaId).update({ nome, ordine, oreAnnullamento, forfaitOreAnnullamento });
+      await db.collection("discipline").doc(editingDisciplinaId).update({ nome, ordine, oreAnnullamento, forfaitOreAnnullamento, trasversale });
     } else {
       if (!id) throw new Error("Inserisci un ID disciplina (es. mental-coach).");
-      await db.collection("discipline").doc(id).set({ nome, ordine, oreAnnullamento, forfaitOreAnnullamento, attivo: true });
+      await db.collection("discipline").doc(id).set({ nome, ordine, oreAnnullamento, forfaitOreAnnullamento, trasversale, attivo: true });
     }
     cancelEditDisciplina();
     await loadDisciplineList();

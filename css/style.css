@@ -489,13 +489,43 @@ select:focus, input:focus, textarea:focus {
 .btn-ghost { background: transparent; color: var(--chalk-grey); border: 1px solid var(--court-blue-700); }
 .btn-danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
 
+.gruppo-pills { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 12px; }
+.gruppo-pills button {
+  flex: 0 0 auto; font-size: 0.78rem; font-weight: 600; padding: 8px 14px;
+  border-radius: 999px; border: 1px solid var(--court-blue-700); background: var(--court-blue-900);
+  color: var(--chalk-grey); white-space: nowrap;
+}
+.gruppo-pills button[aria-pressed="true"] { background: var(--ball); border-color: var(--ball); color: #0d1f30; }
+:root[data-theme="light"] .gruppo-pills button[aria-pressed="true"] { color: #fff; }
+
+.corsi-sezione-header {
+  display: flex; align-items: flex-end; gap: 10px; padding: 16px;
+  border-radius: var(--radius); margin: 20px 0 12px; min-height: 60px;
+  background-size: cover; background-position: center;
+  background-color: var(--court-blue-900);
+}
+.corsi-sezione-header h3 {
+  font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 1.1rem; margin: 0;
+  color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,0.6);
+}
+.corsi-sezione-header.con-foto { position: relative; }
+.corsi-sezione-header.con-foto h3 { position: relative; z-index: 1; }
+.corsi-sezione-header.con-foto::after {
+  content: ""; position: absolute; inset: 0; border-radius: var(--radius);
+  background: linear-gradient(0deg, rgba(0,0,0,0.55), rgba(0,0,0,0.15));
+}
+
 .cta-community-padel {
-  display: block; margin: 0 0 18px; padding: 14px var(--gap);
+  display: flex; align-items: center; gap: 12px;
+  margin: 0 0 28px; padding: 12px var(--gap);
   border: 1px solid var(--ball); border-radius: var(--radius);
   background: color-mix(in srgb, var(--ball) 10%, transparent);
   text-decoration: none; color: inherit;
 }
-.cta-community-padel .cta-arrow { color: var(--ball); font-weight: 600; }
+.cta-community-padel .cta-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.cta-community-padel .cta-titolo { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 0.92rem; }
+.cta-community-padel .cta-sottotitolo { font-size: 0.76rem; color: var(--chalk-grey); }
+.cta-community-padel .cta-arrow { color: var(--ball); font-weight: 700; font-size: 1.1rem; flex: none; }
 
 /* Bottom nav — app mobile-like, scorrevole orizzontalmente quando le
    voci non entrano tutte (più pagine = più voci nel tempo) */

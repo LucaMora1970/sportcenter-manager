@@ -1991,20 +1991,48 @@ async function avviaPagamentoIscrizioneSocio({ requestId, nomeCompleto, categori
 async function creaSocioDaRichiesta(reqRef, r, { pagamentoMetodo }) {
   const categoria = r.categoriaConfermata || r.categoriaRichiesta;
   const consenso = r.consensoPrivacy === true;
+  const esistente = await db.collection("soci").where("email", "==", r.email).limit(1).get();
+  const socioIdEsistente = !esistente.empty ? esistente.docs[0].id : null;
+
+  // Ri-verifica l'unicità qui (non solo al momento della richiesta): tra
+  // la richiesta e questa conferma può passare del tempo (giorni per il
+  // percorso "in attesa di approvazione"), un altro iscritto potrebbe nel
+  // frattempo aver preso lo stesso pseudonimo. Non blocchiamo un'iscrizione
+  // già pagata/confermata per questo — nessun utente interattivo dall'altra
+  // parte (arriva dal webhook PostFinance o dalla conferma staff): si
+  // aggiunge un suffisso numerico automatico, correggibile poi dal socio
+  // via "La mia area".
+  let pseudonimo = null;
+  if (r.pseudonimo) {
+    pseudonimo = r.pseudonimo;
+    for (let tentativo = 0; tentativo < 20; tentativo++) {
+      try {
+        pseudonimo = await validaEVerificaUnicitaPseudonimo(pseudonimo, { obbligatorio: true, escludiSocioId: socioIdEsistente });
+        break;
+      } catch (err) {
+        if (err instanceof HttpsError && err.code === "already-exists") {
+          pseudonimo = `${r.pseudonimo} ${tentativo + 2}`;
+        } else {
+          pseudonimo = null; // parola vietata sfuggita al controllo iniziale: azzera invece di bloccare
+          break;
+        }
+      }
+    }
+  }
+
   const dati = {
     nome: r.nome, cognome: r.cognome, email: r.email,
     telefono: r.telefono || null, categoria, dataNascita: r.dataNascita,
     via: r.via || null, cap: r.cap || null, localita: r.localita || null,
     consensoPrivacy: consenso, consensoPrivacyAt: consenso ? FieldValue.serverTimestamp() : null,
     aziendaNome: null, tessera: null, scadenza: null, attivo: true,
-    pagamentoMetodo,
+    pagamentoMetodo, pseudonimo,
     ...(r.inseritaDaStaff ? { inseritaDaStaff: true, inseritaDaUid: r.inseritaDaUid || null, inseritaDaNome: r.inseritaDaNome || null } : {})
   };
-  const esistente = await db.collection("soci").where("email", "==", r.email).limit(1).get();
   let socioId;
-  if (!esistente.empty) {
+  if (socioIdEsistente) {
     await esistente.docs[0].ref.set(dati, { merge: true });
-    socioId = esistente.docs[0].id;
+    socioId = socioIdEsistente;
   } else {
     const ref = await db.collection("soci").add({ ...dati, authUid: null, forfaitPagato: null, createdAt: FieldValue.serverTimestamp() });
     socioId = ref.id;
@@ -2056,6 +2084,11 @@ exports.richiediIscrizioneSocio = onCall(
     if (eta == null || eta < 0 || eta > 120) {
       throw new HttpsError("invalid-argument", "Data di nascita non valida.");
     }
+    // Obbligatorio da qui in avanti — chi vuole restare identificabile col
+    // proprio nome vero lo scrive lui stesso come pseudonimo (vedi
+    // validaEVerificaUnicitaPseudonimo, controlla anche doppioni/parole
+    // vietate su un elenco condiviso soci+giocatoriPadel).
+    const pseudonimo = await validaEVerificaUnicitaPseudonimo(request.data?.pseudonimo, { obbligatorio: true });
 
     // La pagina resta pubblica (nessun requireAuth), ma se chi chiama è
     // già loggato come staff (es. segretaria che compila per conto di un
@@ -2114,7 +2147,7 @@ exports.richiediIscrizioneSocio = onCall(
     if (richiedeVerifica) {
       await db.collection("richiesteIscrizioneSocio").add({
         nome, cognome, email, telefono: telefono || null, dataNascita, eta,
-        via, cap, localita, consensoPrivacy: true,
+        via, cap, localita, consensoPrivacy: true, pseudonimo,
         categoriaRichiesta, richiedeVerifica,
         stato: "IN_ATTESA_APPROVAZIONE", createdAt: FieldValue.serverTimestamp(),
         ...provenienzaStaff
@@ -2128,7 +2161,7 @@ exports.richiediIscrizioneSocio = onCall(
 
     const reqRef = await db.collection("richiesteIscrizioneSocio").add({
       nome, cognome, email, telefono: telefono || null, dataNascita, eta,
-      via, cap, localita, consensoPrivacy: true,
+      via, cap, localita, consensoPrivacy: true, pseudonimo,
       categoriaRichiesta, richiedeVerifica, quotaCalcolata: importo,
       stato: "IN_ATTESA_PAGAMENTO", createdAt: FieldValue.serverTimestamp(),
       ...provenienzaStaff
@@ -2323,16 +2356,19 @@ exports.aggiornaSocioAdmin = onCall(async (request) => {
     throw new HttpsError("invalid-argument", "Categoria non valida.");
   }
 
+  // Il socio lo imposta di norma da solo (vedi impostaPseudonimo) — qui
+  // serve soprattutto per permettere allo staff di azzerarlo o correggerlo
+  // se qualcuno sceglie qualcosa di inopportuno. Stessa validazione
+  // (doppioni/parole vietate) di ogni altro punto che scrive pseudonimo.
+  const pseudonimoValidato = await validaEVerificaUnicitaPseudonimo(pseudonimo, { obbligatorio: false, escludiSocioId: socioId });
+
   await socioRef.update({
     nome, cognome, email: email.trim().toLowerCase(),
     telefono: telefono || null, via: via || null, cap: cap || null, localita: localita || null,
     categoria, tessera: tessera || null, dataNascita,
     scadenza: scadenza ? new Date(scadenza) : null,
     attivo: attivo !== false,
-    // Il socio lo imposta da solo (vedi impostaPseudonimo) — qui solo
-    // per permettere allo staff di azzerarlo se qualcuno sceglie
-    // qualcosa di inopportuno, non un campo che l'admin compila di norma.
-    pseudonimo: (pseudonimo || "").trim().slice(0, 30) || null
+    pseudonimo: pseudonimoValidato
   });
   return { ok: true };
 });
@@ -3360,20 +3396,37 @@ exports.confermaRicaricaSuFattura = onCall({ secrets: MAIL_SECRETS }, async (req
 // Ricerca del secondo giocatore/compagni (tennis/padel), pubblica come
 // cercaSociStaff (pannello operatore) ma più prudente nell'esposizione dato
 // che qui non serve login: soglia più alta (3 caratteri), pochi risultati
-// (8), e niente categoria nell'elenco — solo nome, per limitare quanto un
-// visitatore non riconosciuto può "sfogliare" cercando lettere comuni. La
-// categoria del giocatore selezionato si riverifica comunque sempre lato
-// server al momento della prenotazione (mai fidarsi del client).
+// (8). Mostra sempre e solo lo pseudonimo (mai nome/cognome veri) — chi
+// vuole essere trovabile col proprio nome lo ha scritto lui stesso come
+// pseudonimo in fase di registrazione; chi non ha (ancora) uno pseudonimo
+// semplicemente non compare, come già oggi per "Chi c'è in campo". Cerca
+// sia tra i soci sia tra i giocatori Community Padel esterni (non soci,
+// niente "soci" alle spalle) — quelli collegati a un socio sono già
+// trovabili tramite "soci", niente doppio risultato per la stessa persona.
+// La categoria del giocatore selezionato si riverifica comunque sempre
+// lato server al momento della prenotazione (mai fidarsi del client).
 exports.cercaGiocatore = onCall(async (request) => {
   const testo = (request.data?.nome || "").trim().toLowerCase();
   if (testo.length < 3) return { risultati: [] };
 
-  const snap = await db.collection("soci").where("attivo", "==", true).limit(500).get();
-  const risultati = snap.docs
+  const match = (nome, cognome, pseudonimo) =>
+    !!pseudonimo && (`${nome} ${cognome}`.toLowerCase().includes(testo) || pseudonimo.toLowerCase().includes(testo));
+
+  const [sociSnap, padelSnap] = await Promise.all([
+    db.collection("soci").where("attivo", "==", true).limit(500).get(),
+    db.collection("giocatoriPadel").where("attivo", "==", true).where("esterno", "==", true).limit(500).get()
+  ]);
+
+  const daSoci = sociSnap.docs
     .map(d => ({ id: d.id, ...d.data() }))
-    .filter(s => `${s.nome} ${s.cognome}`.toLowerCase().includes(testo))
-    .slice(0, 8)
-    .map(s => ({ socioId: s.id, nome: s.nome, cognome: s.cognome }));
+    .filter(s => match(s.nome, s.cognome, s.pseudonimo))
+    .map(s => ({ socioId: s.id, pseudonimo: s.pseudonimo }));
+  const daPadel = padelSnap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(g => match(g.nome, g.cognome, g.pseudonimo))
+    .map(g => ({ socioId: null, pseudonimo: g.pseudonimo }));
+
+  const risultati = [...daSoci, ...daPadel].slice(0, 8);
   return { risultati };
 });
 
@@ -3455,6 +3508,69 @@ exports.pseudonimiPrenotazioni = onCall(async (request) => {
   return { pseudonimi };
 });
 
+// ---------- Pseudonimo: validazione condivisa (unicità + parole vietate) ----------
+//
+// Usata da 4 punti: le due registrazioni che lo rendono OBBLIGATORIO
+// (registraGiocatorePadel, richiediIscrizioneSocio+creaSocioDaRichiesta)
+// e i due punti che lo scrivevano finora senza alcun controllo
+// (impostaPseudonimo self-service, aggiornaSocioAdmin per lo staff) —
+// altrimenti la regola "niente doppioni/parolacce" avrebbe due porte sul
+// retro rimaste aperte. Unicità verificata su un'unica lista condivisa
+// soci+giocatoriPadel: le due collection non devono poter avere lo stesso
+// pseudonimo, altrimenti la ricerca compagno (cercaGiocatore) diventerebbe
+// ambigua.
+//
+// Lista di base, volutamente compatta (non un sistema di moderazione
+// completo — proporzionato a un piccolo circolo) — ampliabile in futuro.
+const PAROLE_VIETATE_PSEUDONIMO = [
+  "merda", "cazzo", "cazzo", "stronz", "puttana", "troia", "vaffanculo", "bastard",
+  "negro", "negri", "ebreo di merda", "terrone", "frocio", "checca", "handicappat",
+  "ritardat", "nazi", "hitler", "isis",
+  "fuck", "shit", "bitch", "nigger", "nigga", "cunt", "faggot"
+];
+
+// NFD + rimozione diacritici + minuscolo: così "É" e "e" (o "cazzo"/"Càzzo")
+// contano come lo stesso testo sia per il filtro sia per l'unicità.
+function normalizzaTestoPseudonimo(testo) {
+  return (testo || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+}
+
+function contieneParolaVietata(normalizzato) {
+  return PAROLE_VIETATE_PSEUDONIMO.some(p => normalizzato.includes(p));
+}
+
+// obbligatorio=false preserva il comportamento storico di impostaPseudonimo
+// ("stringa vuota = azzera esplicitamente"). escludiSocioId/escludiGiocatoreId
+// permettono a chi sta già usando un certo pseudonimo di "riconfermarlo"
+// senza scontrarsi con la propria stessa voce nel controllo doppioni.
+async function validaEVerificaUnicitaPseudonimo(pseudonimoGrezzo, { obbligatorio = true, escludiSocioId = null, escludiGiocatoreId = null } = {}) {
+  const testo = (pseudonimoGrezzo || "").trim().slice(0, 30);
+  if (!testo) {
+    if (obbligatorio) throw new HttpsError("invalid-argument", "Lo pseudonimo è obbligatorio.");
+    return null;
+  }
+
+  const normalizzato = normalizzaTestoPseudonimo(testo);
+  if (normalizzato.length < 2) {
+    throw new HttpsError("invalid-argument", "Pseudonimo troppo corto.");
+  }
+  if (contieneParolaVietata(normalizzato)) {
+    throw new HttpsError("invalid-argument", "Questo pseudonimo non è consentito — scegline un altro.");
+  }
+
+  const [sociSnap, padelSnap] = await Promise.all([
+    db.collection("soci").where("pseudonimo", "!=", null).get(),
+    db.collection("giocatoriPadel").where("pseudonimo", "!=", null).get()
+  ]);
+  const inUso = sociSnap.docs.some(d => d.id !== escludiSocioId && normalizzaTestoPseudonimo(d.data().pseudonimo) === normalizzato)
+    || padelSnap.docs.some(d => d.id !== escludiGiocatoreId && normalizzaTestoPseudonimo(d.data().pseudonimo) === normalizzato);
+  if (inUso) {
+    throw new HttpsError("already-exists", "Questo pseudonimo è già in uso — scegline un altro.");
+  }
+
+  return testo;
+}
+
 // Il socio imposta/azzera il proprio pseudonimo, self-service da "La mia
 // area" (abbonamento.html). Stringa vuota = azzera esplicitamente (non
 // solo un trim di una stringa non vuota): deve poter tornare indietro
@@ -3469,9 +3585,9 @@ exports.impostaPseudonimo = onCall(async (request) => {
     throw new HttpsError("permission-denied", "Puoi modificare solo il tuo profilo.");
   }
 
-  const testo = (pseudonimo || "").trim().slice(0, 30);
-  await db.collection("soci").doc(socioId).update({ pseudonimo: testo || null });
-  return { pseudonimo: testo || null };
+  const testo = await validaEVerificaUnicitaPseudonimo(pseudonimo, { obbligatorio: false, escludiSocioId: socioId });
+  await db.collection("soci").doc(socioId).update({ pseudonimo: testo });
+  return { pseudonimo: testo };
 });
 
 // Giorno della settimana come codice "lun".."dom" (stesso vocabolario di
@@ -4284,15 +4400,19 @@ async function permessiCommunityPadel(uid) {
 
 exports.registraGiocatorePadel = onCall({ secrets: MAIL_SECRETS }, async (request) => {
   const { nome, cognome, telefono, email, playtomicLivello, socioId, consenso } = request.data || {};
-  if (!nome || !cognome || !telefono) {
-    throw new HttpsError("invalid-argument", "Nome, cognome e telefono sono obbligatori.");
+  if (!nome || !cognome || !telefono || !email) {
+    throw new HttpsError("invalid-argument", "Nome, cognome, telefono ed email sono obbligatori.");
   }
   if (consenso !== true) {
     throw new HttpsError("invalid-argument", "È necessario accettare il trattamento dei dati per registrarsi.");
   }
-  if (email && !emailValidaServer(email)) {
+  if (!emailValidaServer(email)) {
     throw new HttpsError("invalid-argument", "Email non valida.");
   }
+  // Obbligatorio — chi vuole restare identificabile col proprio nome vero
+  // lo scrive lui stesso come pseudonimo. Verificato prima di toccare
+  // Auth/Firestore, per non creare un'identità orfana su un rifiuto.
+  const pseudonimo = await validaEVerificaUnicitaPseudonimo(request.data?.pseudonimo, { obbligatorio: true });
 
   let authUid, esterno;
   if (socioId) {
@@ -4329,7 +4449,7 @@ exports.registraGiocatorePadel = onCall({ secrets: MAIL_SECRETS }, async (reques
   const emailVerificata = !esterno || !email;
 
   await db.collection("giocatoriPadel").doc(authUid).set({
-    nome, cognome, socioId: socioId || null, esterno,
+    nome, cognome, socioId: socioId || null, esterno, pseudonimo,
     playtomicLivello: playtomicLivello != null ? playtomicLivello : null,
     livelloIstruttore: null, livelloEffettivo,
     puoLanciareProposte: true, attivo: true, emailVerificata,
@@ -4566,7 +4686,16 @@ exports.proponiSessionePadel = onCall({ secrets: MAIL_SECRETS }, async (request)
     }).catch(err => console.error("proponiSessionePadel: invio invito email fallito:", err));
   }
 
-  return { sessioneId: sessioneRef.id, bookingId: bookingRef ? bookingRef.id : null, inviti };
+  // Link aperto: a differenza dei link sopra (uno per invitato, "reclamato"
+  // dal primo che risponde — vedi rispondiInvitoSessionePadel), questo
+  // resta sempre riutilizzabile: l'organizzatore lo posta dove vuole (es.
+  // gruppo WhatsApp del circolo) e più persone diverse possono rispondere,
+  // primo arrivato primo servito, finché non si raggiunge il quorum.
+  const tokenAperto = generaToken();
+  await db.collection("sessioniPadelInviti").doc(tokenAperto).set({ sessioneId: sessioneRef.id, giocatoreId: null, aperto: true });
+  const linkAperto = `${APP_URL}giocatori-padel.html?invito=${tokenAperto}`;
+
+  return { sessioneId: sessioneRef.id, bookingId: bookingRef ? bookingRef.id : null, inviti, linkAperto };
 });
 
 // Richiede una sessione autenticata (socio o giocatorePadel) corrispondente
@@ -4583,17 +4712,27 @@ exports.rispondiInvitoSessionePadel = onCall(async (request) => {
   const invitoSnap = await invitoRef.get();
   if (!invitoSnap.exists) throw new HttpsError("not-found", "Invito non trovato.");
   const invito = invitoSnap.data();
-  if (invito.giocatoreId && invito.giocatoreId !== request.auth.uid) {
-    throw new HttpsError("permission-denied", "Questo invito non è per il dispositivo con cui hai effettuato l'accesso.");
-  }
-  // Invito via email (giocatoreId nullo alla creazione, vedi
-  // proponiSessionePadel): chi risponde per primo con questo link
-  // "reclama" l'invito per il proprio profilo giocatore.
-  if (!invito.giocatoreId) {
+
+  if (invito.aperto) {
+    // Link aperto (vedi proponiSessionePadel): mai "reclamato" da nessuno,
+    // resta riutilizzabile — chiunque sia già un giocatore Padel registrato
+    // può rispondere con la propria identità.
     const giocatoreSnap = await db.collection("giocatoriPadel").doc(request.auth.uid).get();
     if (!giocatoreSnap.exists) throw new HttpsError("failed-precondition", "Registrati prima come giocatore Padel.");
-    await invitoRef.update({ giocatoreId: request.auth.uid });
     invito.giocatoreId = request.auth.uid;
+  } else {
+    if (invito.giocatoreId && invito.giocatoreId !== request.auth.uid) {
+      throw new HttpsError("permission-denied", "Questo invito non è per il dispositivo con cui hai effettuato l'accesso.");
+    }
+    // Invito via email (giocatoreId nullo alla creazione, vedi
+    // proponiSessionePadel): chi risponde per primo con questo link
+    // "reclama" l'invito per il proprio profilo giocatore.
+    if (!invito.giocatoreId) {
+      const giocatoreSnap = await db.collection("giocatoriPadel").doc(request.auth.uid).get();
+      if (!giocatoreSnap.exists) throw new HttpsError("failed-precondition", "Registrati prima come giocatore Padel.");
+      await invitoRef.update({ giocatoreId: request.auth.uid });
+      invito.giocatoreId = request.auth.uid;
+    }
   }
 
   const sessioneRef = db.collection("sessioniPadel").doc(invito.sessioneId);

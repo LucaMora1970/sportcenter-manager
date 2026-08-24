@@ -355,6 +355,7 @@ function selezionaDisciplina(disciplina) {
     ? `tennis__${state.tennisPosizione}`
     : (GRUPPI.find(g => g.disciplina === disciplina) || {}).key;
   if (!key) return;
+  document.getElementById("cta-community-padel-banner")?.classList.toggle("hidden", disciplina !== "padel");
   selezionaGruppo(key);
 }
 
@@ -964,20 +965,20 @@ function apriPannelloPrenota(slot) {
           const fn = cloudFunctions().httpsCallable("cercaGiocatore");
           const { data } = await fn({ nome });
           if (data.risultati.length === 0) {
-            esitoEl.innerHTML = `<p class="g2-esito no">Non trovato tra i soci — verrà considerato esterno.</p>`;
+            esitoEl.innerHTML = `<p class="g2-esito no">Nessun giocatore trovato — verrà considerato esterno.</p>`;
             return;
           }
           esitoEl.innerHTML = data.risultati.map(s => `
             <div class="entry-card" style="margin-bottom:6px;">
               <div class="entry-main">
-                <div class="entry-tipo">${escapeHtml(s.nome)} ${escapeHtml(s.cognome)}</div>
+                <div class="entry-tipo">${escapeHtml(s.pseudonimo)}</div>
               </div>
               <button type="button" class="btn btn-ghost seleziona-giocatore-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;"
-                data-socio-id="${s.socioId}" data-nome="${escapeHtml(s.nome)} ${escapeHtml(s.cognome)}">Seleziona</button>
+                data-socio-id="${s.socioId || ""}" data-nome="${escapeHtml(s.pseudonimo)}">Seleziona</button>
             </div>
           `).join("");
           esitoEl.querySelectorAll(".seleziona-giocatore-btn").forEach(btn => {
-            btn.addEventListener("click", () => selezionaGiocatore(n, btn.dataset.socioId, btn.dataset.nome));
+            btn.addEventListener("click", () => selezionaGiocatore(n, btn.dataset.socioId || null, btn.dataset.nome));
           });
         } catch { /* ricerca facoltativa, non blocca la prenotazione */ }
       }, 500);
