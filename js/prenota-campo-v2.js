@@ -256,8 +256,9 @@ function quotaCategoriaClient(disciplina, posizione, categoria, dataIso, startTi
 
   const giorno = giornoSettimanaCodice(dataIso);
   const startMin = orarioToMin(startTime);
-  const candidati = TARIFFE_CAMPI
-    .filter(t => t.disciplina === disciplina && t.posizione === posizione && t.categoria === categoria)
+
+  const candidatiPer = (cat) => TARIFFE_CAMPI
+    .filter(t => t.disciplina === disciplina && t.posizione === posizione && t.categoria === cat)
     .filter(t => t.oraInizio != null && t.oraFine != null)
     .filter(t => !(t.giorniSettimana || []).length || t.giorniSettimana.includes(giorno))
     .filter(t => startMin >= orarioToMin(t.oraInizio) && startMin < orarioToMin(t.oraFine))
@@ -273,6 +274,14 @@ function quotaCategoriaClient(disciplina, posizione, categoria, dataIso, startTi
       const giorniB = (b.giorniSettimana || []).length || 7;
       return giorniA - giorniB;
     });
+
+  // Stesso ripiego su "esterno" (Utenti) del server (functions/index.js,
+  // quotaCategoria): una categoria senza riga propria non deve mostrare
+  // un'anteprima prezzo mancante se poi la prenotazione vera andrebbe
+  // comunque a buon fine a tariffa Utenti.
+  let candidati = candidatiPer(categoria);
+  if (candidati.length === 0 && categoria !== "esterno") candidati = candidatiPer("esterno");
+
   return candidati.length > 0 ? candidati[0].prezzo : null;
 }
 

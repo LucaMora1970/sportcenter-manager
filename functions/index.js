@@ -3632,12 +3632,8 @@ async function quotaCategoria({ disciplina, posizione, categoria, dataIso, start
 
   const giorno = giornoSettimanaCodice(dataIso, festivi);
   const startMin = orarioToMin(startTime);
-  const tariffeSnap = await db.collection("tariffeCampi")
-    .where("disciplina", "==", disciplina)
-    .where("posizione", "==", posizione)
-    .where("categoria", "==", categoria)
-    .get();
-  const candidates = tariffeSnap.docs.map(d => d.data())
+
+  const candidatiValidi = (snap) => snap.docs.map(d => d.data())
     .filter(t => t.oraInizio != null && t.oraFine != null)
     .filter(t => !(t.giorniSettimana || []).length || t.giorniSettimana.includes(giorno))
     .filter(t => startMin >= orarioToMin(t.oraInizio) && startMin < orarioToMin(t.oraFine))
@@ -3653,6 +3649,32 @@ async function quotaCategoria({ disciplina, posizione, categoria, dataIso, start
       const giorniB = (b.giorniSettimana || []).length || 7;
       return giorniA - giorniB;
     });
+
+  const tariffeSnap = await db.collection("tariffeCampi")
+    .where("disciplina", "==", disciplina)
+    .where("posizione", "==", posizione)
+    .where("categoria", "==", categoria)
+    .get();
+  let candidates = candidatiValidi(tariffeSnap);
+
+  // Ripiego su "esterno" (Utenti): se per questa categoria specifica non
+  // è configurata nessuna tariffa, si usa quella Utenti invece di
+  // bloccare la prenotazione — una categoria senza riga propria è
+  // "non ancora personalizzata", non "non ammessa". Vale per ogni
+  // disciplina (deciso col circolo dopo che è emerso per il Padel, dove
+  // solo Utenti/Maestro/MFD erano configurati). Il forfait stagionale
+  // sopra resta invece strettamente per categoria, apposta: un "vuoto"
+  // lì non deve mai tradursi in un beneficio (prezzo 0) non concesso
+  // esplicitamente a quella categoria.
+  if (candidates.length === 0 && categoria !== "esterno") {
+    const tariffeEsternoSnap = await db.collection("tariffeCampi")
+      .where("disciplina", "==", disciplina)
+      .where("posizione", "==", posizione)
+      .where("categoria", "==", "esterno")
+      .get();
+    candidates = candidatiValidi(tariffeEsternoSnap);
+  }
+
   return candidates.length > 0 ? candidates[0].prezzo : null;
 }
 
