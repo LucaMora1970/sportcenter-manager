@@ -489,6 +489,14 @@ select:focus, input:focus, textarea:focus {
 .btn-ghost { background: transparent; color: var(--chalk-grey); border: 1px solid var(--court-blue-700); }
 .btn-danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
 
+.cta-community-padel {
+  display: block; margin: 0 0 18px; padding: 14px var(--gap);
+  border: 1px solid var(--ball); border-radius: var(--radius);
+  background: color-mix(in srgb, var(--ball) 10%, transparent);
+  text-decoration: none; color: inherit;
+}
+.cta-community-padel .cta-arrow { color: var(--ball); font-weight: 600; }
+
 /* Bottom nav — app mobile-like, scorrevole orizzontalmente quando le
    voci non entrano tutte (più pagine = più voci nel tempo) */
 .bottom-nav {

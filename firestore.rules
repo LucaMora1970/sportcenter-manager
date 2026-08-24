@@ -292,8 +292,16 @@ service cloud.firestore {
     // riservata a chi crea/modifica i corsi o a chi li approva.
     match /corsi/{id} {
       allow read: if true;
-      allow create, update: if hasPermission("corsi:gestisci") || hasPermission("corsi:approva");
-      allow delete: if hasPermission("corsi:gestisci");
+      allow create: if hasPermission("corsi:gestisci") || hasPermission("corsi:approva")
+        || (hasPermission("corsi:gestisci_padel") && request.resource.data.disciplina == "padel");
+      // In update, sia il corso di partenza sia quello risultante devono
+      // restare Padel per chi ha solo il permesso scoped — altrimenti
+      // potrebbe "rubare" un corso di un'altra disciplina cambiandone la
+      // disciplina, o spostare un corso Padel fuori dalla propria vista.
+      allow update: if hasPermission("corsi:gestisci") || hasPermission("corsi:approva")
+        || (hasPermission("corsi:gestisci_padel") && resource.data.disciplina == "padel" && request.resource.data.disciplina == "padel");
+      allow delete: if hasPermission("corsi:gestisci")
+        || (hasPermission("corsi:gestisci_padel") && resource.data.disciplina == "padel");
     }
 
     // Iscrizioni corsi (fase 2): form pubblico, nessun login richiesto per
@@ -331,7 +339,9 @@ service cloud.firestore {
           )
         )
         && request.resource.data.stato == "in_attesa";
-      allow read, update, delete: if hasPermission("iscrizioni:gestisci");
+      allow read, update, delete: if hasPermission("iscrizioni:gestisci")
+        || (hasPermission("iscrizioni:gestisci_padel")
+            && get(/databases/$(database)/documents/corsi/$(resource.data.corsoId)).data.disciplina == "padel");
     }
 
     // Storico azioni sulle iscrizioni corsi (semafori, conferme, rifiuti,
@@ -340,7 +350,12 @@ service cloud.firestore {
     // delete, nemmeno per chi ha iscrizioni:gestisci, altrimenti non
     // sarebbe più uno storico affidabile.
     match /iscrizioniLog/{id} {
-      allow read, create: if hasPermission("iscrizioni:gestisci");
+      allow read: if hasPermission("iscrizioni:gestisci")
+        || (hasPermission("iscrizioni:gestisci_padel")
+            && get(/databases/$(database)/documents/corsi/$(resource.data.corsoId)).data.disciplina == "padel");
+      allow create: if hasPermission("iscrizioni:gestisci")
+        || (hasPermission("iscrizioni:gestisci_padel")
+            && get(/databases/$(database)/documents/corsi/$(request.resource.data.corsoId)).data.disciplina == "padel");
     }
 
     // ============================================================
@@ -494,6 +509,68 @@ service cloud.firestore {
     match /attivazioniSoci/{token} {
       allow get: if true;
       allow list: if puoOperarePrenotazioni();
+      allow write: if false;
+    }
+
+    // ============================================================
+    // Community Padel — registrazione giocatori, classifica, proposta di
+    // sessioni con quorum e blocco provvisorio del campo (vedi
+    // functions/index.js, sezione "Community Padel"). Stesso principio di
+    // sopra: tutte le scritture passano da Cloud Function con Admin SDK,
+    // qui solo permessi di lettura.
+    // ============================================================
+
+    // giocatoriPadel/{authUid}: id documento = uid di chi gioca (un socio
+    // riusa il proprio uid sociDevices, un esterno ha un uid dedicato
+    // "giocatorePadel_..."), così "sono un giocatore registrato" è un
+    // singolo self-lookup, come già fa userDoc(). MAI telefono/email qui
+    // (vedi giocatoriPadelContatti sotto) — la classifica deve poter
+    // leggere questa collection senza rischiare di esporre un contatto.
+    function giocatorePadelRegistrato() {
+      return exists(/databases/$(database)/documents/giocatoriPadel/$(request.auth.uid));
+    }
+
+    match /giocatoriPadel/{uid} {
+      allow get: if true; // per mostrare un nome su una pagina di invito
+      allow list: if isSignedIn() && (
+        giocatorePadelRegistrato()
+        || hasPermission("corsi:gestisci_padel") || hasPermission("iscrizioni:gestisci_padel")
+        || hasPermission("corsi:gestisci") || hasPermission("iscrizioni:gestisci")
+      );
+      allow write: if false;
+    }
+
+    // Telefono/email — mai letti dallo staff/istruttore né dalla
+    // classifica: il contatto avviene solo tramite la proposta di
+    // sessione (sessioniPadel/sessioniPadelInviti), come deciso per la
+    // privacy dei giocatori.
+    match /giocatoriPadelContatti/{uid} {
+      allow get: if isSignedIn() && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    match /attivazioniGiocatoriPadel/{token} {
+      allow get: if true;
+      allow write: if false;
+    }
+
+    // Un singolo documento è leggibile da chiunque sia autenticato (serve
+    // agli invitati, che vi arrivano solo tramite il proprio token — vedi
+    // sessioniPadelInviti sotto). L'elenco ("Le mie proposte") è invece
+    // permesso solo se la query è già ristretta al proprio organizerId
+    // (Firestore valuta questa condizione su ogni documento del
+    // risultato) — mai una lista di tutte le proposte in corso.
+    match /sessioniPadel/{id} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && resource.data.organizerId == request.auth.uid;
+      allow write: if false;
+    }
+
+    // Il token nel link condiviso è di per sé l'autorizzazione a
+    // leggerlo, stesso schema di attivazioniSoci/bookingTickets.
+    match /sessioniPadelInviti/{token} {
+      allow get: if true;
+      allow list: if false;
       allow write: if false;
     }
 

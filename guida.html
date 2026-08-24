@@ -344,6 +344,38 @@
     </div>
     </details>
 
+    <!-- ===================== Community Padel ===================== -->
+    <details class="config-section" id="community-padel">
+    <summary><h2>Community Padel</h2></summary>
+    <div class="config-section-body">
+
+      <div class="voce">
+        <span class="dove">giocatori-padel.html (pubblica)</span>
+        <div class="cosa">Registrazione giocatore + classifica</div>
+        <div class="come">Un socio riusa la propria sessione "dispositivo riconosciuto" già esistente (nessuna seconda identità). Un giocatore esterno (non socio) è invece attivato SUBITO — compare in classifica ed è contattabile da subito — e riceve in background un'email di verifica: se non la conferma entro i giorni di grazia impostati qui sotto, il profilo si disattiva da solo. Il livello mostrato è quello Playtomic se inserito, altrimenti quello assegnato dall'Istruttore Padel (vedi sotto); la classifica non mostra mai telefono/email di nessuno.</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove">Ruolo "Istruttore Padel" (Utenti → Ruoli) → permessi "solo Padel"</span>
+        <div class="cosa">Visibilità e gestione limitata alla sola disciplina Padel</div>
+        <div class="come">I permessi "Corsi: creare e modificare (solo Padel)" e "Iscrizioni corsi: leggere e confermare/annullare (solo Padel)" danno accesso solo ai corsi/iscrizioni di disciplina Padel, mai agli altri. Chi ha questo permesso può inoltre modificare in giocatori-padel-admin.html il livello assegnato ai giocatori senza Playtomic e disattivare la possibilità di lanciare proposte a un giocatore che ne abusa — mai i suoi contatti (telefono/email), mai visibili neppure allo staff.</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove">Configurazione → Community Padel</span>
+        <div class="cosa">Blocco provvisorio del campo durante una proposta di partita</div>
+        <div class="come">Se attivo, lo slot scelto dall'organizzatore resta bloccato (non prenotabile da altri, nessun addebito) per i minuti impostati, in attesa che abbastanza giocatori invitati rispondano "sì". Raggiunto il numero richiesto, il blocco diventa una prenotazione confermata vera e propria (con prezzo nominale tracciato in Resoconto, come una prenotazione normale — i giocatori si dividono la quota fuori app). Se disattivato, la proposta resta solo un impegno tra giocatori, senza toccare il calendario campi.</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove">Configurazione → Community Padel</span>
+        <div class="cosa">Proposte con blocco attivo max per giocatore</div>
+        <div class="come">Anti-abuso: finché una proposta lanciata da un giocatore ha ancora il blocco attivo sul campo, non può lanciarne un'altra. In aggiunta, lo staff/istruttore può disattivare manualmente la possibilità di lanciare proposte a un singolo giocatore da giocatori-padel-admin.html, senza toccare ruoli o permessi globali.</div>
+      </div>
+
+    </div>
+    </details>
+
     <!-- ===================== Abbonamenti fissi ===================== -->
     <details class="config-section" id="abbonamenti">
     <summary><h2>Abbonamenti fissi (tennis)</h2></summary>

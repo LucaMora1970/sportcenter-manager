@@ -862,6 +862,36 @@
       </div>
       </details>
 
+      <details class="config-section" id="community-padel">
+      <summary><h2>Community Padel</h2></summary>
+      <div class="config-section-body">
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Registrazione giocatori, classifica e proposta di sessioni di gioco (vedi Guida per il dettaglio del funzionamento). Il blocco provvisorio tiene occupato il campo mentre si attendono le conferme — se disattivato, la proposta resta solo un impegno tra giocatori senza toccare il calendario campi.</p>
+      <form id="community-padel-form">
+        <div class="checkbox-row" style="margin-bottom:16px;">
+          <input type="checkbox" id="cp-hold-attivo">
+          <label for="cp-hold-attivo">Blocco provvisorio del campo durante una proposta di partita</label>
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label for="cp-hold-minuti">Minuti massimi di blocco (max 60)</label>
+            <input type="number" id="cp-hold-minuti" min="1" max="60" step="1" placeholder="es. 30">
+          </div>
+          <div class="field">
+            <label for="cp-max-proposte">Proposte con blocco attivo max per giocatore</label>
+            <input type="number" id="cp-max-proposte" min="1" step="1" placeholder="es. 1">
+          </div>
+        </div>
+        <div class="field">
+          <label for="cp-giorni-verifica">Giorni di grazia per verificare l'email di un giocatore esterno</label>
+          <input type="number" id="cp-giorni-verifica" min="1" step="1" placeholder="es. 7">
+        </div>
+        <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Un giocatore esterno (non socio) è subito attivo e contattabile alla registrazione; se non conferma l'email ricevuta entro questo termine, il profilo si disattiva automaticamente.</p>
+        <div class="error-msg" id="community-padel-error"></div>
+        <button type="submit" class="btn btn-ghost" id="salva-community-padel-btn">Salva</button>
+      </form>
+      </div>
+      </details>
+
       <details class="config-section">
       <summary><h2>Abbonamenti fissi (tennis)</h2></summary>
       <div class="config-section-body">

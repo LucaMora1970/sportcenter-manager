@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Community Padel — Tennis Club Mendrisio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script>if(localStorage.getItem("sportos-tema")==="light")document.documentElement.setAttribute("data-theme","light");</script>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest-cliente.json">
+<meta name="theme-color" content="#0d1f30">
+<style>
+  .gp-card {
+    background: var(--court-blue-900); border: 1px solid var(--court-blue-700);
+    border-radius: var(--radius); padding: 18px var(--gap); margin-bottom: 18px;
+  }
+  .gp-tab-bar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+  .gp-tab-bar .btn[data-active="true"] { border-color: var(--ball); color: var(--ball); }
+  .gp-classifica-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 10px 0; border-bottom: 1px dashed var(--court-blue-700);
+  }
+  .gp-classifica-row:last-child { border-bottom: none; }
+  .gp-classifica-row .livello { font-family: 'Space Mono', monospace; color: var(--ball); }
+  .gp-invito-riga { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; }
+  .gp-invito-riga button { flex: none; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <div>
+      <div class="topbar-kicker" id="centro-kicker">Tennis Club Mendrisio</div>
+      <h1>Community Padel</h1>
+    </div>
+    <div></div>
+    <div class="topbar-actions">
+      <div class="menu-utente-wrap">
+        <button type="button" class="topbar-link" id="menu-utente-btn" aria-label="Menu" aria-expanded="false">☰</button>
+        <div class="menu-utente-dropdown hidden" id="menu-utente-dropdown">
+          <a href="prenota-padel.html">Prenota campo Padel</a>
+          <a href="abbonamento.html">La mia area</a>
+          <a href="attiva-socio.html">Attiva dispositivo</a>
+          <a href="chi-in-campo.html">Chi c'è in campo</a>
+        </div>
+      </div>
+      <button type="button" class="topbar-link" id="theme-toggle-btn">Tema chiaro</button>
+    </div>
+  </div>
+
+  <main>
+
+    <div id="stato-caricamento" class="empty-state">
+      <div class="display">Caricamento…</div>
+    </div>
+
+    <div id="stato-verifica-email" class="empty-state hidden">
+      <div class="display" id="verifica-email-titolo">Verifica email</div>
+      <p id="verifica-email-testo"></p>
+    </div>
+
+    <div id="stato-invito" class="hidden">
+      <div class="section-title"><h2>Proposta di partita</h2></div>
+      <div class="gp-card" id="invito-card"></div>
+    </div>
+
+    <div id="stato-registrazione" class="hidden">
+      <div class="section-title"><h2>Registrati come giocatore Padel</h2></div>
+      <p style="color:var(--chalk-grey);font-size:0.84rem;">Inserisci il tuo livello Playtomic se ce l'hai — altrimenti te lo assegna l'Istruttore Padel. Il tuo telefono non compare mai in classifica: serve solo per essere contattato quando qualcuno organizza una partita.</p>
+      <form id="registrazione-form" class="gp-card">
+        <div class="row2">
+          <div class="field"><label for="reg-nome">Nome</label><input type="text" id="reg-nome" required></div>
+          <div class="field"><label for="reg-cognome">Cognome</label><input type="text" id="reg-cognome" required></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label for="reg-telefono">Telefono</label><input type="tel" id="reg-telefono" required></div>
+          <div class="field"><label for="reg-email">Email (facoltativa)</label><input type="email" id="reg-email"></div>
+        </div>
+        <div class="field">
+          <label for="reg-playtomic">Livello Playtomic (facoltativo)</label>
+          <input type="number" id="reg-playtomic" min="0" max="7" step="0.01" placeholder="es. 3.5">
+        </div>
+        <div class="checkbox-row" style="margin:10px 0 16px;">
+          <input type="checkbox" id="reg-consenso">
+          <label for="reg-consenso">Accetto che telefono ed email vengano trattati per l'organizzazione delle partite (vedi <a href="privacy.html" target="_blank">informativa privacy</a>).</label>
+        </div>
+        <div class="error-msg" id="registrazione-error"></div>
+        <button type="submit" class="btn btn-primary" id="registrazione-btn">Registrati</button>
+      </form>
+      <p style="color:var(--chalk-grey);font-size:0.8rem;">Sei già socio? <a href="attiva-socio.html" style="color:var(--ball);">Riconosci prima questo dispositivo</a>, poi torna qui: il modulo si compilerà con la tua tariffa socio.</p>
+    </div>
+
+    <div id="area-content" class="hidden">
+
+      <div class="gp-tab-bar">
+        <button type="button" class="btn btn-ghost gp-tab-btn" data-tab="classifica">Classifica</button>
+        <button type="button" class="btn btn-ghost gp-tab-btn" data-tab="proponi">Proponi una sessione</button>
+        <button type="button" class="btn btn-ghost gp-tab-btn" data-tab="mie">Le mie proposte</button>
+      </div>
+
+      <div id="tab-classifica" class="gp-tab-panel">
+        <div class="gp-card" id="classifica-list"><p style="color:var(--chalk-grey);font-size:0.84rem;">Caricamento…</p></div>
+      </div>
+
+      <div id="tab-proponi" class="gp-tab-panel hidden">
+        <p style="color:var(--chalk-grey);font-size:0.84rem;">Scegli chi invitare dalla classifica, poi condividi il link generato via WhatsApp/SMS a modo tuo — oppure aggiungi email per un invito automatico.</p>
+        <form id="proponi-form" class="gp-card">
+          <div class="row2">
+            <div class="field"><label for="pr-data">Data</label><input type="date" id="pr-data" required></div>
+            <div class="field"><label for="pr-ora">Ora inizio</label><input type="time" id="pr-ora" required></div>
+          </div>
+          <div class="row2">
+            <div class="field">
+              <label for="pr-durata">Durata</label>
+              <select id="pr-durata"><option value="60">60'</option><option value="90" selected>90'</option></select>
+            </div>
+            <div class="field">
+              <label for="pr-headcount">Giocatori richiesti</label>
+              <select id="pr-headcount"><option value="4" selected>4 (doppio)</option><option value="2">2 (singolo)</option></select>
+            </div>
+          </div>
+          <div class="field">
+            <label>Invita dalla classifica</label>
+            <div id="proponi-invitati-list" style="max-height:220px;overflow-y:auto;border:1px solid var(--court-blue-700);border-radius:var(--radius);padding:8px;"></div>
+          </div>
+          <div class="field">
+            <label for="pr-email-extra">Inviti via email (separati da virgola, per chi non è ancora in classifica)</label>
+            <input type="text" id="pr-email-extra" placeholder="mario@esempio.ch, ...">
+          </div>
+          <div class="error-msg" id="proponi-error"></div>
+          <button type="submit" class="btn btn-primary" id="proponi-btn">Lancia la proposta</button>
+        </form>
+        <div id="proponi-esito" class="hidden gp-card"></div>
+      </div>
+
+      <div id="tab-mie" class="gp-tab-panel hidden">
+        <div class="gp-card" id="mie-proposte-list"><p style="color:var(--chalk-grey);font-size:0.84rem;">Caricamento…</p></div>
+      </div>
+
+    </div>
+
+    <div class="error-msg" id="giocatori-padel-error"></div>
+
+  </main>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/giocatori-padel.js"></script>
+</body>
+</html>

@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Giocatori Padel — Sport-OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script>if(localStorage.getItem("sportos-tema")==="light")document.documentElement.setAttribute("data-theme","light");</script>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d1f30">
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <h1>Giocatori Padel</h1>
+    <div class="user-chip" id="user-chip">—</div>
+    <div class="topbar-actions">
+      <button type="button" class="topbar-link" id="theme-toggle-btn">Tema chiaro</button>
+      <a href="corsi.html" class="topbar-link">← Corsi</a>
+    </div>
+  </div>
+
+  <main>
+
+    <div id="access-denied" class="empty-state hidden">
+      <div class="display">Accesso non consentito</div>
+      <p>Questa sezione è riservata all'Istruttore Padel o a chi gestisce corsi/iscrizioni Padel.</p>
+    </div>
+
+    <div id="giocatori-padel-content" class="hidden">
+
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Nome, cognome e livello dei giocatori Padel registrati. Il livello Playtomic (se inserito dal giocatore) prevale sempre sul livello assegnato qui — questo campo serve solo per chi non ha ancora un livello Playtomic. Telefono ed email non sono visibili qui: il contatto avviene solo tramite la proposta di sessione, mai direttamente dall'anagrafica.</p>
+
+      <div class="error-msg" id="giocatori-padel-error"></div>
+
+      <div id="giocatori-padel-list">
+        <div class="empty-state"><div class="display">Caricamento…</div></div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <nav class="bottom-nav">
+    <a href="diario.html">Diario</a>
+    <a href="resoconto.html">Resoconto</a>
+    <a href="cassa.html">Cassa</a>
+    <a href="corsi.html">Corsi</a>
+    <a href="prenotazioni.html">Prenotazioni</a>
+    <a href="#" title="In arrivo">Camp</a>
+    <a href="soci.html">Soci</a>
+    <a href="utenti.html">Team</a>
+    <a href="configurazione.html">Config</a>
+    <a href="#" id="logout-link">Esci</a>
+  </nav>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/giocatori-padel-admin.js"></script>
+</body>
+</html>

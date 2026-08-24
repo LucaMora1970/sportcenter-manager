@@ -139,6 +139,7 @@ function validStarts(bookings, duration, close, feriale, oggi) {
 
 const STATO_LABEL = {
   PENDING_PAYMENT: "In pagamento",
+  PENDING_CONFIRMATION: "In conferma (community)",
   CONFIRMED: "Confermata",
   COMPLETED: "Completata",
   CANCELLED: "Annullata",
@@ -148,6 +149,7 @@ const STATO_STILE = {
   CONFIRMED: "border-color:#7f9e4a;color:#c1e08f;",
   COMPLETED: "border-color:#7f9e4a;color:#c1e08f;",
   PENDING_PAYMENT: "border-color:var(--chalk-grey-dim);color:var(--chalk-grey);",
+  PENDING_CONFIRMATION: "border-color:#d4b83a;color:#e0c85a;",
   CANCELLED: "border-color:var(--danger);color:var(--danger);",
   CREDITED: "border-color:#4a7f9e;color:#8fc1e0;"
 };
@@ -255,7 +257,7 @@ async function caricaGiorno() {
     // giorno, in minuti, usati dall'anti-buco.
     state.bookingsMinuti = bookingsSnap.docs
       .map(d => d.data())
-      .filter(b => (b.status === "PENDING_PAYMENT" && !pendingScaduto(b)) || b.status === "CONFIRMED" || b.status === "COMPLETED")
+      .filter(b => (b.status === "PENDING_PAYMENT" && !pendingScaduto(b)) || b.status === "PENDING_CONFIRMATION" || b.status === "CONFIRMED" || b.status === "COMPLETED")
       .map(b => ({ start: orarioToMin(b.startTime), end: orarioToMin(b.endTime), createdAt: b.createdAt }));
     state.selected = null;
     renderPicker();

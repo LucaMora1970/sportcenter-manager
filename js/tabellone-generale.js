@@ -145,7 +145,7 @@ async function loadPrenotazioniGiorno(dataIso) {
   const bookings = bookingsSnap.docs
     .map(d => ({ id: d.id, ...d.data() }))
     .filter(b => !pendingScaduto(b))
-    .filter(b => b.status === "PENDING_PAYMENT" || b.status === "CONFIRMED" || b.status === "COMPLETED");
+    .filter(b => b.status === "PENDING_PAYMENT" || b.status === "PENDING_CONFIRMATION" || b.status === "CONFIRMED" || b.status === "COMPLETED");
 
   if (!permessoNomi || bookings.length === 0) return bookings;
 
@@ -175,6 +175,9 @@ function etichettaOccupato(b) {
   }
   if (b.type === "STAFF_EXEMPT") {
     return { testo: "Esente" + (b.blocco && b.blocco.createdByNome ? ` — ${b.blocco.createdByNome}` : ""), classe: "tipo-exempt" };
+  }
+  if (b.status === "PENDING_CONFIRMATION") {
+    return { testo: "In conferma (proposta partita)", classe: "tipo-hold" };
   }
   const d = b.dettagli;
   if (!d) return { testo: "Occupato", classe: "" };

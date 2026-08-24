@@ -159,11 +159,15 @@ function renderCorsi() {
     return;
   }
 
-  const puoGestire = hasPermission(currentProfile, "corsi:gestisci");
+  const puoGestireTutti = hasPermission(currentProfile, "corsi:gestisci");
+  const puoGestirePadel = hasPermission(currentProfile, "corsi:gestisci_padel");
   const puoApprovare = hasPermission(currentProfile, "corsi:approva");
-  const puoVedereIscrizioni = hasPermission(currentProfile, "iscrizioni:gestisci");
+  const puoVedereIscrizioniTutte = hasPermission(currentProfile, "iscrizioni:gestisci");
+  const puoVedereIscrizioniPadel = hasPermission(currentProfile, "iscrizioni:gestisci_padel");
 
   list.innerHTML = corsiCache.map(c => {
+    const puoGestire = puoGestireTutti || (puoGestirePadel && c.disciplina === "padel");
+    const puoVedereIscrizioni = puoVedereIscrizioniTutte || (puoVedereIscrizioniPadel && c.disciplina === "padel");
     const giorniOrariRighe = Object.entries(c.giorniOrari || {})
       .map(([g, orari]) => `<div class="entry-meta">${(GIORNI_SETTIMANA.find(x => x.id === g) || {}).label || g}: ${orari.join(", ")}</div>`)
       .join("") || `<div class="entry-meta">—</div>`;
@@ -841,7 +845,7 @@ async function aggiornaContatoriDopoModifica(corsoId) {
   await loadIscrizioniConfermate();
   await loadIscrizioniInAttesa();
   aggiornaContatoreCorso(corsoId);
-  if (hasPermission(currentProfile, "iscrizioni:gestisci")) aggiornaRiepiloghi();
+  if (hasPermission(currentProfile, "iscrizioni:gestisci") || hasPermission(currentProfile, "iscrizioni:gestisci_padel")) aggiornaRiepiloghi();
 }
 
 // Raggruppa le iscrizioni confermate per corso+giorno+orario assegnati, poi
@@ -851,12 +855,23 @@ async function aggiornaContatoriDopoModifica(corsoId) {
 // nello stesso giorno/orario possono coesistere più gruppi paralleli
 // (uno per campo), da mostrare come voci separate — non un unico elenco
 // che mischia chi gioca su campi diversi allo stesso orario.
+// Un istruttore con solo iscrizioni:gestisci_padel (non il permesso pieno)
+// vede riepiloghi/panoramiche filtrati alle sole discipline consentite —
+// null significa "nessun filtro" (permesso pieno).
+function disciplineIscrizioniVisibili(profile) {
+  if (hasPermission(profile, "iscrizioni:gestisci")) return null;
+  if (hasPermission(profile, "iscrizioni:gestisci_padel")) return ["padel"];
+  return [];
+}
+
 function gruppiConfermatiPerData(dataIso) {
+  const discipline = disciplineIscrizioniVisibili(currentProfile);
   const gruppiMap = {};
   iscrizioniConfermateCache.forEach(i => {
     if (!i.giornoAssegnato || !i.orarioAssegnato) return;
     const corso = corsiCache.find(c => c.id === i.corsoId);
     if (!corso) return;
+    if (discipline && !discipline.includes(corso.disciplina)) return;
     const key = `${i.corsoId}|${i.giornoAssegnato}|${i.orarioAssegnato}|${i.campoAssegnato || ""}`;
     if (!gruppiMap[key]) {
       gruppiMap[key] = { corso, giorno: i.giornoAssegnato, orario: i.orarioAssegnato, campo: i.campoAssegnato || null, iscritti: [] };
@@ -1133,6 +1148,9 @@ async function onSubmitCorso(e) {
     if (form.campiNumeri.length === 0) throw new Error("Seleziona almeno un campo proposto.");
     if (!form.minIscrittiConferma) throw new Error("Inserisci il numero minimo di iscritti per la conferma.");
     if (form.prezzoRichiesto == null) throw new Error("Inserisci il prezzo richiesto.");
+    if (!hasPermission(currentProfile, "corsi:gestisci") && form.disciplina !== "padel") {
+      throw new Error("Con questo permesso puoi creare/modificare solo corsi di disciplina Padel.");
+    }
 
     const payload = {
       ...form,
@@ -1167,24 +1185,39 @@ requireAuth(async (profile) => {
   currentProfile = profile;
   document.getElementById("user-chip").textContent = profile.nome + (profile.ruoloNome ? " · " + profile.ruoloNome : "");
 
-  if (!hasPermission(profile, "corsi:gestisci") && !hasPermission(profile, "corsi:approva")) {
+  const puoGestireCorsiAlmenoPadel = hasPermission(profile, "corsi:gestisci") || hasPermission(profile, "corsi:gestisci_padel");
+  const puoVedereIscrizioniAlmenoPadel = hasPermission(profile, "iscrizioni:gestisci") || hasPermission(profile, "iscrizioni:gestisci_padel");
+
+  if (!puoGestireCorsiAlmenoPadel && !hasPermission(profile, "corsi:approva") && !puoVedereIscrizioniAlmenoPadel) {
     document.getElementById("access-denied").classList.remove("hidden");
     document.getElementById("corsi-content").classList.add("hidden");
     return;
   }
 
-  if (!hasPermission(profile, "corsi:gestisci")) {
+  if (!puoGestireCorsiAlmenoPadel) {
     document.getElementById("corso-form").classList.add("hidden");
     document.getElementById("corso-form-title").classList.add("hidden");
   }
 
   initLinkCopyBox("link-iscrizione", "copia-link-iscrizione-btn", "iscrizione-corso.html");
 
+  if (hasPermission(profile, "corsi:gestisci_padel") || hasPermission(profile, "iscrizioni:gestisci_padel")) {
+    document.getElementById("link-giocatori-padel-admin").classList.remove("hidden");
+  }
+
   await loadDatiCentro();
   await loadDiscipline();
   await loadCampi();
 
   populateSelect(document.getElementById("corso-disciplina"), DISCIPLINE);
+
+  if (puoGestireCorsiAlmenoPadel && !hasPermission(profile, "corsi:gestisci")) {
+    // Solo corsi:gestisci_padel: disciplina fissa su Padel, non selezionabile.
+    const disciplinaSelect = document.getElementById("corso-disciplina");
+    disciplinaSelect.value = "padel";
+    disciplinaSelect.disabled = true;
+  }
+
   syncOrariCampiDisciplina();
 
   document.getElementById("corso-disciplina").addEventListener("change", syncOrariCampiDisciplina);
@@ -1196,7 +1229,7 @@ requireAuth(async (profile) => {
   document.getElementById("corso-form").addEventListener("submit", onSubmitCorso);
   document.getElementById("corso-cancel-edit-btn").addEventListener("click", cancelEditCorso);
 
-  if (hasPermission(profile, "iscrizioni:gestisci")) {
+  if (puoVedereIscrizioniAlmenoPadel) {
     document.getElementById("riepilogo-sezione").classList.remove("hidden");
     document.getElementById("riepilogo-data").value = toISODate(new Date());
     document.getElementById("riepilogo-data").addEventListener("change", aggiornaRiepiloghi);
@@ -1207,7 +1240,7 @@ requireAuth(async (profile) => {
 
   await loadCorsi();
 
-  if (hasPermission(profile, "iscrizioni:gestisci")) {
+  if (puoVedereIscrizioniAlmenoPadel) {
     aggiornaRiepiloghi();
   }
 });

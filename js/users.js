@@ -19,8 +19,10 @@ const KNOWN_PERMISSIONS = [
   { id: "soci:gestisci", label: "Gestire soci (anagrafica, iscrizioni, attivazioni)" },
   { id: "vendite:gestisci", label: "Gestire vendite (Cassa: registrare e vedere il riepilogo)" },
   { id: "corsi:gestisci", label: "Corsi: creare e modificare" },
+  { id: "corsi:gestisci_padel", label: "Corsi: creare e modificare (solo Padel)" },
   { id: "corsi:approva", label: "Corsi: approvare" },
   { id: "iscrizioni:gestisci", label: "Iscrizioni corsi: leggere e confermare/annullare (dati sensibili)" },
+  { id: "iscrizioni:gestisci_padel", label: "Iscrizioni corsi: leggere e confermare/annullare (solo Padel)" },
   { id: "prenotazioni:gestisci", label: "Prenotazioni padel: eliminare prenotazioni altrui" },
   { id: "prenotazioni:proprie", label: "Prenotazioni padel: creare/eliminare solo le proprie e bloccare slot (es. maestri)" },
   { id: "azienda:propria", label: "Referente aziendale: gestire dipendenti e consumi della propria azienda" }

@@ -29,6 +29,7 @@
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
 const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const { defineSecret } = require("firebase-functions/params");
 const { initializeApp } = require("firebase-admin/app");
@@ -725,7 +726,7 @@ exports.creaPrenotazionePubblica = onCall(
       const existingBookings = snap.docs
         .filter(d => !pendingScaduto(d.data()))
         .map(d => d.data())
-        .filter(b => b.status === "PENDING_PAYMENT" || b.status === "CONFIRMED" || b.status === "COMPLETED")
+        .filter(b => b.status === "PENDING_PAYMENT" || b.status === "PENDING_CONFIRMATION" || b.status === "CONFIRMED" || b.status === "COMPLETED")
         .map(b => ({ start: orarioToMin(b.startTime), end: orarioToMin(b.endTime) }));
 
       if (!validStarts(existingBookings, durationMinutes, close, feriale(date, festivi), eOggi(date)).includes(startMin)) {
@@ -903,7 +904,7 @@ exports.creaPrenotazioneOperatore = onCall(async (request) => {
     const existingBookings = snap.docs
       .filter(d => !pendingScaduto(d.data()))
       .map(d => d.data())
-      .filter(b => b.status === "PENDING_PAYMENT" || b.status === "CONFIRMED" || b.status === "COMPLETED")
+      .filter(b => b.status === "PENDING_PAYMENT" || b.status === "PENDING_CONFIRMATION" || b.status === "CONFIRMED" || b.status === "COMPLETED")
       .map(b => ({ start: orarioToMin(b.startTime), end: orarioToMin(b.endTime) }));
 
     if (!validStarts(existingBookings, durationMinutes, close, feriale(date, festivi), eOggi(date)).includes(startMin)) {
@@ -1407,7 +1408,7 @@ async function trovaConflittiAbbonamento(courtId, date, orarioInizio, orarioFine
     const occupato = bookingsSnap.docs
       .filter(doc => !pendingScaduto(doc.data()))
       .map(doc => doc.data())
-      .filter(b => b.status === "PENDING_PAYMENT" || b.status === "CONFIRMED" || b.status === "COMPLETED")
+      .filter(b => b.status === "PENDING_PAYMENT" || b.status === "PENDING_CONFIRMATION" || b.status === "CONFIRMED" || b.status === "COMPLETED")
       .some(b => sovrapposto(orarioInizio, orarioFine, b.startTime, b.endTime));
     if (occupato) conflitti.push(d);
   }
@@ -3579,7 +3580,7 @@ async function oreForfaitPendenti(socioId, oggiIso) {
     .get();
   const minuti = snap.docs
     .map(d => d.data())
-    .filter(b => !pendingScaduto(b) && (b.status === "PENDING_PAYMENT" || b.status === "CONFIRMED"))
+    .filter(b => !pendingScaduto(b) && (b.status === "PENDING_PAYMENT" || b.status === "PENDING_CONFIRMATION" || b.status === "CONFIRMED"))
     .filter(b => !eOrmaiPassato(b.date, orarioToMin(b.startTime)))
     .reduce((somma, b) => somma + (orarioToMin(b.endTime) - orarioToMin(b.startTime)), 0);
   return minuti / 60;
@@ -3694,7 +3695,7 @@ exports.creaPrenotazioneCampo = onCall(
         .get();
       const attive = attiveSnap.docs.filter(d => {
         const b = d.data();
-        return !pendingScaduto(b) && (b.status === "PENDING_PAYMENT" || b.status === "CONFIRMED");
+        return !pendingScaduto(b) && (b.status === "PENDING_PAYMENT" || b.status === "PENDING_CONFIRMATION" || b.status === "CONFIRMED");
       });
       if (attive.length >= impostazioni.maxPrenotazioniAttivePerUtente) {
         throw new HttpsError("failed-precondition", "Hai raggiunto il numero massimo di prenotazioni attive.");
@@ -3811,7 +3812,7 @@ exports.creaPrenotazioneCampo = onCall(
       const occupato = snap.docs
         .filter(d => !pendingScaduto(d.data()))
         .map(d => d.data())
-        .filter(b => b.status === "PENDING_PAYMENT" || b.status === "CONFIRMED" || b.status === "COMPLETED")
+        .filter(b => b.status === "PENDING_PAYMENT" || b.status === "PENDING_CONFIRMATION" || b.status === "CONFIRMED" || b.status === "COMPLETED")
         .some(b => sovrapposto(startTime, endTime, b.startTime, b.endTime));
       if (occupato) throw new HttpsError("failed-precondition", "Questo slot non è più disponibile — scegline un altro.");
 
@@ -4244,3 +4245,446 @@ exports.eliminaUtente = onCall(async (request) => {
 
   return { ok: true };
 });
+
+// ============================================================
+// Community Padel — registrazione giocatori, classifica, proposta di
+// sessioni con quorum e blocco provvisorio del campo.
+//
+// Identità: un socio riusa la sessione "dispositivo riconosciuto" già
+// esistente (sociDevices), il suo giocatoriPadel/{authUid} punta solo a
+// socioId — nessuna seconda identità Auth. Un giocatore esterno ottiene
+// una nuova identità Auth uid "giocatorePadel_{id}" con lo stesso schema
+// custom-token già usato per i soci (attivaSocioDaToken), attivata
+// SUBITO (in classifica e contattabile da subito) con una verifica email
+// automatica differita — se non verificata entro
+// impostazioni/prenotazioniCampi.giorniVerificaEsterni giorni, il profilo
+// si disattiva da solo (vedi manutenzioneCommunityPadel più sotto).
+//
+// Privacy: giocatoriPadel/{authUid} (pubblico alla classifica, MAI
+// telefono/email) e giocatoriPadelContatti/{authUid} (privato, letto solo
+// dal proprietario) sono due collection separate, stesso schema di
+// bookings/bookingDettagli — la classifica non deve poter esporre un
+// contatto anche per errore lato client, perché il client non ha nemmeno
+// accesso a leggerlo.
+// ============================================================
+
+function emailValidaServer(email) {
+  return typeof email === "string" && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
+}
+
+async function permessiCommunityPadel(uid) {
+  const { permessi, isAdmin } = await permessiUtente(uid);
+  const autorizzato = isAdmin
+    || permessi.includes("corsi:gestisci_padel") || permessi.includes("iscrizioni:gestisci_padel")
+    || permessi.includes("corsi:gestisci") || permessi.includes("iscrizioni:gestisci");
+  return { permessi, isAdmin, autorizzato };
+}
+
+// ---------- Registrazione + classifica ----------
+
+exports.registraGiocatorePadel = onCall({ secrets: MAIL_SECRETS }, async (request) => {
+  const { nome, cognome, telefono, email, playtomicLivello, socioId, consenso } = request.data || {};
+  if (!nome || !cognome || !telefono) {
+    throw new HttpsError("invalid-argument", "Nome, cognome e telefono sono obbligatori.");
+  }
+  if (consenso !== true) {
+    throw new HttpsError("invalid-argument", "È necessario accettare il trattamento dei dati per registrarsi.");
+  }
+  if (email && !emailValidaServer(email)) {
+    throw new HttpsError("invalid-argument", "Email non valida.");
+  }
+
+  let authUid, esterno;
+  if (socioId) {
+    // Deve arrivare da una sessione socio già riconosciuta su questo
+    // dispositivo — stesso controllo di collegaSocioAlDispositivo.
+    if (!request.auth) throw new HttpsError("unauthenticated", "Riconosci prima il dispositivo come socio.");
+    const deviceSnap = await db.collection("sociDevices").doc(request.auth.uid).get();
+    const profili = deviceSnap.exists ? (deviceSnap.data().profili || []) : [];
+    if (!profili.some(p => p.socioId === socioId)) {
+      throw new HttpsError("permission-denied", "Profilo socio non valido per questo dispositivo.");
+    }
+    authUid = request.auth.uid;
+    esterno = false;
+  } else {
+    esterno = true;
+    authUid = `giocatorePadel_${db.collection("giocatoriPadel").doc().id}`;
+    try {
+      await getAuth().createUser({ uid: authUid });
+    } catch (err) {
+      if (err.code !== "auth/uid-already-exists") throw err;
+    }
+  }
+
+  const giaRegistrato = await db.collection("giocatoriPadel").doc(authUid).get();
+  if (giaRegistrato.exists) {
+    throw new HttpsError("already-exists", "Sei già registrato come giocatore Padel.");
+  }
+
+  const livelloEffettivo = playtomicLivello != null ? playtomicLivello : 0;
+  // Un socio non ha bisogno di riverifica (già passato dall'attivazione
+  // socio); un esterno senza email non ha nulla da verificare — in
+  // entrambi i casi emailVerificata parte vera per non essere disattivato
+  // in automatico senza motivo.
+  const emailVerificata = !esterno || !email;
+
+  await db.collection("giocatoriPadel").doc(authUid).set({
+    nome, cognome, socioId: socioId || null, esterno,
+    playtomicLivello: playtomicLivello != null ? playtomicLivello : null,
+    livelloIstruttore: null, livelloEffettivo,
+    puoLanciareProposte: true, attivo: true, emailVerificata,
+    createdAt: FieldValue.serverTimestamp()
+  });
+  await db.collection("giocatoriPadelContatti").doc(authUid).set({
+    telefono, email: email || null, socioId: socioId || null,
+    consensoAt: FieldValue.serverTimestamp()
+  });
+
+  let customToken = null;
+  if (esterno) {
+    customToken = await getAuth().createCustomToken(authUid);
+    if (email) {
+      const verificaToken = generaToken();
+      await db.collection("attivazioniGiocatoriPadel").doc(verificaToken).set({
+        authUid, usato: false, createdAt: FieldValue.serverTimestamp()
+      });
+      const link = `${APP_URL}giocatori-padel.html?verifica=${verificaToken}`;
+      inviaEmail({
+        to: email,
+        subject: "Conferma la tua email — Community Padel",
+        html: `<p>Grazie per esserti registrato/a come giocatore/giocatrice Padel su Sport-OS.</p>`
+          + `<p>Conferma la tua email toccando il link qui sotto:</p>`
+          + `<p><a href="${link}">${link}</a></p>`
+      }).catch(err => console.error("registraGiocatorePadel: invio email verifica fallito:", err));
+    }
+  }
+
+  return { authUid, customToken };
+});
+
+exports.verificaEmailGiocatorePadel = onCall(async (request) => {
+  const { token } = request.data || {};
+  if (!token) throw new HttpsError("invalid-argument", "Token mancante.");
+
+  const tokenRef = db.collection("attivazioniGiocatoriPadel").doc(token);
+  const tokenSnap = await tokenRef.get();
+  if (!tokenSnap.exists || tokenSnap.data().usato) {
+    throw new HttpsError("failed-precondition", "Link non valido o già usato.");
+  }
+  const { authUid } = tokenSnap.data();
+  await db.collection("giocatoriPadel").doc(authUid).update({ emailVerificata: true });
+  await tokenRef.update({ usato: true, usatoAt: FieldValue.serverTimestamp() });
+  return { ok: true };
+});
+
+// Istruttore Padel: assegna/modifica il livello per chi non ha (ancora) un
+// livello Playtomic — livelloEffettivo si ricalcola sempre qui, mai fidato
+// dal client (stesso principio del motore tariffe: il valore mostrato in
+// classifica deve sempre passare da un ricalcolo server-side).
+exports.modificaLivelloIstruttorePadel = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+  const { autorizzato } = await permessiCommunityPadel(request.auth.uid);
+  if (!autorizzato) throw new HttpsError("permission-denied", "Permesso mancante.");
+
+  const { giocatoreId, livelloIstruttore } = request.data || {};
+  if (!giocatoreId) throw new HttpsError("invalid-argument", "giocatoreId mancante.");
+  const ref = db.collection("giocatoriPadel").doc(giocatoreId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError("not-found", "Giocatore non trovato.");
+
+  const g = snap.data();
+  const nuovoLivelloIstruttore = livelloIstruttore != null ? livelloIstruttore : null;
+  const livelloEffettivo = g.playtomicLivello != null ? g.playtomicLivello : (nuovoLivelloIstruttore != null ? nuovoLivelloIstruttore : 0);
+  await ref.update({ livelloIstruttore: nuovoLivelloIstruttore, livelloEffettivo });
+  return { ok: true };
+});
+
+// Anti-abuso manuale (in aggiunta al limite automatico di proposte-con-hold
+// simultanee, vedi proponiSessionePadel): lo staff/istruttore può togliere
+// a un singolo giocatore la possibilità di lanciare nuove proposte, senza
+// toccare ruoli o permessi globali.
+exports.modificaPuoLanciareProposte = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+  const { autorizzato } = await permessiCommunityPadel(request.auth.uid);
+  if (!autorizzato) throw new HttpsError("permission-denied", "Permesso mancante.");
+
+  const { giocatoreId, puoLanciareProposte } = request.data || {};
+  if (!giocatoreId) throw new HttpsError("invalid-argument", "giocatoreId mancante.");
+  await db.collection("giocatoriPadel").doc(giocatoreId).update({ puoLanciareProposte: !!puoLanciareProposte });
+  return { ok: true };
+});
+
+// ---------- Proposta di sessione (quorum + hold provvisorio) ----------
+
+// Padel ha oggi un solo campo (COURT_ID, vedi sopra) — nessun selettore
+// campo nel flusso di proposta, stessa scelta già fatta da
+// prenota-padel.html per la prenotazione singola (vedi R8 nel piano).
+exports.proponiSessionePadel = onCall({ secrets: MAIL_SECRETS }, async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere un giocatore Padel registrato.");
+
+  const giocatoreSnap = await db.collection("giocatoriPadel").doc(request.auth.uid).get();
+  if (!giocatoreSnap.exists || giocatoreSnap.data().attivo === false) {
+    throw new HttpsError("permission-denied", "Devi essere un giocatore Padel registrato e attivo.");
+  }
+  const giocatore = giocatoreSnap.data();
+  if (giocatore.puoLanciareProposte === false) {
+    throw new HttpsError("permission-denied", "Non puoi al momento lanciare nuove proposte di sessione.");
+  }
+
+  const { date, startTime, durationMinutes, targetHeadcount, invitatiIds, invitiEmail } = request.data || {};
+  if (!date || !startTime || !durationMinutes || !targetHeadcount || targetHeadcount < 2) {
+    throw new HttpsError("invalid-argument", "Dati proposta incompleti.");
+  }
+  const startMin = orarioToMin(startTime);
+  const endTime = minutiToOrario(startMin + durationMinutes);
+
+  const [chiuso, generaleSnap, impostazioniSnap] = await Promise.all([
+    giornoChiuso(date),
+    db.collection("impostazioni").doc("generale").get(),
+    db.collection("impostazioni").doc("prenotazioniCampi").get()
+  ]);
+  if (chiuso) throw new HttpsError("failed-precondition", "Il campo è chiuso in questa data.");
+  if (eOrmaiPassato(date, startMin)) {
+    throw new HttpsError("failed-precondition", "Questo slot non è più disponibile — scegline un altro.");
+  }
+
+  const { festivi, chiusuraWeekendMin } = festiviEChiusuraWeekend(generaleSnap);
+  const close = chiusuraGiorno(date, festivi, chiusuraWeekendMin);
+
+  const impostazioni = impostazioniSnap.exists ? impostazioniSnap.data() : {};
+  const holdAttivo = !!impostazioni.holdProvvisorioAttivo;
+  const holdMinuti = Math.min(60, impostazioni.holdMinutiMax || 30);
+  const maxProposteConHold = impostazioni.maxProposteConHoldPerGiocatore || 1;
+
+  // Anti-abuso: quante proposte con hold ha già aperte questo giocatore.
+  // Verificato di nuovo dentro la stessa transazione della prenotazione
+  // qui sotto per evitare che due tab dello stesso giocatore superino
+  // insieme il limite in una corsa concorrente.
+  if (holdAttivo) {
+    const aperteSnap = await db.collection("sessioniPadel")
+      .where("organizerId", "==", request.auth.uid)
+      .where("stato", "==", "aperta")
+      .get();
+    if (aperteSnap.size >= maxProposteConHold) {
+      throw new HttpsError("failed-precondition", "Hai già una proposta con blocco campo attiva — attendi che si chiuda prima di lanciarne un'altra.");
+    }
+  }
+
+  // Prezzo nominale: stesso motore tariffe di creaPrenotazionePubblica,
+  // categoria risolta allo stesso modo (socio collegato → tariffa socio,
+  // esterno → tariffa piena) — tracciato in Resoconto come una
+  // prenotazione normale, i giocatori si dividono la quota fuori app.
+  const prenotante = await risolviCategoriaPrenotante(request.auth, giocatore.socioId || null);
+  const quota = await quotaCategoria({
+    disciplina: "padel", posizione: null, categoria: prenotante.categoria,
+    dataIso: date, startTime, durataMinuti: durationMinutes, festivi
+  });
+  if (quota == null) throw new HttpsError("failed-precondition", "Tariffa non configurata per questo slot/categoria.");
+
+  const bookingRef = db.collection("bookings").doc();
+  const sessioneRef = db.collection("sessioniPadel").doc();
+  const scadenzaAt = holdAttivo ? new Date(Date.now() + holdMinuti * 60000) : null;
+
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(
+      db.collection("bookings").where("date", "==", date).where("courtId", "==", COURT_ID)
+    );
+    const existingBookings = snap.docs
+      .filter(d => !pendingScaduto(d.data()))
+      .map(d => d.data())
+      .filter(b => b.status === "PENDING_PAYMENT" || b.status === "PENDING_CONFIRMATION" || b.status === "CONFIRMED" || b.status === "COMPLETED")
+      .map(b => ({ start: orarioToMin(b.startTime), end: orarioToMin(b.endTime) }));
+
+    if (!validStarts(existingBookings, durationMinutes, close, feriale(date, festivi), eOggi(date)).includes(startMin)) {
+      throw new HttpsError("failed-precondition", "Questo slot non è più disponibile — scegline un altro.");
+    }
+
+    tx.set(bookingRef, {
+      courtId: COURT_ID, date, startTime, endTime,
+      status: holdAttivo ? "PENDING_CONFIRMATION" : "CONFIRMED",
+      type: "CUSTOMER",
+      authUid: request.auth.uid,
+      createdAt: FieldValue.serverTimestamp()
+    });
+    tx.set(db.collection("bookingDettagli").doc(bookingRef.id), {
+      prenotanteNome: `${giocatore.nome} ${giocatore.cognome}`,
+      altriGiocatori: [],
+      ripartizioneAttiva: false,
+      prezzoDettaglio: [{ ruolo: "prenotante", categoria: prenotante.categoria, importo: quota, socioId: giocatore.socioId || null, nome: `${giocatore.nome} ${giocatore.cognome}` }]
+    });
+    tx.set(sessioneRef, {
+      bookingId: bookingRef.id, organizerId: request.auth.uid,
+      courtId: COURT_ID, date, startTime, endTime,
+      targetHeadcount,
+      invitati: (invitatiIds || []).map(giocatoreId => ({ giocatoreId, stato: "in_attesa", rispostoAt: null })),
+      stato: "aperta",
+      scadenzaAt: scadenzaAt || null,
+      createdAt: FieldValue.serverTimestamp()
+    });
+  });
+
+  // Un token per invitato (link diretto, inoltrato dall'organizzatore a
+  // modo suo) + un invito email reale via SMTP per chi non ha un contatto
+  // diretto — generati fuori dalla transazione, non sono critici per
+  // l'atomicità della prenotazione.
+  const inviti = [];
+  for (const giocatoreId of (invitatiIds || [])) {
+    const token = generaToken();
+    await db.collection("sessioniPadelInviti").doc(token).set({ sessioneId: sessioneRef.id, giocatoreId });
+    inviti.push({ giocatoreId, token, link: `${APP_URL}giocatori-padel.html?invito=${token}` });
+  }
+  for (const email of (invitiEmail || [])) {
+    if (!emailValidaServer(email)) continue;
+    const token = generaToken();
+    await db.collection("sessioniPadelInviti").doc(token).set({ sessioneId: sessioneRef.id, giocatoreId: null });
+    const link = `${APP_URL}giocatori-padel.html?invito=${token}`;
+    inviaEmail({
+      to: email,
+      subject: "Invito a una partita di Padel — Sport-OS",
+      html: `<p>${giocatore.nome} ${giocatore.cognome} ti invita a una partita di Padel il ${date} alle ${startTime}.</p>`
+        + `<p>Conferma la tua presenza toccando il link qui sotto:</p>`
+        + `<p><a href="${link}">${link}</a></p>`
+    }).catch(err => console.error("proponiSessionePadel: invio invito email fallito:", err));
+  }
+
+  return { sessioneId: sessioneRef.id, bookingId: bookingRef.id, inviti };
+});
+
+// Richiede una sessione autenticata (socio o giocatorePadel) corrispondente
+// esattamente al giocatoreId a cui è stato emesso il token — nessuna
+// risposta "a nome di altri" solo perché si possiede il link inoltrato.
+exports.rispondiInvitoSessionePadel = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Riconosci il dispositivo prima di rispondere.");
+  const { token, risposta } = request.data || {};
+  if (!token || (risposta !== "si" && risposta !== "no")) {
+    throw new HttpsError("invalid-argument", "Dati non validi.");
+  }
+
+  const invitoRef = db.collection("sessioniPadelInviti").doc(token);
+  const invitoSnap = await invitoRef.get();
+  if (!invitoSnap.exists) throw new HttpsError("not-found", "Invito non trovato.");
+  const invito = invitoSnap.data();
+  if (invito.giocatoreId && invito.giocatoreId !== request.auth.uid) {
+    throw new HttpsError("permission-denied", "Questo invito non è per il dispositivo con cui hai effettuato l'accesso.");
+  }
+  // Invito via email (giocatoreId nullo alla creazione, vedi
+  // proponiSessionePadel): chi risponde per primo con questo link
+  // "reclama" l'invito per il proprio profilo giocatore.
+  if (!invito.giocatoreId) {
+    const giocatoreSnap = await db.collection("giocatoriPadel").doc(request.auth.uid).get();
+    if (!giocatoreSnap.exists) throw new HttpsError("failed-precondition", "Registrati prima come giocatore Padel.");
+    await invitoRef.update({ giocatoreId: request.auth.uid });
+    invito.giocatoreId = request.auth.uid;
+  }
+
+  const sessioneRef = db.collection("sessioniPadel").doc(invito.sessioneId);
+  let confermata = false;
+  await db.runTransaction(async (tx) => {
+    const sessioneSnap = await tx.get(sessioneRef);
+    if (!sessioneSnap.exists) throw new HttpsError("not-found", "Proposta non trovata.");
+    const s = sessioneSnap.data();
+    if (s.stato !== "aperta") throw new HttpsError("failed-precondition", "Questa proposta non è più aperta.");
+    if (s.scadenzaAt && s.scadenzaAt.toMillis() < Date.now()) {
+      throw new HttpsError("failed-precondition", "Questa proposta è scaduta.");
+    }
+
+    let trovato = false;
+    const invitati = (s.invitati || []).map(i => {
+      if (i.giocatoreId === invito.giocatoreId) {
+        trovato = true;
+        return { ...i, stato: risposta, rispostoAt: FieldValue.serverTimestamp() };
+      }
+      return i;
+    });
+    if (!trovato) invitati.push({ giocatoreId: invito.giocatoreId, stato: risposta, rispostoAt: FieldValue.serverTimestamp() });
+
+    const update = { invitati };
+    const confermeSi = invitati.filter(i => i.stato === "si").length;
+    // targetHeadcount conta anche l'organizzatore: servono
+    // targetHeadcount-1 conferme "sì" tra gli invitati.
+    if (confermeSi >= s.targetHeadcount - 1) {
+      update.stato = "confermata";
+      confermata = true;
+      tx.update(db.collection("bookings").doc(s.bookingId), { status: "CONFIRMED" });
+    }
+    tx.update(sessioneRef, update);
+  });
+
+  return { ok: true, confermata };
+});
+
+// Cancellazione anticipata (prima della scadenza naturale): organizzatore
+// o staff, libera subito lo slot invece di aspettare
+// manutenzioneCommunityPadel.
+exports.annullaPropostaSessionePadel = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+  const { sessioneId } = request.data || {};
+  if (!sessioneId) throw new HttpsError("invalid-argument", "sessioneId mancante.");
+
+  const sessioneRef = db.collection("sessioniPadel").doc(sessioneId);
+  const sessioneSnap = await sessioneRef.get();
+  if (!sessioneSnap.exists) throw new HttpsError("not-found", "Proposta non trovata.");
+  const s = sessioneSnap.data();
+
+  const { autorizzato } = await permessiCommunityPadel(request.auth.uid);
+  if (s.organizerId !== request.auth.uid && !autorizzato) {
+    throw new HttpsError("permission-denied", "Solo l'organizzatore o lo staff possono annullare questa proposta.");
+  }
+  if (s.stato !== "aperta") throw new HttpsError("failed-precondition", "Questa proposta non è più aperta.");
+
+  await db.runTransaction(async (tx) => {
+    const bookingRef = db.collection("bookings").doc(s.bookingId);
+    const bookingSnap = await tx.get(bookingRef);
+    if (bookingSnap.exists && bookingSnap.data().status === "PENDING_CONFIRMATION") {
+      tx.delete(bookingRef);
+    }
+    tx.update(sessioneRef, { stato: "annullata" });
+  });
+  return { ok: true };
+});
+
+// ---------- Manutenzione automatica (prima funzione schedulata del
+// progetto — la pulizia di PENDING_PAYMENT è finora sempre stata solo
+// opportunistica, vedi pendingScaduto) ----------
+//
+// Region europe-west6 soltanto: funzione nuova, nessun client legacy
+// dipende da us-central1 come per le funzioni onCall/onRequest ancora in
+// doppia regione durante la migrazione (vedi commento su setGlobalOptions
+// in cima al file).
+exports.manutenzioneCommunityPadel = onSchedule(
+  { schedule: "every 5 minutes", region: "europe-west6" },
+  async () => {
+    const now = Date.now();
+
+    const aperteSnap = await db.collection("sessioniPadel").where("stato", "==", "aperta").get();
+    const scadute = aperteSnap.docs.filter(d => {
+      const s = d.data();
+      return s.scadenzaAt && s.scadenzaAt.toMillis() < now;
+    });
+    await Promise.all(scadute.map(d => db.runTransaction(async (tx) => {
+      const s = d.data();
+      const bookingRef = db.collection("bookings").doc(s.bookingId);
+      const bookingSnap = await tx.get(bookingRef);
+      if (bookingSnap.exists && bookingSnap.data().status === "PENDING_CONFIRMATION") {
+        tx.delete(bookingRef);
+      }
+      tx.update(d.ref, { stato: "scaduta" });
+    })));
+
+    const impostazioniSnap = await db.collection("impostazioni").doc("prenotazioniCampi").get();
+    const giorniVerifica = impostazioniSnap.exists && impostazioniSnap.data().giorniVerificaEsterni != null
+      ? impostazioniSnap.data().giorniVerificaEsterni : 7;
+    const sogliaMs = giorniVerifica * 24 * 60 * 60 * 1000;
+
+    const nonVerificatiSnap = await db.collection("giocatoriPadel")
+      .where("esterno", "==", true)
+      .where("emailVerificata", "==", false)
+      .where("attivo", "==", true)
+      .get();
+    const daDisattivare = nonVerificatiSnap.docs.filter(d => {
+      const g = d.data();
+      return g.createdAt && (now - g.createdAt.toMillis()) > sogliaMs;
+    });
+    await Promise.all(daDisattivare.map(d => d.ref.update({ attivo: false })));
+  }
+);

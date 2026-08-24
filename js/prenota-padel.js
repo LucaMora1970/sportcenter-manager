@@ -326,7 +326,7 @@ function ascoltaPrenotazioniGiorno() {
       (snap) => {
         state.bookings = snap.docs
           .map(d => d.data())
-          .filter(b => (b.status === "PENDING_PAYMENT" && !pendingScaduto(b)) || b.status === "CONFIRMED" || b.status === "COMPLETED")
+          .filter(b => (b.status === "PENDING_PAYMENT" && !pendingScaduto(b)) || b.status === "PENDING_CONFIRMATION" || b.status === "CONFIRMED" || b.status === "COMPLETED")
           .map(b => ({ start: orarioToMin(b.startTime), end: orarioToMin(b.endTime), createdAt: b.createdAt, status: b.status }));
         render();
       },
@@ -411,12 +411,15 @@ function render() {
 
   html += state.bookings.map(b => {
     const inPagamento = b.status === "PENDING_PAYMENT";
+    const inConferma = b.status === "PENDING_CONFIRMATION";
+    const nome = inPagamento ? "Pagamento in corso" : inConferma ? "In conferma (proposta partita)" : "Occupato";
     return `
-      <div class="busy" data-pending="${inPagamento}" style="top:${px(b.start)}px;height:${px(b.end) - px(b.start)}px">
-        <span class="name">${inPagamento ? "Pagamento in corso" : "Occupato"}</span>
+      <div class="busy" data-pending="${inPagamento || inConferma}" style="top:${px(b.start)}px;height:${px(b.end) - px(b.start)}px">
+        <span class="name">${nome}</span>
         <span class="time">${label(b.start)}–${label(b.end)}</span>
         ${b.createdAt ? `<span class="timestamp">${inPagamento ? "Iniziato" : "Prenotato"} il ${formatTimestamp(b.createdAt)}</span>` : ""}
         ${inPagamento ? `<span class="timestamp">Si libera da solo se non confermato entro pochi minuti</span>` : ""}
+        ${inConferma ? `<span class="timestamp">Si libera da solo se il quorum non si raggiunge in tempo</span>` : ""}
       </div>
     `;
   }).join("");

@@ -1944,6 +1944,47 @@ async function onSavePrenotazioniCampi(e) {
   }
 }
 
+// ---------- Community Padel ----------
+
+async function loadCommunityPadelForm() {
+  const doc = await db.collection("impostazioni").doc("prenotazioniCampi").get();
+  const dati = doc.exists ? doc.data() : {};
+  document.getElementById("cp-hold-attivo").checked = dati.holdProvvisorioAttivo === true;
+  document.getElementById("cp-hold-minuti").value = dati.holdMinutiMax ?? "";
+  document.getElementById("cp-max-proposte").value = dati.maxProposteConHoldPerGiocatore ?? "";
+  document.getElementById("cp-giorni-verifica").value = dati.giorniVerificaEsterni ?? "";
+}
+
+async function onSaveCommunityPadel(e) {
+  e.preventDefault();
+  const btn = document.getElementById("salva-community-padel-btn");
+  const errorEl = document.getElementById("community-padel-error");
+  errorEl.textContent = "";
+  btn.disabled = true;
+
+  const numOrNull = (id) => {
+    const v = document.getElementById(id).value;
+    return v === "" ? null : parseInt(v, 10);
+  };
+
+  try {
+    const holdMinutiMax = numOrNull("cp-hold-minuti");
+    if (holdMinutiMax != null && holdMinutiMax > 60) {
+      throw new Error("Il blocco provvisorio non può superare i 60 minuti.");
+    }
+    await db.collection("impostazioni").doc("prenotazioniCampi").set({
+      holdProvvisorioAttivo: document.getElementById("cp-hold-attivo").checked,
+      holdMinutiMax,
+      maxProposteConHoldPerGiocatore: numOrNull("cp-max-proposte"),
+      giorniVerificaEsterni: numOrNull("cp-giorni-verifica")
+    }, { merge: true });
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // ---------- Abbonamenti fissi (tennis) ----------
 
 const GIORNO_LABEL_ABB = { lun: "Lunedì", mar: "Martedì", mer: "Mercoledì", gio: "Giovedì", ven: "Venerdì", sab: "Sabato", dom: "Domenica" };
@@ -2265,6 +2306,7 @@ requireAuth(async (profile) => {
   await loadForfaitTennisImpostazioni();
   document.getElementById("new-chiusuracentro-form").addEventListener("submit", onCreateChiusuraCentro);
   document.getElementById("prenotazionicampi-form").addEventListener("submit", onSavePrenotazioniCampi);
+  document.getElementById("community-padel-form").addEventListener("submit", onSaveCommunityPadel);
   document.getElementById("abbonamento-impostazioni-form").addEventListener("submit", onSaveAbbonamentoImpostazioni);
   document.getElementById("new-abbonamento-form").addEventListener("submit", onCreateAbbonamento);
   wireCercaSocioAbbonamento();
@@ -2295,6 +2337,7 @@ requireAuth(async (profile) => {
   await loadForfaitCampi();
   await loadChiusureCentro();
   await loadPrenotazioniCampiForm();
+  await loadCommunityPadelForm();
   await loadArticoli();
 });
 
