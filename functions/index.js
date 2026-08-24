@@ -4607,15 +4607,19 @@ exports.rispondiInvitoSessionePadel = onCall(async (request) => {
       throw new HttpsError("failed-precondition", "Questa proposta è scaduta.");
     }
 
+    // FieldValue.serverTimestamp() non è supportato dentro un array (solo
+    // come campo di primo livello o dentro una mappa) — qui serve un
+    // Timestamp normale, non il sentinel.
+    const ora = new Date();
     let trovato = false;
     const invitati = (s.invitati || []).map(i => {
       if (i.giocatoreId === invito.giocatoreId) {
         trovato = true;
-        return { ...i, stato: risposta, rispostoAt: FieldValue.serverTimestamp() };
+        return { ...i, stato: risposta, rispostoAt: ora };
       }
       return i;
     });
-    if (!trovato) invitati.push({ giocatoreId: invito.giocatoreId, stato: risposta, rispostoAt: FieldValue.serverTimestamp() });
+    if (!trovato) invitati.push({ giocatoreId: invito.giocatoreId, stato: risposta, rispostoAt: ora });
 
     const update = { invitati };
     const confermeSi = invitati.filter(i => i.stato === "si").length;
