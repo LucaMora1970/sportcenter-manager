@@ -23,6 +23,14 @@
         { "fieldPath": "forfaitSocioIds", "arrayConfig": "CONTAINS" },
         { "fieldPath": "date", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "giocatoriPadel",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "attivo", "order": "ASCENDING" },
+        { "fieldPath": "livelloEffettivo", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

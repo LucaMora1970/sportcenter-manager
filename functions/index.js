@@ -4481,47 +4481,66 @@ exports.proponiSessionePadel = onCall({ secrets: MAIL_SECRETS }, async (request)
   });
   if (quota == null) throw new HttpsError("failed-precondition", "Tariffa non configurata per questo slot/categoria.");
 
-  const bookingRef = db.collection("bookings").doc();
   const sessioneRef = db.collection("sessioniPadel").doc();
   const scadenzaAt = holdAttivo ? new Date(Date.now() + holdMinuti * 60000) : null;
 
-  await db.runTransaction(async (tx) => {
-    const snap = await tx.get(
-      db.collection("bookings").where("date", "==", date).where("courtId", "==", COURT_ID)
-    );
-    const existingBookings = snap.docs
-      .filter(d => !pendingScaduto(d.data()))
-      .map(d => d.data())
-      .filter(b => b.status === "PENDING_PAYMENT" || b.status === "PENDING_CONFIRMATION" || b.status === "CONFIRMED" || b.status === "COMPLETED")
-      .map(b => ({ start: orarioToMin(b.startTime), end: orarioToMin(b.endTime) }));
+  // Se il blocco provvisorio è disattivato in Configurazione, la proposta
+  // resta SOLO un impegno tra giocatori — nessuna prenotazione viene
+  // creata, nessun controllo di disponibilità slot, nessun impatto sul
+  // calendario campi (come deciso: chi organizza prenota poi il campo a
+  // parte, con lo stesso motore di prenotazione di sempre). Con il
+  // blocco attivo, invece, lo slot va verificato e riservato subito.
+  let bookingRef = null;
+  if (holdAttivo) {
+    bookingRef = db.collection("bookings").doc();
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(
+        db.collection("bookings").where("date", "==", date).where("courtId", "==", COURT_ID)
+      );
+      const existingBookings = snap.docs
+        .filter(d => !pendingScaduto(d.data()))
+        .map(d => d.data())
+        .filter(b => b.status === "PENDING_PAYMENT" || b.status === "PENDING_CONFIRMATION" || b.status === "CONFIRMED" || b.status === "COMPLETED")
+        .map(b => ({ start: orarioToMin(b.startTime), end: orarioToMin(b.endTime) }));
 
-    if (!validStarts(existingBookings, durationMinutes, close, feriale(date, festivi), eOggi(date)).includes(startMin)) {
-      throw new HttpsError("failed-precondition", "Questo slot non è più disponibile — scegline un altro.");
-    }
+      if (!validStarts(existingBookings, durationMinutes, close, feriale(date, festivi), eOggi(date)).includes(startMin)) {
+        throw new HttpsError("failed-precondition", "Questo slot non è più disponibile — scegline un altro.");
+      }
 
-    tx.set(bookingRef, {
-      courtId: COURT_ID, date, startTime, endTime,
-      status: holdAttivo ? "PENDING_CONFIRMATION" : "CONFIRMED",
-      type: "CUSTOMER",
-      authUid: request.auth.uid,
-      createdAt: FieldValue.serverTimestamp()
+      tx.set(bookingRef, {
+        courtId: COURT_ID, date, startTime, endTime,
+        status: "PENDING_CONFIRMATION",
+        type: "CUSTOMER",
+        authUid: request.auth.uid,
+        createdAt: FieldValue.serverTimestamp()
+      });
+      tx.set(db.collection("bookingDettagli").doc(bookingRef.id), {
+        prenotanteNome: `${giocatore.nome} ${giocatore.cognome}`,
+        altriGiocatori: [],
+        ripartizioneAttiva: false,
+        prezzoDettaglio: [{ ruolo: "prenotante", categoria: prenotante.categoria, importo: quota, socioId: giocatore.socioId || null, nome: `${giocatore.nome} ${giocatore.cognome}` }]
+      });
+      tx.set(sessioneRef, {
+        bookingId: bookingRef.id, organizerId: request.auth.uid,
+        courtId: COURT_ID, date, startTime, endTime,
+        targetHeadcount,
+        invitati: (invitatiIds || []).map(giocatoreId => ({ giocatoreId, stato: "in_attesa", rispostoAt: null })),
+        stato: "aperta",
+        scadenzaAt,
+        createdAt: FieldValue.serverTimestamp()
+      });
     });
-    tx.set(db.collection("bookingDettagli").doc(bookingRef.id), {
-      prenotanteNome: `${giocatore.nome} ${giocatore.cognome}`,
-      altriGiocatori: [],
-      ripartizioneAttiva: false,
-      prezzoDettaglio: [{ ruolo: "prenotante", categoria: prenotante.categoria, importo: quota, socioId: giocatore.socioId || null, nome: `${giocatore.nome} ${giocatore.cognome}` }]
-    });
-    tx.set(sessioneRef, {
-      bookingId: bookingRef.id, organizerId: request.auth.uid,
+  } else {
+    await sessioneRef.set({
+      bookingId: null, organizerId: request.auth.uid,
       courtId: COURT_ID, date, startTime, endTime,
       targetHeadcount,
       invitati: (invitatiIds || []).map(giocatoreId => ({ giocatoreId, stato: "in_attesa", rispostoAt: null })),
       stato: "aperta",
-      scadenzaAt: scadenzaAt || null,
+      scadenzaAt: null,
       createdAt: FieldValue.serverTimestamp()
     });
-  });
+  }
 
   // Un token per invitato (link diretto, inoltrato dall'organizzatore a
   // modo suo) + un invito email reale via SMTP per chi non ha un contatto
@@ -4547,7 +4566,7 @@ exports.proponiSessionePadel = onCall({ secrets: MAIL_SECRETS }, async (request)
     }).catch(err => console.error("proponiSessionePadel: invio invito email fallito:", err));
   }
 
-  return { sessioneId: sessioneRef.id, bookingId: bookingRef.id, inviti };
+  return { sessioneId: sessioneRef.id, bookingId: bookingRef ? bookingRef.id : null, inviti };
 });
 
 // Richiede una sessione autenticata (socio o giocatorePadel) corrispondente
@@ -4605,7 +4624,10 @@ exports.rispondiInvitoSessionePadel = onCall(async (request) => {
     if (confermeSi >= s.targetHeadcount - 1) {
       update.stato = "confermata";
       confermata = true;
-      tx.update(db.collection("bookings").doc(s.bookingId), { status: "CONFIRMED" });
+      // bookingId è nullo se il blocco provvisorio era disattivato alla
+      // creazione (nessuna prenotazione da confermare, solo l'impegno
+      // sociale) — in quel caso il campo va prenotato a parte.
+      if (s.bookingId) tx.update(db.collection("bookings").doc(s.bookingId), { status: "CONFIRMED" });
     }
     tx.update(sessioneRef, update);
   });
@@ -4632,14 +4654,18 @@ exports.annullaPropostaSessionePadel = onCall(async (request) => {
   }
   if (s.stato !== "aperta") throw new HttpsError("failed-precondition", "Questa proposta non è più aperta.");
 
-  await db.runTransaction(async (tx) => {
-    const bookingRef = db.collection("bookings").doc(s.bookingId);
-    const bookingSnap = await tx.get(bookingRef);
-    if (bookingSnap.exists && bookingSnap.data().status === "PENDING_CONFIRMATION") {
-      tx.delete(bookingRef);
-    }
-    tx.update(sessioneRef, { stato: "annullata" });
-  });
+  if (s.bookingId) {
+    await db.runTransaction(async (tx) => {
+      const bookingRef = db.collection("bookings").doc(s.bookingId);
+      const bookingSnap = await tx.get(bookingRef);
+      if (bookingSnap.exists && bookingSnap.data().status === "PENDING_CONFIRMATION") {
+        tx.delete(bookingRef);
+      }
+      tx.update(sessioneRef, { stato: "annullata" });
+    });
+  } else {
+    await sessioneRef.update({ stato: "annullata" });
+  }
   return { ok: true };
 });
 
