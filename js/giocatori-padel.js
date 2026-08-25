@@ -549,7 +549,6 @@ async function onSubmitProponi(e) {
 
   try {
     const invitatiIds = Array.from(document.querySelectorAll(".pr-invitato-cb:checked")).map(cb => cb.value);
-    const invitiEmail = document.getElementById("pr-email-extra").value.split(",").map(s => s.trim()).filter(Boolean);
 
     const fn = cloudFunctions().httpsCallable("proponiSessionePadel");
     const { data } = await fn({
@@ -557,58 +556,15 @@ async function onSubmitProponi(e) {
       startTime: document.getElementById("pr-ora").value,
       durationMinutes: parseInt(document.getElementById("pr-durata").value, 10),
       targetHeadcount: parseInt(document.getElementById("pr-headcount").value, 10),
-      invitatiIds,
-      invitiEmail
+      invitatiIds
     });
 
-    const esitoEl = document.getElementById("proponi-esito");
-    esitoEl.classList.remove("hidden");
-    const righeInviti = (data.inviti || []).map(i => {
-      const nome = (classificaCache.find(g => g.id === i.giocatoreId) || {}).pseudonimo || "Invitato";
-      return `
-        <div class="gp-invito-riga">
-          <span>${escapeHtml(nome)}</span>
-          <span>
-            <button type="button" class="btn btn-ghost copia-invito-btn" data-link="${escapeHtml(i.link)}" style="width:auto;padding:6px 10px;font-size:0.7rem;">Copia link</button>
-            <a href="https://wa.me/?text=${encodeURIComponent(i.link)}" target="_blank" rel="noopener" class="btn btn-ghost" style="width:auto;padding:6px 10px;font-size:0.7rem;display:inline-block;">WhatsApp</a>
-          </span>
-        </div>
-      `;
-    }).join("");
-    const rigaLinkAperto = data.linkAperto ? `
-      <div class="gp-invito-riga">
-        <span>Link aperto — per chiunque, primo arrivato primo servito</span>
-        <span>
-          <button type="button" class="btn btn-ghost copia-invito-btn" data-link="${escapeHtml(data.linkAperto)}" style="width:auto;padding:6px 10px;font-size:0.7rem;">Copia link</button>
-          <a href="https://wa.me/?text=${encodeURIComponent(data.linkAperto)}" target="_blank" rel="noopener" class="btn btn-ghost" style="width:auto;padding:6px 10px;font-size:0.7rem;display:inline-block;">WhatsApp</a>
-        </span>
-      </div>
-    ` : "";
-    const rigaLinkStato = data.statoLink ? `
-      <div class="gp-invito-riga">
-        <span>Pagina di stato — chi ha aderito e quanto si paga, sempre aggiornata</span>
-        <span>
-          <button type="button" class="btn btn-ghost copia-invito-btn" data-link="${escapeHtml(data.statoLink)}" style="width:auto;padding:6px 10px;font-size:0.7rem;">Copia link</button>
-          <a href="https://wa.me/?text=${encodeURIComponent(data.statoLink)}" target="_blank" rel="noopener" class="btn btn-ghost" style="width:auto;padding:6px 10px;font-size:0.7rem;display:inline-block;">WhatsApp</a>
-        </span>
-      </div>
-    ` : "";
-    esitoEl.innerHTML = `
-      <p><strong>Proposta lanciata.</strong> Condividi questi link con gli invitati:</p>
-      ${righeInviti || `<p style="color:var(--chalk-grey);font-size:0.82rem;">Nessun invitato dalla classifica — controlla gli eventuali inviti via email.</p>`}
-      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:14px 0 0;">Oppure posta questo link dove vuoi (es. gruppo WhatsApp del circolo) — chi risponde per primo occupa i posti rimasti, fino al numero richiesto:</p>
-      ${rigaLinkAperto}
-      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:14px 0 0;">Vuoi solo far vedere lo stato senza far rispondere nessuno? Condividi questo, chiunque può aprirlo senza registrarsi:</p>
-      ${rigaLinkStato}
-    `;
-    esitoEl.querySelectorAll(".copia-invito-btn").forEach(b => b.addEventListener("click", () => copyToClipboard(b.dataset.link, b)));
-    esitoEl.scrollIntoView({ behavior: "smooth", block: "start" });
-
-    document.getElementById("proponi-form").reset();
-    await caricaMieProposte();
+    // Dritti sulla pagina di stato appena lanciata: è lì che ora si vede
+    // subito chi ha aderito e si trova, solo per l'organizzatore (vedi
+    // ?org=1 in stato-partita.js), la sezione per condividere il link.
+    location.href = `${data.statoLink}&org=1`;
   } catch (err) {
     showError(errorEl, "Errore: " + err.message);
-  } finally {
     btn.disabled = false;
     nascondiCaricamento();
   }

@@ -18,6 +18,13 @@
 
 const STATO_SESSIONE_LABEL = { aperta: "In attesa di conferme", confermata: "Confermata", scaduta: "Scaduta", annullata: "Annullata" };
 
+// Vero solo per chi atterra qui subito dopo aver lanciato la proposta
+// (redirect da onSubmitProponi in giocatori-padel.js, ?org=1) — letto una
+// volta sola in init() e tenuto in una variabile, non ri-derivato dalla
+// query string, perché quella viene ripulita dall'URL subito dopo (vedi
+// sotto) per non lasciarla in un link eventualmente ricondiviso.
+let isOrganizzatore = false;
+
 function mostraStato(id) {
   ["stato-caricamento", "stato-errore", "stato-content"].forEach(s => {
     document.getElementById(s).classList.toggle("hidden", s !== id);
@@ -53,6 +60,35 @@ async function aggiornaStato(sessioneId) {
       ? data.inAttesa.map(c => `<div class="gp-classifica-row"><span>… ${escapeHtml(c.pseudonimo)}</span></div>`).join("")
       : `<p style="color:var(--chalk-grey);font-size:0.84rem;">Nessuno in attesa.</p>`;
 
+    const condividiEl = document.getElementById("stato-condividi");
+    if (isOrganizzatore) {
+      const statoLinkUrl = `${location.origin}/stato-partita.html?s=${encodeURIComponent(sessioneId)}`;
+      const rigaLinkAperto = data.tokenAperto ? `
+        <div class="gp-invito-riga">
+          <span>Link aperto — per chiunque, primo arrivato primo servito</span>
+          <span>
+            <button type="button" class="btn btn-ghost condividi-copia-btn" data-link="${escapeHtml(`${location.origin}/giocatori-padel.html?invito=${data.tokenAperto}`)}" style="width:auto;padding:6px 10px;font-size:0.7rem;">Copia link</button>
+            <a href="https://wa.me/?text=${encodeURIComponent(`${location.origin}/giocatori-padel.html?invito=${data.tokenAperto}`)}" target="_blank" rel="noopener" class="btn btn-ghost" style="width:auto;padding:6px 10px;font-size:0.7rem;display:inline-block;">WhatsApp</a>
+          </span>
+        </div>
+      ` : "";
+      condividiEl.innerHTML = `
+        <div class="gp-card">
+          <p style="margin:0 0 10px;"><strong>Condividi</strong></p>
+          ${rigaLinkAperto}
+          <div class="gp-invito-riga">
+            <span>Questa pagina di stato — chi ha aderito e quanto si paga, sempre aggiornata</span>
+            <span>
+              <button type="button" class="btn btn-ghost condividi-copia-btn" data-link="${escapeHtml(statoLinkUrl)}" style="width:auto;padding:6px 10px;font-size:0.7rem;">Copia link</button>
+              <a href="https://wa.me/?text=${encodeURIComponent(statoLinkUrl)}" target="_blank" rel="noopener" class="btn btn-ghost" style="width:auto;padding:6px 10px;font-size:0.7rem;display:inline-block;">WhatsApp</a>
+            </span>
+          </div>
+        </div>
+      `;
+      condividiEl.querySelectorAll(".condividi-copia-btn").forEach(b => b.addEventListener("click", () => copyToClipboard(b.dataset.link, b)));
+      condividiEl.classList.remove("hidden");
+    }
+
     const partecipaEl = document.getElementById("stato-partecipa");
     if (data.tokenAperto) {
       partecipaEl.innerHTML = `
@@ -77,11 +113,17 @@ async function aggiornaStato(sessioneId) {
   await loadDatiCentro();
   document.getElementById("centro-kicker").textContent = DATI_CENTRO.nome;
 
-  const sessioneId = new URLSearchParams(location.search).get("s");
+  const params = new URLSearchParams(location.search);
+  const sessioneId = params.get("s");
   if (!sessioneId) {
     document.getElementById("stato-errore-testo").textContent = "Link incompleto.";
     mostraStato("stato-errore");
     return;
+  }
+
+  if (params.get("org") === "1") {
+    isOrganizzatore = true;
+    history.replaceState(null, "", `${location.pathname}?s=${encodeURIComponent(sessioneId)}`);
   }
 
   // onSnapshot chiama il callback anche subito con lo stato attuale, non

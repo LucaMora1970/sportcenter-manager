@@ -101,7 +101,7 @@
       </div>
 
       <div id="tab-proponi" class="gp-tab-panel hidden">
-        <p style="color:var(--chalk-grey);font-size:0.84rem;">Scegli chi invitare dalla classifica, poi condividi il link generato via WhatsApp/SMS a modo tuo — oppure aggiungi email per un invito automatico.</p>
+        <p style="color:var(--chalk-grey);font-size:0.84rem;">Scegli chi invitare dalla classifica: riceve subito un'email con il link per rispondere. Puoi anche condividerlo tu stesso via WhatsApp/SMS.</p>
         <form id="proponi-form" class="gp-card">
           <div class="row2">
             <div class="field"><label for="pr-data">Data</label><input type="date" id="pr-data" required></div>
@@ -120,17 +120,12 @@
           </div>
           <div class="field">
             <label>Invita dalla classifica</label>
-            <p style="color:var(--chalk-grey);font-size:0.78rem;margin:-4px 0 8px;">Facoltativo: seleziona qui sotto chi vuoi invitare tra i giocatori già registrati — genera un link personale per ciascuno. Se non selezioni nessuno puoi comunque condividere il link aperto generato dopo, oppure invitare via email qui sotto.</p>
+            <p style="color:var(--chalk-grey);font-size:0.78rem;margin:-4px 0 8px;">Facoltativo: seleziona qui sotto chi vuoi invitare tra i giocatori già registrati — riceve subito un'email con un link personale. Se non selezioni nessuno puoi comunque condividere il link aperto generato dopo.</p>
             <div id="proponi-invitati-list" style="max-height:220px;overflow-y:auto;border:1px solid var(--court-blue-700);border-radius:var(--radius);padding:8px;"></div>
-          </div>
-          <div class="field">
-            <label for="pr-email-extra">Inviti via email (separati da virgola, per chi non è ancora in classifica)</label>
-            <input type="text" id="pr-email-extra" placeholder="mario@esempio.ch, ...">
           </div>
           <div class="error-msg" id="proponi-error"></div>
           <button type="submit" class="btn btn-primary" id="proponi-btn">Lancia la proposta</button>
         </form>
-        <div id="proponi-esito" class="hidden gp-card"></div>
       </div>
 
       <div id="tab-mie" class="gp-tab-panel hidden">

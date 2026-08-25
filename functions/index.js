@@ -4570,7 +4570,7 @@ exports.proponiSessionePadel = onCall({ secrets: MAIL_SECRETS }, async (request)
     throw new HttpsError("permission-denied", "Non puoi al momento lanciare nuove proposte di sessione.");
   }
 
-  const { date, startTime, durationMinutes, targetHeadcount, invitatiIds, invitiEmail } = request.data || {};
+  const { date, startTime, durationMinutes, targetHeadcount, invitatiIds } = request.data || {};
   if (!date || !startTime || !durationMinutes || !targetHeadcount || targetHeadcount < 2) {
     throw new HttpsError("invalid-argument", "Dati proposta incompleti.");
   }
@@ -4720,21 +4720,6 @@ exports.proponiSessionePadel = onCall({ secrets: MAIL_SECRETS }, async (request)
           + `<p><a href="${statoLink}">${statoLink}</a></p>`
       }).catch(err => console.error("proponiSessionePadel: invio invito email a giocatore registrato fallito:", err));
     }
-  }
-  for (const email of (invitiEmail || [])) {
-    if (!emailValidaServer(email)) continue;
-    const token = generaToken();
-    await db.collection("sessioniPadelInviti").doc(token).set({ sessioneId: sessioneRef.id, giocatoreId: null });
-    const link = `${APP_URL}giocatori-padel.html?invito=${token}`;
-    inviaEmail({
-      to: email,
-      subject: "Invito a una partita di Padel — Sport-OS",
-      html: `<p>${giocatore.nome} ${giocatore.cognome} ti invita a una partita di Padel il ${date} alle ${startTime}.</p>`
-        + `<p>Conferma la tua presenza toccando il link qui sotto:</p>`
-        + `<p><a href="${link}">${link}</a></p>`
-        + `<p>Puoi controllare in ogni momento chi ha aderito, a questo link:</p>`
-        + `<p><a href="${statoLink}">${statoLink}</a></p>`
-    }).catch(err => console.error("proponiSessionePadel: invio invito email fallito:", err));
   }
 
   // Link aperto: a differenza dei link sopra (uno per invitato, "reclamato"
@@ -4933,15 +4918,25 @@ exports.statoSessionePadel = onCall(async (request) => {
     return socioSnap.exists ? socioSnap.data().categoria : "esterno";
   }
 
+  // Stessa logica di ripartizione di creaPrenotazionePubblica (POSTI_PADEL,
+  // vedi lì): la tariffa configurata è il prezzo dell'INTERO slot, mai a
+  // testa — ognuno (organizzatore compreso) paga la propria tariffa di
+  // categoria divisa per il numero di giocatori richiesti dalla proposta
+  // (2 o 4), mai la tariffa intera. Qui il divisore è targetHeadcount
+  // invece del fisso 4 perché la proposta può essere un singolare (2).
   async function quotaDi(giocatoreId) {
     const categoria = await categoriaDi(giocatoreId);
-    return quotaCategoria({ disciplina: "padel", posizione: null, categoria, dataIso: s.date, startTime: s.startTime, durataMinuti, festivi });
+    const quotaSlot = await quotaCategoria({ disciplina: "padel", posizione: null, categoria, dataIso: s.date, startTime: s.startTime, durataMinuti, festivi });
+    return quotaSlot != null ? quotaSlot / s.targetHeadcount : null;
   }
 
   const pseudonimoDi = (id) => (giocatoriPerId[id] && giocatoriPerId[id].pseudonimo) || "Giocatore";
 
   // Quota di un ospite: sempre categoria "esterno", nessuna lettura extra.
-  const quotaOspite = () => quotaCategoria({ disciplina: "padel", posizione: null, categoria: "esterno", dataIso: s.date, startTime: s.startTime, durataMinuti, festivi });
+  const quotaOspite = async () => {
+    const quotaSlot = await quotaCategoria({ disciplina: "padel", posizione: null, categoria: "esterno", dataIso: s.date, startTime: s.startTime, durataMinuti, festivi });
+    return quotaSlot != null ? quotaSlot / s.targetHeadcount : null;
+  };
   const pseudonimoInvitato = (i) => i.giocatoreId ? pseudonimoDi(i.giocatoreId) : (i.ospiteNome || "Ospite");
   const quotaInvitato = (i) => i.giocatoreId ? quotaDi(i.giocatoreId) : quotaOspite();
 
