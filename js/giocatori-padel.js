@@ -275,6 +275,36 @@ async function onSubmitRegistrazione(e) {
 
 // ---------- Invito a una sessione (?invito=token) ----------
 
+// Risolve gli id giocatore in pseudonimo (mai nome vero, coerente col
+// resto dell'app) — usato per mostrare "chi gioca" sia all'organizzatore
+// sia a chi risponde a un invito, non solo il conteggio delle conferme.
+async function risolviNomiGiocatori(ids) {
+  const unici = [...new Set(ids)].filter(Boolean);
+  const docs = await Promise.all(unici.map(id => db.collection("giocatoriPadel").doc(id).get().catch(() => null)));
+  const mappa = {};
+  docs.forEach(d => { if (d && d.exists) mappa[d.id] = d.data().pseudonimo || "Giocatore"; });
+  return mappa;
+}
+
+function rosterHtml(sessione, nomi) {
+  const orgNome = nomi[sessione.organizerId] || "Organizzatore";
+  const STATO_ICONA = { si: "✓", no: "✗", in_attesa: "…" };
+  const STATO_TESTO = { si: "conferma", no: "non viene", in_attesa: "in attesa" };
+  const righeInvitati = (sessione.invitati || []).map(i => `
+    <div class="gp-invito-riga">
+      <span>${STATO_ICONA[i.stato] || "…"} ${escapeHtml(nomi[i.giocatoreId] || "Giocatore")}</span>
+      <span style="color:var(--chalk-grey);font-size:0.76rem;">${STATO_TESTO[i.stato] || "in attesa"}</span>
+    </div>
+  `).join("");
+  return `
+    <div style="margin-top:14px;">
+      <div class="entry-meta" style="margin-bottom:6px;">Chi gioca</div>
+      <div class="gp-invito-riga"><span>★ ${escapeHtml(orgNome)}</span><span style="color:var(--chalk-grey);font-size:0.76rem;">organizzatore</span></div>
+      ${righeInvitati}
+    </div>
+  `;
+}
+
 async function gestisciInvito(token) {
   mostraStato("stato-invito");
   const card = document.getElementById("invito-card");
@@ -316,21 +346,24 @@ async function gestisciInvito(token) {
     return;
   }
 
+  const nomi = await risolviNomiGiocatori([sessione.organizerId, ...(sessione.invitati || []).map(i => i.giocatoreId)]);
+
   if (sessione.stato !== "aperta") {
-    card.innerHTML = `<p>Questa proposta non è più aperta (${escapeHtml(STATO_SESSIONE_LABEL[sessione.stato] || sessione.stato)}).</p>`;
+    card.innerHTML = `
+      <p>Questa proposta non è più aperta (${escapeHtml(STATO_SESSIONE_LABEL[sessione.stato] || sessione.stato)}).</p>
+      ${rosterHtml(sessione, nomi)}
+    `;
     return;
   }
 
-  const orgDoc = await db.collection("giocatoriPadel").doc(sessione.organizerId).get();
-  const orgNome = orgDoc.exists ? `${orgDoc.data().nome} ${orgDoc.data().cognome}` : "Un giocatore";
-
   card.innerHTML = `
-    <p><strong>${escapeHtml(orgNome)}</strong> ti invita a giocare il ${escapeHtml(sessione.date)} alle ${escapeHtml(sessione.startTime)}–${escapeHtml(sessione.endTime)}.</p>
+    <p><strong>${escapeHtml(nomi[sessione.organizerId] || "Un giocatore")}</strong> ti invita a giocare il ${escapeHtml(sessione.date)} alle ${escapeHtml(sessione.startTime)}–${escapeHtml(sessione.endTime)}.</p>
     <div style="display:flex;gap:10px;margin-top:14px;">
       <button type="button" class="btn btn-primary" id="invito-si-btn">Sì, ci sto</button>
       <button type="button" class="btn btn-ghost" id="invito-no-btn">Non posso</button>
     </div>
     <div class="error-msg" id="invito-error"></div>
+    ${rosterHtml(sessione, nomi)}
   `;
   document.getElementById("invito-si-btn").addEventListener("click", () => rispondiInvito(token, "si"));
   document.getElementById("invito-no-btn").addEventListener("click", () => rispondiInvito(token, "no"));
@@ -341,7 +374,16 @@ async function rispondiInvito(token, risposta) {
   try {
     const fn = cloudFunctions().httpsCallable("rispondiInvitoSessionePadel");
     const { data } = await fn({ token, risposta });
-    document.getElementById("invito-card").innerHTML = `<p>${risposta === "si" ? "Presenza confermata!" : "Hai segnalato di non poter partecipare."}${data.confermata ? " La partita ha raggiunto il numero di giocatori richiesto ed è ora confermata." : ""}</p>`;
+
+    const invitoDoc = await db.collection("sessioniPadelInviti").doc(token).get();
+    const sessioneDoc = await db.collection("sessioniPadel").doc(invitoDoc.data().sessioneId).get();
+    const sessione = sessioneDoc.data();
+    const nomi = await risolviNomiGiocatori([sessione.organizerId, ...(sessione.invitati || []).map(i => i.giocatoreId)]);
+
+    document.getElementById("invito-card").innerHTML = `
+      <p>${risposta === "si" ? "Presenza confermata!" : "Hai segnalato di non poter partecipare."}${data.confermata ? " La partita ha raggiunto il numero di giocatori richiesto ed è ora confermata." : ""}</p>
+      ${rosterHtml(sessione, nomi)}
+    `;
   } catch (err) {
     showError(errorEl, "Errore: " + err.message);
   }
@@ -361,7 +403,7 @@ async function caricaClassifica() {
   el.innerHTML = classificaCache.length > 0
     ? classificaCache.map(g => `
         <div class="gp-classifica-row">
-          <span>${escapeHtml(g.nome)} ${escapeHtml(g.cognome)}</span>
+          <span>${escapeHtml(g.pseudonimo || "Giocatore")}</span>
           <span class="livello">${g.livelloEffettivo != null ? g.livelloEffettivo.toFixed(2) : "—"}</span>
         </div>
       `).join("")
@@ -376,7 +418,7 @@ function renderInvitatiCheckbox() {
     ? altri.map(g => `
         <div class="checkbox-row">
           <input type="checkbox" class="pr-invitato-cb" value="${g.id}" id="pr-inv-${g.id}">
-          <label for="pr-inv-${g.id}">${escapeHtml(g.nome)} ${escapeHtml(g.cognome)} (${g.livelloEffettivo != null ? g.livelloEffettivo.toFixed(2) : "—"})</label>
+          <label for="pr-inv-${g.id}">${escapeHtml(g.pseudonimo || "Giocatore")} (${g.livelloEffettivo != null ? g.livelloEffettivo.toFixed(2) : "—"})</label>
         </div>
       `).join("")
     : `<p style="color:var(--chalk-grey);font-size:0.82rem;">Nessun altro giocatore registrato ancora — invita via email qui sotto.</p>`;
@@ -408,7 +450,7 @@ async function onSubmitProponi(e) {
     const esitoEl = document.getElementById("proponi-esito");
     esitoEl.classList.remove("hidden");
     const righeInviti = (data.inviti || []).map(i => {
-      const nome = (classificaCache.find(g => g.id === i.giocatoreId) || {}).nome || "Invitato";
+      const nome = (classificaCache.find(g => g.id === i.giocatoreId) || {}).pseudonimo || "Invitato";
       return `
         <div class="gp-invito-riga">
           <span>${escapeHtml(nome)}</span>
@@ -454,12 +496,19 @@ async function caricaMieProposte() {
     const snap = await db.collection("sessioniPadel").where("organizerId", "==", currentUid).get();
     const proposte = snap.docs.map(d => ({ id: d.id, ...d.data() }))
       .sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
+
+    const tuttiGliId = proposte.flatMap(s => [s.organizerId, ...(s.invitati || []).map(i => i.giocatoreId)]);
+    const nomi = await risolviNomiGiocatori(tuttiGliId);
+
     el.innerHTML = proposte.length > 0
       ? proposte.map(s => {
           const confermeSi = (s.invitati || []).filter(i => i.stato === "si").length;
           return `
-            <div class="gp-classifica-row">
-              <span>${escapeHtml(s.date)} ${escapeHtml(s.startTime)}–${escapeHtml(s.endTime)} — ${escapeHtml(STATO_SESSIONE_LABEL[s.stato] || s.stato)} (${confermeSi}/${(s.targetHeadcount || 0) - 1} conferme)</span>
+            <div class="gp-classifica-row" style="align-items:flex-start;">
+              <div>
+                <div>${escapeHtml(s.date)} ${escapeHtml(s.startTime)}–${escapeHtml(s.endTime)} — ${escapeHtml(STATO_SESSIONE_LABEL[s.stato] || s.stato)} (${confermeSi}/${(s.targetHeadcount || 0) - 1} conferme)</div>
+                ${rosterHtml(s, nomi)}
+              </div>
               ${s.stato === "aperta" ? `<button type="button" class="btn btn-danger annulla-proposta-btn" data-id="${s.id}" style="width:auto;padding:6px 10px;font-size:0.7rem;">Annulla</button>` : ""}
             </div>
           `;
@@ -487,7 +536,12 @@ async function annullaProposta(sessioneId) {
 function attivaTab(tab) {
   document.querySelectorAll(".gp-tab-btn").forEach(b => b.dataset.active = String(b.dataset.tab === tab));
   document.querySelectorAll(".gp-tab-panel").forEach(p => p.classList.toggle("hidden", p.id !== "tab-" + tab));
+  // La classifica (e quindi anche "Invita dalla classifica") va ricaricata
+  // ad ogni apertura di queste due schede, non solo al primo ingresso in
+  // pagina — altrimenti un giocatore che si registra nel frattempo non
+  // compare finché non si ricarica tutta la pagina.
   if (tab === "mie") caricaMieProposte();
+  if (tab === "classifica" || tab === "proponi") caricaClassifica();
 }
 
 // ---------- Init ----------
