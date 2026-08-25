@@ -781,7 +781,7 @@ function renderGrigliaPadel(el, gruppo) {
   const categoria = categoriaCorrente();
   const prezzoTesto = (durataMinuti, orario) => {
     const prezzo = quotaCategoriaClient("padel", null, categoria, state.data, orario, durataMinuti);
-    return prezzo == null ? "" : ` (${formatoPrezzo(prezzo)})`;
+    return prezzo == null ? "" : `<span class="slot-prezzo">${formatoPrezzo(prezzo)}</span>`;
   };
 
   const righe = [...new Set([...starts90, ...starts60])].sort((a, b) => a - b);

@@ -132,6 +132,10 @@
   .slot-btn.selected {
     background: var(--ball); border-color: var(--ball); color: var(--court-blue-950);
   }
+  /* Prezzo su una riga propria, più piccolo e discreto — prima era
+     incollato all'orario sulla stessa riga, alla stessa dimensione. */
+  .slot-btn .slot-prezzo { display: block; font-size: 0.66rem; font-weight: 400; color: var(--chalk-grey); margin-top: 2px; }
+  .slot-btn.selected .slot-prezzo { color: var(--court-blue-950); opacity: 0.75; }
   .slot-empty { display: block; padding: 8px 0; text-align: center; color: var(--chalk-grey-dim); font-size: 0.8rem; }
   /* Nome di chi ha prenotato (pseudonimo per un socio, nome vero per lo
      staff, vedi caricaNomiOccupati in prenota-campo-v2.js) — table-layout:
