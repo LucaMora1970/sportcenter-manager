@@ -302,6 +302,7 @@ async function onSubmitRegistrazione(e) {
   }
 
   btn.disabled = true;
+  mostraCaricamento("Registrazione in corso…");
   try {
     const payload = {
       nome: document.getElementById("reg-nome").value.trim(),
@@ -331,6 +332,8 @@ async function onSubmitRegistrazione(e) {
   } catch (err) {
     showError(errorEl, "Errore: " + err.message);
     btn.disabled = false;
+  } finally {
+    nascondiCaricamento();
   }
 }
 
@@ -560,9 +563,10 @@ async function onSubmitProponi(e) {
     });
 
     // Dritti sulla pagina di stato appena lanciata: è lì che ora si vede
-    // subito chi ha aderito e si trova, solo per l'organizzatore (vedi
-    // ?org=1 in stato-partita.js), la sezione per condividere il link.
-    location.href = `${data.statoLink}&org=1`;
+    // subito chi ha aderito — statoSessionePadel riconosce da sé
+    // l'organizzatore (stessa sessione Firebase Auth) e sblocca "Condividi"
+    // e l'aggiunta di invitati a mano, nessun parametro da passare.
+    location.href = data.statoLink;
   } catch (err) {
     showError(errorEl, "Errore: " + err.message);
     btn.disabled = false;
@@ -651,6 +655,14 @@ async function mostraAreaContent() {
   await loadTariffeCampi();
 
   document.getElementById("registrazione-form").addEventListener("submit", onSubmitRegistrazione);
+  document.getElementById("livello-info-btn").addEventListener("click", () => {
+    const btn = document.getElementById("livello-info-btn");
+    const tabella = document.getElementById("livello-info-tabella");
+    const aperta = btn.getAttribute("aria-expanded") === "true";
+    btn.setAttribute("aria-expanded", String(!aperta));
+    btn.textContent = aperta ? "+" : "−";
+    tabella.classList.toggle("hidden", aperta);
+  });
   document.getElementById("proponi-form").addEventListener("submit", onSubmitProponi);
   document.getElementById("pr-data").addEventListener("change", aggiornaSlotOra);
   document.getElementById("pr-durata").addEventListener("change", aggiornaSlotOra);

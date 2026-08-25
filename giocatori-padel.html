@@ -16,6 +16,14 @@
 <style>
   .gp-tab-bar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
   .gp-tab-bar .btn[data-active="true"] { border-color: var(--ball); color: var(--ball); }
+  .livello-info-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 20px; height: 20px; border-radius: 50%; vertical-align: middle; margin-left: 4px;
+    border: 1px solid var(--court-blue-700); background: transparent; color: var(--chalk-grey);
+    font-size: 0.8rem; line-height: 1; cursor: pointer; padding: 0;
+  }
+  .livello-info-btn[aria-expanded="true"] { border-color: var(--ball); color: var(--ball); }
+  .livello-tabella th, .livello-tabella td { white-space: normal; }
 </style>
 </head>
 <body>
@@ -59,7 +67,9 @@
 
     <div id="stato-registrazione" class="hidden">
       <div class="section-title"><h2>Registrati come giocatore Padel</h2></div>
-      <p style="color:var(--chalk-grey);font-size:0.84rem;">Inserisci il tuo livello Playtomic se ce l'hai — altrimenti te lo assegna l'Istruttore Padel. La tua email non compare mai in classifica: ci serve solo per avvisarti quando qualcuno organizza una partita.</p>
+      <p style="color:var(--chalk-grey);font-size:0.84rem;margin-bottom:6px;">Indica il tuo livello Playtomic (da 0.1 per principianti). Se non lo conosci, te lo assegnerà il nostro Istruttore Padel.</p>
+      <p style="color:var(--chalk-grey);font-size:0.84rem;margin-bottom:6px;">Il livello ci aiuta a trovarti compagni di gioco simili a te.</p>
+      <p style="color:var(--chalk-grey);font-size:0.84rem;">La tua email rimane privata: riceverai un link per accettare o rifiutare le proposte di gioco.</p>
       <form id="registrazione-form" class="gp-card">
         <div class="row2">
           <div class="field"><label for="reg-nome">Nome</label><input type="text" id="reg-nome" required></div>
@@ -75,8 +85,23 @@
           <div class="field"><label for="reg-telefono">Telefono (facoltativo)</label><input type="tel" id="reg-telefono"></div>
         </div>
         <div class="field">
-          <label for="reg-playtomic">Livello aggiornato Playtomic o attribuito dal nostro Istruttore</label>
+          <label for="reg-playtomic">Livello Playtomic <button type="button" class="livello-info-btn" id="livello-info-btn" aria-expanded="false" aria-controls="livello-info-tabella">+</button></label>
           <input type="number" id="reg-playtomic" min="0" max="7" step="0.01" placeholder="es. 3.5">
+        </div>
+        <div id="livello-info-tabella" class="hidden gp-card" style="margin:-8px 0 14px;overflow-x:auto;">
+          <table class="app-table livello-tabella">
+            <thead><tr><th>Livello</th><th>Categoria</th><th>Indicativamente</th></tr></thead>
+            <tbody>
+              <tr><td>0 – 0.99</td><td>Iniziazione</td><td>Nessuna o pochissima esperienza</td></tr>
+              <tr><td>1.0 – 1.49</td><td>Principiante</td><td>Sta imparando le basi</td></tr>
+              <tr><td>1.5 – 2.4</td><td>Intermedio iniziale</td><td>Comincia a giocare con una certa continuità</td></tr>
+              <tr><td>2.5 – 3.4</td><td>Intermedio</td><td>Buona base tecnica e prime conoscenze tattiche</td></tr>
+              <tr><td>3.5 – 4.4</td><td>Intermedio alto</td><td>Buona sicurezza e capacità tattica</td></tr>
+              <tr><td>4.5 – 5.4</td><td>Intermedio avanzato</td><td>Giocatore esperto</td></tr>
+              <tr><td>5.5 – 5.6</td><td>Competizione</td><td>Livello agonistico</td></tr>
+              <tr><td>6 – 7</td><td>Professionistico / Elite</td><td>Livello professionale</td></tr>
+            </tbody>
+          </table>
         </div>
         <div class="checkbox-row" style="margin:10px 0 16px;">
           <input type="checkbox" id="reg-consenso">

@@ -4815,10 +4815,19 @@ exports.rispondiInvitoSessionePadel = onCall(async (request) => {
     const ora = new Date();
     let trovato = false;
     const invitati = (s.invitati || []).map(i => {
-      const stessaPersona = ospite ? i.dispositivoToken === ospite.dispositivoToken : i.giocatoreId === invito.giocatoreId;
+      // Un invito con invitatoId (aggiunto a mano dall'organizzatore, vedi
+      // aggiungiInvitatoSessionePadel) ha già la sua entry in "invitati"
+      // fin da subito — va aggiornata quella, mai duplicata, chiunque
+      // risponda (ospite o giocatore registrato che la reclama).
+      const stessaPersona = invito.invitatoId
+        ? i.invitatoId === invito.invitatoId
+        : (ospite ? i.dispositivoToken === ospite.dispositivoToken : i.giocatoreId === invito.giocatoreId);
       if (stessaPersona) {
         trovato = true;
-        return { ...i, stato: risposta, rispostoAt: ora, ...(ospite ? { ospiteNome: ospite.nome } : {}) };
+        return {
+          ...i, stato: risposta, rispostoAt: ora,
+          ...(ospite ? { ospiteNome: ospite.nome, dispositivoToken: ospite.dispositivoToken } : { giocatoreId: invito.giocatoreId })
+        };
       }
       return i;
     });
@@ -4880,6 +4889,46 @@ exports.annullaPropostaSessionePadel = onCall(async (request) => {
   return { ok: true };
 });
 
+// Aggiunge alla proposta un invitato "a mano" (solo un nome, deciso
+// dall'organizzatore stesso — es. un compagno d'accordo fuori app di cui
+// non conosce l'account) — genera un token personale come gli altri
+// inviti, ma qui l'entry in "invitati" esiste già da subito (con
+// ospiteNome provvisorio) così compare in "in attesa" anche prima che
+// risponda, a differenza di un vecchio invito via email libera. L'id
+// univoco (invitatoId) è quello che permette a rispondiInvitoSessionePadel
+// di aggiornare QUESTA entry invece di crearne una duplicata quando la
+// persona risponde (vedi lì).
+exports.aggiungiInvitatoSessionePadel = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+  const { sessioneId, nome } = request.data || {};
+  if (!sessioneId) throw new HttpsError("invalid-argument", "sessioneId mancante.");
+
+  const nomeGrezzo = (nome || "").trim().slice(0, 40);
+  if (nomeGrezzo.length < 2) throw new HttpsError("invalid-argument", "Inserisci un nome.");
+  if (contieneParolaVietata(normalizzaTestoPseudonimo(nomeGrezzo))) {
+    throw new HttpsError("invalid-argument", "Questo nome non è consentito — scegline un altro.");
+  }
+
+  const sessioneRef = db.collection("sessioniPadel").doc(sessioneId);
+  const invitatoId = generaToken();
+  await db.runTransaction(async (tx) => {
+    const sessioneSnap = await tx.get(sessioneRef);
+    if (!sessioneSnap.exists) throw new HttpsError("not-found", "Proposta non trovata.");
+    const s = sessioneSnap.data();
+    if (s.organizerId !== request.auth.uid) {
+      throw new HttpsError("permission-denied", "Solo l'organizzatore può aggiungere invitati a questa proposta.");
+    }
+    if (s.stato !== "aperta") throw new HttpsError("failed-precondition", "Questa proposta non è più aperta.");
+
+    const invitati = [...(s.invitati || []), { giocatoreId: null, ospiteNome: nomeGrezzo, invitatoId, stato: "in_attesa", rispostoAt: null }];
+    tx.update(sessioneRef, { invitati });
+  });
+
+  const token = generaToken();
+  await db.collection("sessioniPadelInviti").doc(token).set({ sessioneId, giocatoreId: null, invitatoId });
+  return { link: `${APP_URL}giocatori-padel.html?invito=${token}` };
+});
+
 // Pagina pubblica di stato partita (stato-partita.html?s=id): conoscere
 // l'id della sessione è di per sé l'autorizzazione a leggerla, stesso
 // principio già usato per bookingTickets/attivazioniSoci (vedi anche
@@ -4929,6 +4978,14 @@ exports.statoSessionePadel = onCall(async (request) => {
     const quotaSlot = await quotaCategoria({ disciplina: "padel", posizione: null, categoria, dataIso: s.date, startTime: s.startTime, durataMinuti, festivi });
     return quotaSlot != null ? quotaSlot / s.targetHeadcount : null;
   }
+  // Costo dell'intero slot (mai diviso) alla categoria dell'organizzatore —
+  // è il vero importo della prenotazione (vedi bookingDettagli in
+  // proponiSessionePadel), mostrato in stato-partita.html come riferimento
+  // "Costo campo" accanto alle quote pro capite.
+  async function costoCampoSlot() {
+    const categoria = await categoriaDi(s.organizerId);
+    return quotaCategoria({ disciplina: "padel", posizione: null, categoria, dataIso: s.date, startTime: s.startTime, durataMinuti, festivi });
+  }
 
   const pseudonimoDi = (id) => (giocatoriPerId[id] && giocatoriPerId[id].pseudonimo) || "Giocatore";
 
@@ -4941,7 +4998,10 @@ exports.statoSessionePadel = onCall(async (request) => {
   const quotaInvitato = (i) => i.giocatoreId ? quotaDi(i.giocatoreId) : quotaOspite();
 
   const organizzatoreQuota = await quotaDi(s.organizerId);
-  const confermati = [];
+  // L'organizzatore è a tutti gli effetti il primo confermato (ha creato
+  // lui la proposta, non deve "rispondere sì" a se stesso) — mostrato in
+  // testa alla lista Confermati invece che in un blocco separato.
+  const confermati = [{ pseudonimo: pseudonimoDi(s.organizerId), quota: organizzatoreQuota }];
   const inAttesa = [];
   for (const i of invitatiAttivi) {
     if (i.stato === "si") {
@@ -4951,12 +5011,27 @@ exports.statoSessionePadel = onCall(async (request) => {
     }
   }
 
-  const quotaTotale = (organizzatoreQuota || 0) + confermati.reduce((somma, c) => somma + (c.quota || 0), 0);
+  const quotaTotale = confermati.reduce((somma, c) => somma + (c.quota || 0), 0);
+  const luogo = `Campo ${await padelCampoNumero()}`;
 
   return {
     date: s.date, startTime: s.startTime, endTime: s.endTime, stato: s.stato,
+    disciplina: "Padel", luogo,
     organizzatore: { pseudonimo: pseudonimoDi(s.organizerId), quota: organizzatoreQuota },
     confermati, inAttesa, quotaTotale,
+    costoCampoTotale: await costoCampoSlot(),
+    // Solo mentre è aperta ha senso mostrare un conto alla rovescia — una
+    // volta confermata o scaduta il campo resta comunque valorizzato sul
+    // documento, ma non è più informazione utile da mostrare.
+    scadenzaAt: (s.stato === "aperta" && s.scadenzaAt) ? s.scadenzaAt.toMillis() : null,
+    // Vero solo per chi chiama già autenticato come l'organizzatore reale
+    // (stesso dispositivo/sessione con cui ha lanciato la proposta, la
+    // persistenza di Firebase Auth la mantiene tra le pagine) — usato lato
+    // client per mostrare "Condividi" e il campo per aggiungere un
+    // invitato a mano, mai per fidarsi lato server: le funzioni che
+    // scrivono (aggiungiInvitatoSessionePadel, annullaPropostaSessionePadel)
+    // riverificano sempre request.auth.uid === organizerId per conto loro.
+    isOrganizzatore: !!request.auth && request.auth.uid === s.organizerId,
     // Solo se ancora aperta ha senso proporre "Vuoi partecipare?" — su
     // proposte create prima di questo campo sarà undefined, va bene così
     // (la pagina semplicemente non mostra il pulsante).
