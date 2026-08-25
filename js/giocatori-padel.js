@@ -150,6 +150,62 @@ async function caricaChiusurePadel() {
   CHIUSURE_PADEL = new Set(snap.docs.map(d => d.id));
 }
 
+// Prezzo mostrato accanto a ogni orario nel menu "Ora inizio" — stesso
+// motore "Tariffe campi" e stessa semplificazione di prenota-padel.js:
+// categoria sempre "esterno", perché è solo un'anteprima orientativa (il
+// prezzo reale lo ricalcola sempre il server in proponiSessionePadel, e
+// comunque i giocatori se lo dividono fuori app) — niente da guadagnare
+// replicando qui la risoluzione socio/esterno solo per questa stima.
+let TARIFFE_CAMPI = [];
+let FORFAIT_CAMPI = [];
+async function loadTariffeCampi() {
+  try {
+    const [tariffeSnap, forfaitSnap] = await Promise.all([
+      db.collection("tariffeCampi").get(),
+      db.collection("forfaitCampi").get()
+    ]);
+    TARIFFE_CAMPI = tariffeSnap.docs.map(d => d.data());
+    FORFAIT_CAMPI = forfaitSnap.docs.map(d => d.data());
+  } catch (err) {
+    console.warn("loadTariffeCampi: lettura fallita:", err.message);
+  }
+}
+function giornoSettimanaCodice(dataIso) {
+  if ((IMPOSTAZIONI.festivi || []).includes(dataIso)) return "dom";
+  const jsDay = new Date(dataIso + "T00:00:00").getDay();
+  return Object.keys(GIORNO_JS_DAY).find(id => GIORNO_JS_DAY[id] === jsDay);
+}
+function prezzoSlotStimato(dataIso, startTime, durataMinuti) {
+  const disciplina = "padel", posizione = null, categoria = "esterno";
+  const forfaitAttivo = FORFAIT_CAMPI.some(f =>
+    f.disciplina === disciplina && f.posizione === posizione
+    && dataIso >= f.periodoInizio && dataIso <= f.periodoFine
+    && (f.categorie || []).includes(categoria)
+  );
+  if (forfaitAttivo) return 0;
+
+  const giorno = giornoSettimanaCodice(dataIso);
+  const startMin = orarioToMin(startTime);
+  const candidati = TARIFFE_CAMPI
+    .filter(t => t.disciplina === disciplina && t.posizione === posizione && t.categoria === categoria)
+    .filter(t => t.oraInizio != null && t.oraFine != null)
+    .filter(t => !(t.giorniSettimana || []).length || t.giorniSettimana.includes(giorno))
+    .filter(t => startMin >= orarioToMin(t.oraInizio) && startMin < orarioToMin(t.oraFine))
+    .filter(t => t.durataMinuti == null || t.durataMinuti === durataMinuti)
+    .sort((a, b) => {
+      const specDurataA = a.durataMinuti != null ? 1 : 0;
+      const specDurataB = b.durataMinuti != null ? 1 : 0;
+      if (specDurataA !== specDurataB) return specDurataB - specDurataA;
+      const durataA = orarioToMin(a.oraFine) - orarioToMin(a.oraInizio);
+      const durataB = orarioToMin(b.oraFine) - orarioToMin(b.oraInizio);
+      if (durataA !== durataB) return durataA - durataB;
+      const giorniA = (a.giorniSettimana || []).length || 7;
+      const giorniB = (b.giorniSettimana || []).length || 7;
+      return giorniA - giorniB;
+    });
+  return candidati.length > 0 ? candidati[0].prezzo : null;
+}
+
 async function slotDisponibiliPadel(dataIso, durationMinutes) {
   if (CHIUSURE_PADEL.has(dataIso)) return [];
   const close = chiusuraGiorno(dataIso);
@@ -176,7 +232,12 @@ async function aggiornaSlotOra() {
   try {
     const starts = await slotDisponibiliPadel(dataIso, durata);
     select.innerHTML = starts.length > 0
-      ? `<option value="">Scegli un orario…</option>` + starts.map(s => `<option value="${minutiToOrario(s)}">${minutiToOrario(s)}</option>`).join("")
+      ? `<option value="">Scegli un orario…</option>` + starts.map(s => {
+          const orario = minutiToOrario(s);
+          const prezzo = prezzoSlotStimato(dataIso, orario, durata);
+          const prezzoTxt = prezzo != null ? ` — CHF ${prezzo.toFixed(2)} lo slot` : "";
+          return `<option value="${orario}">${orario}${prezzoTxt}</option>`;
+        }).join("")
       : `<option value="">Nessuno slot libero in questa data</option>`;
   } catch (err) {
     select.innerHTML = `<option value="">Errore nel caricamento orari</option>`;
@@ -631,6 +692,7 @@ async function mostraAreaContent() {
   document.getElementById("centro-kicker").textContent = DATI_CENTRO.nome;
   await loadImpostazioni();
   await caricaChiusurePadel();
+  await loadTariffeCampi();
 
   document.getElementById("registrazione-form").addEventListener("submit", onSubmitRegistrazione);
   document.getElementById("proponi-form").addEventListener("submit", onSubmitProponi);
