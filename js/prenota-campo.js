@@ -356,6 +356,10 @@ function selezionaGruppo(key) {
   state.gruppoKey = key;
   const disciplinaAttiva = gruppoAttivo()?.disciplina;
   document.querySelectorAll("#gruppo-pills button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.disciplina === disciplinaAttiva)));
+  // Le chiusure sono per disciplina (CHIUSURE_CENTRO/CHIUSURE_PADEL) — lo
+  // strip va rigenerato, non solo lo stato "premuto" dei pill, altrimenti
+  // dopo il cambio disciplina restano nascosti/mostrati i giorni sbagliati.
+  buildDayStrip();
   ascoltaPrenotazioniGiorno();
 }
 
@@ -363,29 +367,29 @@ function selezionaGruppo(key) {
 
 function buildDayStrip() {
   const el = document.getElementById("dayStrip");
-  const oggi = new Date();
-  oggi.setHours(0, 0, 0, 0);
   const nrGiorni = Math.max(7, (IMPOSTAZIONI_PC.settimaneVisibili || 4) * 7);
-
-  const giorni = [];
-  for (let i = 0; i < nrGiorni; i++) {
-    const d = new Date(oggi);
-    d.setDate(oggi.getDate() + i);
-    giorni.push(d);
-  }
-
-  el.innerHTML = giorni.map(d => {
-    const iso = toISO(d);
-    const disc = gruppoAttivo()?.disciplina;
+  const disc = gruppoAttivo()?.disciplina;
+  const giorni = generaGiorniStripValidi(nrGiorni, iso => {
     const chiuso = CHIUSURE_CENTRO.some(c => c.id === iso && (!(c.discipline || []).length || c.discipline.includes(disc)))
       || (disc === "padel" && CHIUSURE_PADEL.has(iso));
-    return `
-      <button type="button" class="day-btn${chiuso ? " chiuso" : ""}" role="tab" data-data="${iso}" aria-pressed="${iso === state.data}">
-        <span class="d">${GIORNI_BREVI[d.getDay()]}</span>
-        <span class="n">${d.getDate()}</span>
-      </button>
-    `;
-  }).join("");
+    return !chiuso;
+  });
+
+  if (giorni.length === 0) {
+    el.innerHTML = `<p style="color:var(--chalk-grey);font-size:0.84rem;">Nessun giorno disponibile al momento.</p>`;
+    return;
+  }
+  if (!giorni.some(g => g.iso === state.data)) {
+    state.data = giorni[0].iso;
+    state.apertoPerCourtSlot = null;
+  }
+
+  el.innerHTML = giorni.map(g => `
+    <button type="button" class="day-btn" role="tab" data-data="${g.iso}" aria-pressed="${g.iso === state.data}">
+      <span class="d">${GIORNI_BREVI[g.date.getDay()]}</span>
+      <span class="n">${g.date.getDate()}</span>
+    </button>
+  `).join("");
 
   el.querySelectorAll(".day-btn").forEach(btn => {
     btn.addEventListener("click", () => selezionaGiorno(btn.dataset.data));

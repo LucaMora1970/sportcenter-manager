@@ -4587,10 +4587,20 @@ exports.proponiSessionePadel = onCall({ secrets: MAIL_SECRETS }, async (request)
     throw new HttpsError("failed-precondition", "Questo slot non è più disponibile — scegline un altro.");
   }
 
+  const impostazioni = impostazioniSnap.exists ? impostazioniSnap.data() : {};
+
+  // Riguarda solo il lancio di una proposta (Community Padel) — le
+  // prenotazioni dirette del campo non hanno questa soglia, solo il
+  // controllo "non è già passato" sopra.
+  const oreMinimeAnticipo = impostazioni.oreMinimeAnticipoProposta != null ? impostazioni.oreMinimeAnticipoProposta : 24;
+  const oreAnticipoEffettivo = (zurigoAEpoch(date, startTime) - Date.now()) / 3600000;
+  if (oreAnticipoEffettivo < oreMinimeAnticipo) {
+    throw new HttpsError("failed-precondition", `Le sessioni Community Padel vanno proposte con almeno ${oreMinimeAnticipo} ore di anticipo.`);
+  }
+
   const { festivi, chiusuraWeekendMin } = festiviEChiusuraWeekend(generaleSnap);
   const close = chiusuraGiorno(date, festivi, chiusuraWeekendMin);
 
-  const impostazioni = impostazioniSnap.exists ? impostazioniSnap.data() : {};
   const holdAttivo = !!impostazioni.holdProvvisorioAttivo;
   const holdMinuti = Math.min(60, impostazioni.holdMinutiMax || 30);
   const maxProposteConHold = impostazioni.maxProposteConHoldPerGiocatore || 1;

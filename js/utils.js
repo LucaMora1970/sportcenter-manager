@@ -52,6 +52,29 @@ function generaCalendarioSessioni(dal, nrSessioni, giornoId, oraInizio, durataMi
   return sessioni;
 }
 
+// Genera i primi nGiorni giorni (da oggi in avanti) che soddisfano
+// eValido(iso, date) — usata dalle day-strip di prenotazione (prenota-
+// padel.js, prenota-campo.js, prenota-campo-v2.js, giocatori-padel.js) per
+// nascondere del tutto i giorni non prenotabili invece di mostrarli
+// tratteggiati, pescando più avanti nel tempo per mantenere sempre lo
+// stesso numero di giorni utili in strip. Il moltiplicatore del tetto
+// evita un loop percepibile in caso di chiusura patologicamente lunga —
+// può restituire meno di nGiorni elementi (anche zero) oltre quel tetto,
+// il chiamante deve gestire il caso.
+function generaGiorniStripValidi(nGiorni, eValido, capMoltiplicatore = 10) {
+  const oggi = new Date();
+  oggi.setHours(0, 0, 0, 0);
+  const giorni = [];
+  const capGiorni = nGiorni * capMoltiplicatore;
+  for (let i = 0; giorni.length < nGiorni && i < capGiorni; i++) {
+    const d = new Date(oggi);
+    d.setDate(oggi.getDate() + i);
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    if (eValido(iso, d)) giorni.push({ iso, date: d });
+  }
+  return giorni;
+}
+
 // Popolata da loadDiscipline() a ogni caricamento pagina (collection
 // Firestore "discipline", configurabile da Configurazione). Ogni pagina
 // che la usa deve chiamare `await loadDiscipline()` prima di usarla.

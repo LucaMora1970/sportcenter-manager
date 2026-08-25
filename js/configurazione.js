@@ -1955,6 +1955,7 @@ async function loadCommunityPadelForm() {
   document.getElementById("cp-hold-minuti").value = dati.holdMinutiMax ?? "";
   document.getElementById("cp-max-proposte").value = dati.maxProposteConHoldPerGiocatore ?? "";
   document.getElementById("cp-giorni-verifica").value = dati.giorniVerificaEsterni ?? "";
+  document.getElementById("cp-ore-anticipo-proposta").value = dati.oreMinimeAnticipoProposta ?? "";
 }
 
 async function onSaveCommunityPadel(e) {
@@ -1978,7 +1979,8 @@ async function onSaveCommunityPadel(e) {
       holdProvvisorioAttivo: document.getElementById("cp-hold-attivo").checked,
       holdMinutiMax,
       maxProposteConHoldPerGiocatore: numOrNull("cp-max-proposte"),
-      giorniVerificaEsterni: numOrNull("cp-giorni-verifica")
+      giorniVerificaEsterni: numOrNull("cp-giorni-verifica"),
+      oreMinimeAnticipoProposta: numOrNull("cp-ore-anticipo-proposta")
     }, { merge: true });
   } catch (err) {
     showError(errorEl, "Errore: " + err.message);

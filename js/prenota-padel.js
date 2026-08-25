@@ -287,25 +287,23 @@ function validStarts(bookings, duration, close, feriale, oggi) {
 
 function buildDayStrip() {
   const el = document.getElementById("dayStrip");
-  const oggi = new Date();
-  oggi.setHours(0, 0, 0, 0);
+  const giorni = generaGiorniStripValidi(NR_GIORNI_STRIP, iso => !CHIUSURE_PADEL.has(iso));
 
-  const giorni = [];
-  for (let i = 0; i < NR_GIORNI_STRIP; i++) {
-    const d = new Date(oggi);
-    d.setDate(oggi.getDate() + i);
-    giorni.push(d);
+  if (giorni.length === 0) {
+    el.innerHTML = `<p style="color:var(--chalk-grey);font-size:0.84rem;">Nessun giorno disponibile al momento.</p>`;
+    return;
+  }
+  if (!giorni.some(g => g.iso === state.data)) {
+    state.data = giorni[0].iso;
+    state.selected = null;
   }
 
-  el.innerHTML = giorni.map(d => {
-    const iso = toISO(d);
-    return `
-      <button type="button" class="day-btn${CHIUSURE_PADEL.has(iso) ? " chiuso" : ""}" role="tab" data-data="${iso}" aria-pressed="${iso === state.data}">
-        <span class="d">${GIORNI_BREVI[d.getDay()]}</span>
-        <span class="n">${d.getDate()}</span>
-      </button>
-    `;
-  }).join("");
+  el.innerHTML = giorni.map(g => `
+    <button type="button" class="day-btn" role="tab" data-data="${g.iso}" aria-pressed="${g.iso === state.data}">
+      <span class="d">${GIORNI_BREVI[g.date.getDay()]}</span>
+      <span class="n">${g.date.getDate()}</span>
+    </button>
+  `).join("");
 
   el.querySelectorAll(".day-btn").forEach(btn => {
     btn.addEventListener("click", () => selezionaGiorno(btn.dataset.data));

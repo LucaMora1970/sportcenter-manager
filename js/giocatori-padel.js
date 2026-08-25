@@ -18,6 +18,7 @@
 let currentUid = null;
 let currentGiocatore = null; // giocatoriPadel/{uid} se già registrato
 let classificaCache = [];
+let authInizializzato = false; // guardia anti-riemissioni spurie di onAuthStateChanged, vedi init()
 
 const STATO_SESSIONE_LABEL = { aperta: "In attesa di conferme", confermata: "Confermata", scaduta: "Scaduta", annullata: "Annullata" };
 
@@ -47,6 +48,28 @@ function oraLocaleZurigo() {
 }
 function eOggi(dataIso) {
   return dataIso === oraLocaleZurigo().dataIso;
+}
+// Converte una data/ora locale di Zurigo in epoch UTC (ms) — stessa
+// tecnica DST-safe della versione server in functions/index.js (si prova
+// come se fosse UTC, si guarda che ora locale ne risulta a Zurigo, si
+// corregge per lo scarto): serve solo qui per confrontare uno slot con
+// "adesso + soglia di anticipo minimo", duplicata localmente come le
+// altre funzioni di calcolo data/ora di questo file.
+function zurigoAEpoch(dataIso, orario) {
+  const [h, m] = orario.split(":").map(Number);
+  const tentativo = new Date(`${dataIso}T${orario}:00Z`).getTime();
+  const parti = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Zurich",
+      hour: "2-digit", minute: "2-digit", hour12: false
+    }).formatToParts(new Date(tentativo)).map(p => [p.type, p.value])
+  );
+  const minutiOttenuti = parseInt(parti.hour, 10) * 60 + parseInt(parti.minute, 10);
+  const minutiAttesi = h * 60 + m;
+  let scarto = minutiAttesi - minutiOttenuti;
+  if (scarto > 12 * 60) scarto -= 24 * 60;
+  if (scarto < -12 * 60) scarto += 24 * 60;
+  return tentativo + scarto * 60000;
 }
 function escludiOrariPassati(starts, dataIso) {
   const ora = oraLocaleZurigo();
@@ -150,6 +173,68 @@ async function caricaChiusurePadel() {
   CHIUSURE_PADEL = new Set(snap.docs.map(d => d.id));
 }
 
+// ---------- Day-strip "Proponi una sessione" ----------
+
+const GIORNI_BREVI = ["Dom", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab"];
+const NR_GIORNI_STRIP_PROPONI = 14;
+
+// Ore minime di anticipo per lanciare una proposta (Configurazione →
+// Community Padel), letta una volta all'avvio insieme alle chiusure —
+// riguarda solo questo form, non le prenotazioni dirette di campo.
+let ORE_MINIME_ANTICIPO_PROPOSTA = 24;
+async function caricaImpostazioniProponiPadel() {
+  const doc = await db.collection("impostazioni").doc("prenotazioniCampi").get();
+  if (doc.exists && doc.data().oreMinimeAnticipoProposta != null) {
+    ORE_MINIME_ANTICIPO_PROPOSTA = doc.data().oreMinimeAnticipoProposta;
+  }
+}
+
+// Un giorno è escluso dalla strip se anche il suo ultimo orario possibile
+// (il confine di chiusura del giorno, già consapevole di weekend/festivi
+// via chiusuraGiorno) cade dentro la soglia di anticipo minimo — proxy
+// volutamente conservativo: può lasciare in strip un giorno che poi
+// risulta senza orari validi in pr-ora, mai il contrario.
+function giornoFuoriAnticipoMinimo(dataIso) {
+  const sogliaEpoch = Date.now() + ORE_MINIME_ANTICIPO_PROPOSTA * 3600000;
+  return zurigoAEpoch(dataIso, minutiToOrario(chiusuraGiorno(dataIso))) < sogliaEpoch;
+}
+
+function buildProponiDayStrip() {
+  const el = document.getElementById("pr-day-strip");
+  const giorni = generaGiorniStripValidi(
+    NR_GIORNI_STRIP_PROPONI,
+    iso => !CHIUSURE_PADEL.has(iso) && !giornoFuoriAnticipoMinimo(iso)
+  );
+
+  if (giorni.length === 0) {
+    el.innerHTML = `<p style="color:var(--chalk-grey);font-size:0.84rem;">Nessun giorno disponibile al momento — riprova più tardi.</p>`;
+    document.getElementById("pr-data").value = "";
+    return;
+  }
+
+  const dataInput = document.getElementById("pr-data");
+  if (!giorni.some(g => g.iso === dataInput.value)) dataInput.value = giorni[0].iso;
+
+  el.innerHTML = giorni.map(g => `
+    <button type="button" class="day-btn" role="tab" data-data="${g.iso}" aria-pressed="${g.iso === dataInput.value}">
+      <span class="d">${GIORNI_BREVI[g.date.getDay()]}</span>
+      <span class="n">${g.date.getDate()}</span>
+    </button>
+  `).join("");
+
+  el.querySelectorAll(".day-btn").forEach(btn => {
+    btn.addEventListener("click", () => selezionaGiornoProponi(btn.dataset.data));
+  });
+}
+
+function selezionaGiornoProponi(dataIso) {
+  document.getElementById("pr-data").value = dataIso;
+  document.querySelectorAll("#pr-day-strip .day-btn").forEach(b => {
+    b.setAttribute("aria-pressed", String(b.dataset.data === dataIso));
+  });
+  aggiornaSlotOra();
+}
+
 // Prezzo mostrato accanto a ogni orario nel menu "Ora inizio" — stesso
 // motore "Tariffe campi" e stessa semplificazione di prenota-padel.js:
 // categoria sempre "esterno", perché è solo un'anteprima orientativa (il
@@ -216,7 +301,14 @@ async function slotDisponibiliPadel(dataIso, durationMinutes) {
     .filter(b => b.status === "PENDING_PAYMENT" || b.status === "PENDING_CONFIRMATION" || b.status === "CONFIRMED" || b.status === "COMPLETED")
     .map(b => ({ start: orarioToMin(b.startTime), end: orarioToMin(b.endTime) }));
   const starts = validStarts(bookings, durationMinutes, close, feriale(dataIso), eOggi(dataIso));
-  return escludiOrariPassati(starts, dataIso);
+  return escludiOrariSottoAnticipoMinimo(escludiOrariPassati(starts, dataIso), dataIso);
+}
+
+// Riguarda solo "Proponi una sessione" — la prenotazione diretta del
+// campo (prenota-padel.js) non ha questa regola.
+function escludiOrariSottoAnticipoMinimo(starts, dataIso) {
+  const sogliaEpoch = Date.now() + ORE_MINIME_ANTICIPO_PROPOSTA * 3600000;
+  return starts.filter(s => zurigoAEpoch(dataIso, minutiToOrario(s)) >= sogliaEpoch);
 }
 
 async function aggiornaSlotOra() {
@@ -547,6 +639,12 @@ async function onSubmitProponi(e) {
   const btn = document.getElementById("proponi-btn");
   const errorEl = document.getElementById("proponi-error");
   errorEl.textContent = "";
+
+  if (!document.getElementById("pr-data").value) {
+    showError(errorEl, "Scegli una data.");
+    return;
+  }
+
   btn.disabled = true;
   mostraCaricamento("Lancio della proposta in corso…");
 
@@ -635,13 +733,7 @@ function attivaTab(tab) {
 
 async function mostraAreaContent() {
   mostraStato("area-content");
-  const oggi = new Date();
-  const domani = new Date(oggi);
-  domani.setDate(oggi.getDate() + 1);
-  document.getElementById("pr-data").min = oggi.toISOString().slice(0, 10);
-  if (!document.getElementById("pr-data").value) {
-    document.getElementById("pr-data").value = domani.toISOString().slice(0, 10);
-  }
+  buildProponiDayStrip();
   await caricaClassifica();
   await aggiornaSlotOra();
   attivaTab("classifica");
@@ -652,6 +744,7 @@ async function mostraAreaContent() {
   document.getElementById("centro-kicker").textContent = DATI_CENTRO.nome;
   await loadImpostazioni();
   await caricaChiusurePadel();
+  await caricaImpostazioniProponiPadel();
   await loadTariffeCampi();
 
   document.getElementById("registrazione-form").addEventListener("submit", onSubmitRegistrazione);
@@ -664,7 +757,6 @@ async function mostraAreaContent() {
     tabella.classList.toggle("hidden", aperta);
   });
   document.getElementById("proponi-form").addEventListener("submit", onSubmitProponi);
-  document.getElementById("pr-data").addEventListener("change", aggiornaSlotOra);
   document.getElementById("pr-durata").addEventListener("change", aggiornaSlotOra);
   document.querySelectorAll(".gp-tab-btn").forEach(b => b.addEventListener("click", () => attivaTab(b.dataset.tab)));
 
@@ -676,7 +768,20 @@ async function mostraAreaContent() {
   }
 
   firebase.auth().onAuthStateChanged(async (user) => {
-    currentUid = user ? user.uid : null;
+    const nuovoUid = user ? user.uid : null;
+    // onAuthStateChanged può riemettere anche senza un vero cambio
+    // d'identità (refresh del token, o — su mobile — il buco di
+    // ri-idratazione della persistenza quando si apre il selettore data
+    // nativo, che fa passare il tab in background). Questa pagina non ha
+    // un "esci" esplicito, quindi un ritorno a null dopo aver già visto
+    // un uid non è mai un vero logout qui: ignorarlo evita di rispedire
+    // l'utente alla registrazione o di resettare il form "Proponi" a metà
+    // compilazione a ogni riemissione spuria.
+    if (authInizializzato && nuovoUid === currentUid) return;
+    if (authInizializzato && nuovoUid === null && currentUid !== null) return;
+
+    authInizializzato = true;
+    currentUid = nuovoUid;
     await ricaricaGiocatore();
 
     const invito = invitoTokenCorrente();

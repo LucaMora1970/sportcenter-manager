@@ -890,6 +890,11 @@
           <input type="number" id="cp-giorni-verifica" min="1" step="1" placeholder="es. 7">
         </div>
         <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Un giocatore esterno (non socio) è subito attivo e contattabile alla registrazione; se non conferma l'email ricevuta entro questo termine, il profilo si disattiva automaticamente.</p>
+        <div class="field">
+          <label for="cp-ore-anticipo-proposta">Ore minime di anticipo per lanciare una sessione Padel</label>
+          <input type="number" id="cp-ore-anticipo-proposta" min="0" step="1" placeholder="es. 24">
+        </div>
+        <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Una proposta di sessione non può essere lanciata per un orario che cade entro questo margine da adesso — riguarda solo "Proponi una sessione", non le prenotazioni dirette del campo.</p>
         <div class="error-msg" id="community-padel-error"></div>
         <button type="submit" class="btn btn-ghost" id="salva-community-padel-btn">Salva</button>
       </form>

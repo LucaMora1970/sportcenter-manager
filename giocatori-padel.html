@@ -128,12 +128,14 @@
       <div id="tab-proponi" class="gp-tab-panel hidden">
         <p style="color:var(--chalk-grey);font-size:0.84rem;">Scegli chi invitare dalla classifica: riceve subito un'email con il link per rispondere. Puoi anche condividerlo tu stesso via WhatsApp/SMS.</p>
         <form id="proponi-form" class="gp-card">
-          <div class="row2">
-            <div class="field"><label for="pr-data">Data</label><input type="date" id="pr-data" required></div>
-            <div class="field">
-              <label for="pr-durata">Durata</label>
-              <select id="pr-durata"><option value="60">60'</option><option value="90" selected>90'</option></select>
-            </div>
+          <div class="field">
+            <label>Data</label>
+            <div class="day-strip" id="pr-day-strip" role="tablist" aria-label="Giorno"></div>
+            <input type="hidden" id="pr-data">
+          </div>
+          <div class="field">
+            <label for="pr-durata">Durata</label>
+            <select id="pr-durata"><option value="60">60'</option><option value="90" selected>90'</option></select>
           </div>
           <div class="field">
             <label for="pr-ora">Ora inizio</label>
