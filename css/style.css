@@ -498,6 +498,19 @@ select:focus, input:focus, textarea:focus {
 .gruppo-pills button[aria-pressed="true"] { background: var(--ball); border-color: var(--ball); color: #0d1f30; }
 :root[data-theme="light"] .gruppo-pills button[aria-pressed="true"] { color: #fff; }
 
+.gp-card {
+  background: var(--court-blue-900); border: 1px solid var(--court-blue-700);
+  border-radius: var(--radius); padding: 18px var(--gap); margin-bottom: 18px;
+}
+.gp-classifica-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 0; border-bottom: 1px dashed var(--court-blue-700);
+}
+.gp-classifica-row:last-child { border-bottom: none; }
+.gp-classifica-row .livello { font-family: 'Space Mono', monospace; color: var(--ball); }
+.gp-invito-riga { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; }
+.gp-invito-riga button { flex: none; }
+
 .corsi-sezione-header {
   display: flex; align-items: flex-end; gap: 10px; padding: 16px;
   border-radius: var(--radius); margin: 20px 0 12px; min-height: 60px;

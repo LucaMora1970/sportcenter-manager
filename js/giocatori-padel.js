@@ -470,11 +470,22 @@ async function onSubmitProponi(e) {
         </span>
       </div>
     ` : "";
+    const rigaLinkStato = data.statoLink ? `
+      <div class="gp-invito-riga">
+        <span>Pagina di stato — chi ha aderito e quanto si paga, sempre aggiornata</span>
+        <span>
+          <button type="button" class="btn btn-ghost copia-invito-btn" data-link="${escapeHtml(data.statoLink)}" style="width:auto;padding:6px 10px;font-size:0.7rem;">Copia link</button>
+          <a href="https://wa.me/?text=${encodeURIComponent(data.statoLink)}" target="_blank" rel="noopener" class="btn btn-ghost" style="width:auto;padding:6px 10px;font-size:0.7rem;display:inline-block;">WhatsApp</a>
+        </span>
+      </div>
+    ` : "";
     esitoEl.innerHTML = `
       <p><strong>Proposta lanciata.</strong> Condividi questi link con gli invitati:</p>
       ${righeInviti || `<p style="color:var(--chalk-grey);font-size:0.82rem;">Nessun invitato dalla classifica — controlla gli eventuali inviti via email.</p>`}
       <p style="color:var(--chalk-grey);font-size:0.82rem;margin:14px 0 0;">Oppure posta questo link dove vuoi (es. gruppo WhatsApp del circolo) — chi risponde per primo occupa i posti rimasti, fino al numero richiesto:</p>
       ${rigaLinkAperto}
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:14px 0 0;">Vuoi solo far vedere lo stato senza far rispondere nessuno? Condividi questo, chiunque può aprirlo senza registrarsi:</p>
+      ${rigaLinkStato}
     `;
     esitoEl.querySelectorAll(".copia-invito-btn").forEach(b => b.addEventListener("click", () => copyToClipboard(b.dataset.link, b)));
 

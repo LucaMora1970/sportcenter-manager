@@ -4717,7 +4717,8 @@ exports.proponiSessionePadel = onCall({ secrets: MAIL_SECRETS }, async (request)
   await db.collection("sessioniPadelInviti").doc(tokenAperto).set({ sessioneId: sessioneRef.id, giocatoreId: null, aperto: true });
   const linkAperto = `${APP_URL}giocatori-padel.html?invito=${tokenAperto}`;
 
-  return { sessioneId: sessioneRef.id, bookingId: bookingRef ? bookingRef.id : null, inviti, linkAperto };
+  const statoLink = `${APP_URL}stato-partita.html?s=${sessioneRef.id}`;
+  return { sessioneId: sessioneRef.id, bookingId: bookingRef ? bookingRef.id : null, inviti, linkAperto, statoLink };
 });
 
 // Richiede una sessione autenticata (socio o giocatorePadel) corrispondente
@@ -4832,6 +4833,67 @@ exports.annullaPropostaSessionePadel = onCall(async (request) => {
     await sessioneRef.update({ stato: "annullata" });
   }
   return { ok: true };
+});
+
+// Pagina pubblica di stato partita (stato-partita.html?s=id): conoscere
+// l'id della sessione è di per sé l'autorizzazione a leggerla, stesso
+// principio già usato per bookingTickets/attivazioniSoci (vedi anche
+// l'apertura di "allow get" su sessioniPadel in firestore.rules). Nessuna
+// scrittura, mai contatti restituiti (solo pseudonimo) — sicura da
+// esporre senza autenticazione, come cercaGiocatore. La quota di ciascun
+// confermato usa la sua vera categoria (socio collegato → soci/{id}.categoria,
+// altrimenti "esterno"), leggibile solo qui perché "soci" non è mai
+// accessibile dal client.
+exports.statoSessionePadel = onCall(async (request) => {
+  const { sessioneId } = request.data || {};
+  if (!sessioneId) throw new HttpsError("invalid-argument", "sessioneId mancante.");
+
+  const sessioneSnap = await db.collection("sessioniPadel").doc(sessioneId).get();
+  if (!sessioneSnap.exists) throw new HttpsError("not-found", "Proposta non trovata.");
+  const s = sessioneSnap.data();
+
+  const invitatiAttivi = (s.invitati || []).filter(i => i.stato !== "no");
+  const idsDaRisolvere = [...new Set([s.organizerId, ...invitatiAttivi.map(i => i.giocatoreId)])];
+  const giocatoriSnap = await Promise.all(idsDaRisolvere.map(id => db.collection("giocatoriPadel").doc(id).get()));
+  const giocatoriPerId = {};
+  giocatoriSnap.forEach(d => { if (d.exists) giocatoriPerId[d.id] = d.data(); });
+
+  const generaleSnap = await db.collection("impostazioni").doc("generale").get();
+  const { festivi } = festiviEChiusuraWeekend(generaleSnap);
+  const durataMinuti = orarioToMin(s.endTime) - orarioToMin(s.startTime);
+
+  async function categoriaDi(giocatoreId) {
+    const g = giocatoriPerId[giocatoreId];
+    if (!g || !g.socioId) return "esterno";
+    const socioSnap = await db.collection("soci").doc(g.socioId).get();
+    return socioSnap.exists ? socioSnap.data().categoria : "esterno";
+  }
+
+  async function quotaDi(giocatoreId) {
+    const categoria = await categoriaDi(giocatoreId);
+    return quotaCategoria({ disciplina: "padel", posizione: null, categoria, dataIso: s.date, startTime: s.startTime, durataMinuti, festivi });
+  }
+
+  const pseudonimoDi = (id) => (giocatoriPerId[id] && giocatoriPerId[id].pseudonimo) || "Giocatore";
+
+  const organizzatoreQuota = await quotaDi(s.organizerId);
+  const confermati = [];
+  const inAttesa = [];
+  for (const i of invitatiAttivi) {
+    if (i.stato === "si") {
+      confermati.push({ pseudonimo: pseudonimoDi(i.giocatoreId), quota: await quotaDi(i.giocatoreId) });
+    } else {
+      inAttesa.push({ pseudonimo: pseudonimoDi(i.giocatoreId) });
+    }
+  }
+
+  const quotaTotale = (organizzatoreQuota || 0) + confermati.reduce((somma, c) => somma + (c.quota || 0), 0);
+
+  return {
+    date: s.date, startTime: s.startTime, endTime: s.endTime, stato: s.stato,
+    organizzatore: { pseudonimo: pseudonimoDi(s.organizerId), quota: organizzatoreQuota },
+    confermati, inAttesa, quotaTotale
+  };
 });
 
 // ---------- Manutenzione automatica (prima funzione schedulata del

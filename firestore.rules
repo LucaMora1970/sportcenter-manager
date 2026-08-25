@@ -561,7 +561,11 @@ service cloud.firestore {
     // (Firestore valuta questa condizione su ogni documento del
     // risultato) — mai una lista di tutte le proposte in corso.
     match /sessioniPadel/{id} {
-      allow get: if isSignedIn();
+      // Conoscere l'id (dalla pagina pubblica stato-partita.html) è di
+      // per sé l'autorizzazione a leggere quel singolo documento, stesso
+      // principio già usato per bookingTickets/attivazioniSoci — l'elenco
+      // resta invece sempre riservato a chi ne è l'organizzatore.
+      allow get: if true;
       allow list: if isSignedIn() && resource.data.organizerId == request.auth.uid;
       allow write: if false;
     }
