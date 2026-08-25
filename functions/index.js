@@ -4725,8 +4725,7 @@ exports.proponiSessionePadel = onCall({ secrets: MAIL_SECRETS }, async (request)
 // esattamente al giocatoreId a cui è stato emesso il token — nessuna
 // risposta "a nome di altri" solo perché si possiede il link inoltrato.
 exports.rispondiInvitoSessionePadel = onCall(async (request) => {
-  if (!request.auth) throw new HttpsError("unauthenticated", "Riconosci il dispositivo prima di rispondere.");
-  const { token, risposta } = request.data || {};
+  const { token, risposta, ospiteNome, dispositivoToken } = request.data || {};
   if (!token || (risposta !== "si" && risposta !== "no")) {
     throw new HttpsError("invalid-argument", "Dati non validi.");
   }
@@ -4736,7 +4735,30 @@ exports.rispondiInvitoSessionePadel = onCall(async (request) => {
   if (!invitoSnap.exists) throw new HttpsError("not-found", "Invito non trovato.");
   const invito = invitoSnap.data();
 
-  if (invito.aperto) {
+  // Risposta come ospite (nessun account, nessun dispositivo riconosciuto):
+  // più veloce per chi non è registrato o non sa se vuole farlo — vale
+  // solo dove non è già richiesta un'identità precisa (link aperto o
+  // invito via email non ancora reclamato, mai un invito mirato a un
+  // giocatore specifico). Nessun profilo creato, categoria sempre
+  // "esterno", non compare in classifica né altrove fuori da questa
+  // proposta — solo un pseudonimo/nome legato a un token del dispositivo
+  // (salvato nel browser di chi risponde) per non poter rispondere due
+  // volte alla stessa proposta.
+  let ospite = null;
+  if (!request.auth) {
+    if (invito.giocatoreId) {
+      throw new HttpsError("permission-denied", "Questo invito è personale — riconosci il dispositivo del destinatario per rispondere.");
+    }
+    const nomeGrezzo = (ospiteNome || "").trim().slice(0, 40);
+    if (nomeGrezzo.length < 2) throw new HttpsError("invalid-argument", "Inserisci pseudonimo o nome per rispondere.");
+    if (contieneParolaVietata(normalizzaTestoPseudonimo(nomeGrezzo))) {
+      throw new HttpsError("invalid-argument", "Questo nome non è consentito — scegline un altro.");
+    }
+    if (!dispositivoToken || typeof dispositivoToken !== "string") {
+      throw new HttpsError("invalid-argument", "dispositivoToken mancante.");
+    }
+    ospite = { nome: nomeGrezzo, dispositivoToken };
+  } else if (invito.aperto) {
     // Link aperto (vedi proponiSessionePadel): mai "reclamato" da nessuno,
     // resta riutilizzabile — chiunque sia già un giocatore Padel registrato
     // può rispondere con la propria identità.
@@ -4775,13 +4797,18 @@ exports.rispondiInvitoSessionePadel = onCall(async (request) => {
     const ora = new Date();
     let trovato = false;
     const invitati = (s.invitati || []).map(i => {
-      if (i.giocatoreId === invito.giocatoreId) {
+      const stessaPersona = ospite ? i.dispositivoToken === ospite.dispositivoToken : i.giocatoreId === invito.giocatoreId;
+      if (stessaPersona) {
         trovato = true;
-        return { ...i, stato: risposta, rispostoAt: ora };
+        return { ...i, stato: risposta, rispostoAt: ora, ...(ospite ? { ospiteNome: ospite.nome } : {}) };
       }
       return i;
     });
-    if (!trovato) invitati.push({ giocatoreId: invito.giocatoreId, stato: risposta, rispostoAt: ora });
+    if (!trovato) {
+      invitati.push(ospite
+        ? { giocatoreId: null, ospiteNome: ospite.nome, dispositivoToken: ospite.dispositivoToken, stato: risposta, rispostoAt: ora }
+        : { giocatoreId: invito.giocatoreId, stato: risposta, rispostoAt: ora });
+    }
 
     const update = { invitati };
     const confermeSi = invitati.filter(i => i.stato === "si").length;
@@ -4852,8 +4879,12 @@ exports.statoSessionePadel = onCall(async (request) => {
   if (!sessioneSnap.exists) throw new HttpsError("not-found", "Proposta non trovata.");
   const s = sessioneSnap.data();
 
+  // Un invitato "ospite" (risposto senza account, vedi
+  // rispondiInvitoSessionePadel) ha giocatoreId nullo e porta già il
+  // proprio nome/categoria inline — non serve nessuna lettura Firestore
+  // per lui, a differenza di un giocatore registrato.
   const invitatiAttivi = (s.invitati || []).filter(i => i.stato !== "no");
-  const idsDaRisolvere = [...new Set([s.organizerId, ...invitatiAttivi.map(i => i.giocatoreId)])];
+  const idsDaRisolvere = [...new Set([s.organizerId, ...invitatiAttivi.map(i => i.giocatoreId).filter(Boolean)])];
   const giocatoriSnap = await Promise.all(idsDaRisolvere.map(id => db.collection("giocatoriPadel").doc(id).get()));
   const giocatoriPerId = {};
   giocatoriSnap.forEach(d => { if (d.exists) giocatoriPerId[d.id] = d.data(); });
@@ -4876,14 +4907,19 @@ exports.statoSessionePadel = onCall(async (request) => {
 
   const pseudonimoDi = (id) => (giocatoriPerId[id] && giocatoriPerId[id].pseudonimo) || "Giocatore";
 
+  // Quota di un ospite: sempre categoria "esterno", nessuna lettura extra.
+  const quotaOspite = () => quotaCategoria({ disciplina: "padel", posizione: null, categoria: "esterno", dataIso: s.date, startTime: s.startTime, durataMinuti, festivi });
+  const pseudonimoInvitato = (i) => i.giocatoreId ? pseudonimoDi(i.giocatoreId) : (i.ospiteNome || "Ospite");
+  const quotaInvitato = (i) => i.giocatoreId ? quotaDi(i.giocatoreId) : quotaOspite();
+
   const organizzatoreQuota = await quotaDi(s.organizerId);
   const confermati = [];
   const inAttesa = [];
   for (const i of invitatiAttivi) {
     if (i.stato === "si") {
-      confermati.push({ pseudonimo: pseudonimoDi(i.giocatoreId), quota: await quotaDi(i.giocatoreId) });
+      confermati.push({ pseudonimo: pseudonimoInvitato(i), quota: await quotaInvitato(i) });
     } else {
-      inAttesa.push({ pseudonimo: pseudonimoDi(i.giocatoreId) });
+      inAttesa.push({ pseudonimo: pseudonimoInvitato(i) });
     }
   }
 

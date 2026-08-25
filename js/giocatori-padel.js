@@ -290,12 +290,15 @@ function rosterHtml(sessione, nomi) {
   const orgNome = nomi[sessione.organizerId] || "Organizzatore";
   const STATO_ICONA = { si: "✓", no: "✗", in_attesa: "…" };
   const STATO_TESTO = { si: "conferma", no: "non viene", in_attesa: "in attesa" };
-  const righeInvitati = (sessione.invitati || []).map(i => `
+  const righeInvitati = (sessione.invitati || []).map(i => {
+    const nome = i.giocatoreId ? (nomi[i.giocatoreId] || "Giocatore") : (i.ospiteNome || "Ospite");
+    return `
     <div class="gp-invito-riga">
-      <span>${STATO_ICONA[i.stato] || "…"} ${escapeHtml(nomi[i.giocatoreId] || "Giocatore")}</span>
+      <span>${STATO_ICONA[i.stato] || "…"} ${escapeHtml(nome)}${!i.giocatoreId ? " <span style=\"color:var(--chalk-grey);\">(ospite)</span>" : ""}</span>
       <span style="color:var(--chalk-grey);font-size:0.76rem;">${STATO_TESTO[i.stato] || "in attesa"}</span>
     </div>
-  `).join("");
+  `;
+  }).join("");
   return `
     <div style="margin-top:14px;">
       <div class="entry-meta" style="margin-bottom:6px;">Chi gioca</div>
@@ -310,34 +313,11 @@ async function gestisciInvito(token) {
   const card = document.getElementById("invito-card");
   card.innerHTML = `<p style="color:var(--chalk-grey);font-size:0.84rem;">Caricamento…</p>`;
 
-  let invito;
+  let invito, sessione;
   try {
     const doc = await db.collection("sessioniPadelInviti").doc(token).get();
     if (!doc.exists) throw new Error("Invito non trovato.");
     invito = doc.data();
-  } catch (err) {
-    card.innerHTML = `<p>${escapeHtml(err.message)}</p>`;
-    return;
-  }
-
-  if (!currentUid) {
-    card.innerHTML = `
-      <p>Per rispondere a questo invito devi prima riconoscere il dispositivo.</p>
-      <p style="margin-top:10px;"><a href="attiva-socio.html" class="btn btn-ghost" style="display:inline-block;width:auto;">Sono socio — attiva dispositivo</a></p>
-      <p style="margin-top:10px;color:var(--chalk-grey);font-size:0.84rem;">Non sei socio? Registrati qui sotto come giocatore esterno — il link ti riporterà automaticamente su questo invito.</p>
-    `;
-    document.getElementById("stato-registrazione").classList.remove("hidden");
-    return;
-  }
-
-  if (!currentGiocatore) {
-    card.innerHTML = `<p>Registrati come giocatore Padel qui sotto per rispondere a questo invito.</p>`;
-    document.getElementById("stato-registrazione").classList.remove("hidden");
-    return;
-  }
-
-  let sessione;
-  try {
     const sDoc = await db.collection("sessioniPadel").doc(invito.sessioneId).get();
     if (!sDoc.exists) throw new Error("Proposta non trovata.");
     sessione = sDoc.data();
@@ -347,6 +327,7 @@ async function gestisciInvito(token) {
   }
 
   const nomi = await risolviNomiGiocatori([sessione.organizerId, ...(sessione.invitati || []).map(i => i.giocatoreId)]);
+  const orgNome = nomi[sessione.organizerId] || "Un giocatore";
 
   if (sessione.stato !== "aperta") {
     card.innerHTML = `
@@ -356,17 +337,88 @@ async function gestisciInvito(token) {
     return;
   }
 
+  if (currentUid && currentGiocatore) {
+    card.innerHTML = `
+      <p><strong>${escapeHtml(orgNome)}</strong> ti invita a giocare il ${escapeHtml(sessione.date)} alle ${escapeHtml(sessione.startTime)}–${escapeHtml(sessione.endTime)}.</p>
+      <div style="display:flex;gap:10px;margin-top:14px;">
+        <button type="button" class="btn btn-primary" id="invito-si-btn">Sì, ci sto</button>
+        <button type="button" class="btn btn-ghost" id="invito-no-btn">Non posso</button>
+      </div>
+      <div class="error-msg" id="invito-error"></div>
+      ${rosterHtml(sessione, nomi)}
+    `;
+    document.getElementById("invito-si-btn").addEventListener("click", () => rispondiInvito(token, "si"));
+    document.getElementById("invito-no-btn").addEventListener("click", () => rispondiInvito(token, "no"));
+    return;
+  }
+
+  // Non registrato/riconosciuto: se l'invito non è mirato a un giocatore
+  // specifico (link aperto o email non ancora reclamata), offri anche la
+  // risposta rapida come ospite — pseudonimo/nome, categoria "esterno",
+  // nessun account creato. Resta comunque possibile riconoscere il
+  // dispositivo o registrarsi per un ingresso stabile in Community Padel.
+  const puoRisponendereComeOspite = !invito.giocatoreId;
   card.innerHTML = `
-    <p><strong>${escapeHtml(nomi[sessione.organizerId] || "Un giocatore")}</strong> ti invita a giocare il ${escapeHtml(sessione.date)} alle ${escapeHtml(sessione.startTime)}–${escapeHtml(sessione.endTime)}.</p>
-    <div style="display:flex;gap:10px;margin-top:14px;">
-      <button type="button" class="btn btn-primary" id="invito-si-btn">Sì, ci sto</button>
-      <button type="button" class="btn btn-ghost" id="invito-no-btn">Non posso</button>
-    </div>
-    <div class="error-msg" id="invito-error"></div>
+    <p><strong>${escapeHtml(orgNome)}</strong> ti invita a giocare il ${escapeHtml(sessione.date)} alle ${escapeHtml(sessione.startTime)}–${escapeHtml(sessione.endTime)}.</p>
+    ${puoRisponendereComeOspite ? `
+      <div class="field" style="margin-top:14px;">
+        <label for="ospite-nome">Il tuo pseudonimo o nome — rispondi al volo, senza registrarti</label>
+        <input type="text" id="ospite-nome" maxlength="40">
+      </div>
+      <div style="display:flex;gap:10px;margin-top:10px;">
+        <button type="button" class="btn btn-primary" id="invito-ospite-si-btn">Sì, ci sto</button>
+        <button type="button" class="btn btn-ghost" id="invito-ospite-no-btn">Non posso</button>
+      </div>
+      <div class="error-msg" id="invito-error"></div>
+      <p style="color:var(--chalk-grey);font-size:0.78rem;margin-top:10px;">Oppure, se preferisci un ingresso stabile in Community Padel:</p>
+    ` : `<div class="error-msg" style="margin-top:14px;"></div>`}
+    <p style="margin-top:10px;"><a href="attiva-socio.html" class="btn btn-ghost" style="display:inline-block;width:auto;">Sono socio — attiva dispositivo</a></p>
+    <p style="margin-top:10px;color:var(--chalk-grey);font-size:0.84rem;">Non sei socio? Registrati qui sotto come giocatore esterno — il link ti riporterà automaticamente su questo invito.</p>
     ${rosterHtml(sessione, nomi)}
   `;
-  document.getElementById("invito-si-btn").addEventListener("click", () => rispondiInvito(token, "si"));
-  document.getElementById("invito-no-btn").addEventListener("click", () => rispondiInvito(token, "no"));
+  if (puoRisponendereComeOspite) {
+    document.getElementById("invito-ospite-si-btn").addEventListener("click", () => rispondiComeOspite(token, "si"));
+    document.getElementById("invito-ospite-no-btn").addEventListener("click", () => rispondiComeOspite(token, "no"));
+  }
+  document.getElementById("stato-registrazione").classList.remove("hidden");
+}
+
+// Identificativo leggero per una risposta da ospite (nessun account):
+// resta nel browser e serve solo a non poter rispondere due volte alla
+// stessa proposta, mai per riconoscere la persona altrove nell'app.
+function dispositivoTokenOspite() {
+  let t;
+  try { t = localStorage.getItem("sportos-ospite-token"); } catch { t = null; }
+  if (!t) {
+    t = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    try { localStorage.setItem("sportos-ospite-token", t); } catch { /* storage non disponibile: token solo per questa risposta */ }
+  }
+  return t;
+}
+
+async function rispondiComeOspite(token, risposta) {
+  const errorEl = document.getElementById("invito-error");
+  const ospiteNome = document.getElementById("ospite-nome").value.trim();
+  if (!ospiteNome) {
+    showError(errorEl, "Inserisci uno pseudonimo o nome.");
+    return;
+  }
+  try {
+    const fn = cloudFunctions().httpsCallable("rispondiInvitoSessionePadel");
+    const { data } = await fn({ token, risposta, ospiteNome, dispositivoToken: dispositivoTokenOspite() });
+
+    const invitoDoc = await db.collection("sessioniPadelInviti").doc(token).get();
+    const sessioneDoc = await db.collection("sessioniPadel").doc(invitoDoc.data().sessioneId).get();
+    const sessione = sessioneDoc.data();
+    const nomi = await risolviNomiGiocatori([sessione.organizerId, ...(sessione.invitati || []).map(i => i.giocatoreId)]);
+
+    document.getElementById("invito-card").innerHTML = `
+      <p>${risposta === "si" ? "Presenza confermata!" : "Hai segnalato di non poter partecipare."}${data.confermata ? " La partita ha raggiunto il numero di giocatori richiesto ed è ora confermata." : ""}</p>
+      ${rosterHtml(sessione, nomi)}
+    `;
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+  }
 }
 
 async function rispondiInvito(token, risposta) {
