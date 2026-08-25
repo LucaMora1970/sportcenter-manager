@@ -4422,8 +4422,8 @@ async function permessiCommunityPadel(uid) {
 
 exports.registraGiocatorePadel = onCall({ secrets: MAIL_SECRETS }, async (request) => {
   const { nome, cognome, telefono, email, playtomicLivello, socioId, consenso } = request.data || {};
-  if (!nome || !cognome || !telefono || !email) {
-    throw new HttpsError("invalid-argument", "Nome, cognome, telefono ed email sono obbligatori.");
+  if (!nome || !cognome || !email) {
+    throw new HttpsError("invalid-argument", "Nome, cognome ed email sono obbligatori.");
   }
   if (consenso !== true) {
     throw new HttpsError("invalid-argument", "È necessario accettare il trattamento dei dati per registrarsi.");
@@ -4465,10 +4465,9 @@ exports.registraGiocatorePadel = onCall({ secrets: MAIL_SECRETS }, async (reques
 
   const livelloEffettivo = playtomicLivello != null ? playtomicLivello : 0;
   // Un socio non ha bisogno di riverifica (già passato dall'attivazione
-  // socio); un esterno senza email non ha nulla da verificare — in
-  // entrambi i casi emailVerificata parte vera per non essere disattivato
-  // in automatico senza motivo.
-  const emailVerificata = !esterno || !email;
+  // socio) — un esterno invece parte non verificato, email ormai sempre
+  // presente (vedi controllo qui sopra).
+  const emailVerificata = !esterno;
 
   await db.collection("giocatoriPadel").doc(authUid).set({
     nome, cognome, socioId: socioId || null, esterno, pseudonimo,
@@ -4478,27 +4477,25 @@ exports.registraGiocatorePadel = onCall({ secrets: MAIL_SECRETS }, async (reques
     createdAt: FieldValue.serverTimestamp()
   });
   await db.collection("giocatoriPadelContatti").doc(authUid).set({
-    telefono, email: email || null, socioId: socioId || null,
+    telefono: telefono || null, email, socioId: socioId || null,
     consensoAt: FieldValue.serverTimestamp()
   });
 
   let customToken = null;
   if (esterno) {
     customToken = await getAuth().createCustomToken(authUid);
-    if (email) {
-      const verificaToken = generaToken();
-      await db.collection("attivazioniGiocatoriPadel").doc(verificaToken).set({
-        authUid, usato: false, createdAt: FieldValue.serverTimestamp()
-      });
-      const link = `${APP_URL}giocatori-padel.html?verifica=${verificaToken}`;
-      inviaEmail({
-        to: email,
-        subject: "Conferma la tua email — Community Padel",
-        html: `<p>Grazie per esserti registrato/a come giocatore/giocatrice Padel su Sport-OS.</p>`
-          + `<p>Conferma la tua email toccando il link qui sotto:</p>`
-          + `<p><a href="${link}">${link}</a></p>`
-      }).catch(err => console.error("registraGiocatorePadel: invio email verifica fallito:", err));
-    }
+    const verificaToken = generaToken();
+    await db.collection("attivazioniGiocatoriPadel").doc(verificaToken).set({
+      authUid, usato: false, createdAt: FieldValue.serverTimestamp()
+    });
+    const link = `${APP_URL}giocatori-padel.html?verifica=${verificaToken}`;
+    inviaEmail({
+      to: email,
+      subject: "Conferma la tua email — Community Padel",
+      html: `<p>Grazie per esserti registrato/a come giocatore/giocatrice Padel su Sport-OS.</p>`
+        + `<p>Conferma la tua email toccando il link qui sotto:</p>`
+        + `<p><a href="${link}">${link}</a></p>`
+    }).catch(err => console.error("registraGiocatorePadel: invio email verifica fallito:", err));
   }
 
   return { authUid, customToken };
@@ -4654,7 +4651,12 @@ exports.proponiSessionePadel = onCall({ secrets: MAIL_SECRETS }, async (request)
         status: "PENDING_CONFIRMATION",
         type: "CUSTOMER",
         authUid: request.auth.uid,
-        createdAt: FieldValue.serverTimestamp()
+        createdAt: FieldValue.serverTimestamp(),
+        // Duplicata da sessioneRef.scadenzaAt: i calendari (prenota-padel,
+        // tabellone-generale) leggono solo "bookings", mai le sessioni
+        // Padel, e devono poter mostrare l'orario di rilascio senza un
+        // join in più.
+        scadenzaAt
       });
       tx.set(db.collection("bookingDettagli").doc(bookingRef.id), {
         prenotanteNome: `${giocatore.nome} ${giocatore.cognome}`,
@@ -4684,15 +4686,40 @@ exports.proponiSessionePadel = onCall({ secrets: MAIL_SECRETS }, async (request)
     });
   }
 
+  // Calcolato qui (basta l'id della sessione, già creata sopra) perché
+  // serve sia alle email di invito qui sotto sia al link restituito
+  // all'organizzatore in fondo alla funzione.
+  const statoLink = `${APP_URL}stato-partita.html?s=${sessioneRef.id}`;
+
   // Un token per invitato (link diretto, inoltrato dall'organizzatore a
-  // modo suo) + un invito email reale via SMTP per chi non ha un contatto
-  // diretto — generati fuori dalla transazione, non sono critici per
-  // l'atomicità della prenotazione.
+  // modo suo) + un invito email reale via SMTP — generati fuori dalla
+  // transazione, non sono critici per l'atomicità della prenotazione.
   const inviti = [];
   for (const giocatoreId of (invitatiIds || [])) {
     const token = generaToken();
     await db.collection("sessioniPadelInviti").doc(token).set({ sessioneId: sessioneRef.id, giocatoreId });
-    inviti.push({ giocatoreId, token, link: `${APP_URL}giocatori-padel.html?invito=${token}` });
+    const link = `${APP_URL}giocatori-padel.html?invito=${token}`;
+    inviti.push({ giocatoreId, token, link });
+
+    // Invio automatico via l'email del circolo: l'organizzatore sceglie il
+    // giocatore dalla classifica (solo pseudonimo/livello — vedi
+    // renderInvitatiCheckbox in giocatori-padel.js), mai dal suo contatto
+    // vero. Il contatto resta privato in giocatoriPadelContatti, letto
+    // solo qui lato server (Admin SDK) — l'organizzatore non lo vede mai,
+    // né l'invitato vede quello dell'organizzatore.
+    const contattiSnap = await db.collection("giocatoriPadelContatti").doc(giocatoreId).get();
+    const emailInvitato = contattiSnap.exists ? contattiSnap.data().email : null;
+    if (emailInvitato) {
+      inviaEmail({
+        to: emailInvitato,
+        subject: "Invito a una partita di Padel — Sport-OS",
+        html: `<p>${giocatore.nome} ${giocatore.cognome} ti propone una sessione di gioco il ${date} alle ${startTime} presso il campo Padel.</p>`
+          + `<p>Conferma la tua presenza toccando il link qui sotto — puoi anche segnalare che non puoi partecipare:</p>`
+          + `<p><a href="${link}">${link}</a></p>`
+          + `<p>Puoi controllare in ogni momento chi ha aderito, a questo link:</p>`
+          + `<p><a href="${statoLink}">${statoLink}</a></p>`
+      }).catch(err => console.error("proponiSessionePadel: invio invito email a giocatore registrato fallito:", err));
+    }
   }
   for (const email of (invitiEmail || [])) {
     if (!emailValidaServer(email)) continue;
@@ -4705,6 +4732,8 @@ exports.proponiSessionePadel = onCall({ secrets: MAIL_SECRETS }, async (request)
       html: `<p>${giocatore.nome} ${giocatore.cognome} ti invita a una partita di Padel il ${date} alle ${startTime}.</p>`
         + `<p>Conferma la tua presenza toccando il link qui sotto:</p>`
         + `<p><a href="${link}">${link}</a></p>`
+        + `<p>Puoi controllare in ogni momento chi ha aderito, a questo link:</p>`
+        + `<p><a href="${statoLink}">${statoLink}</a></p>`
     }).catch(err => console.error("proponiSessionePadel: invio invito email fallito:", err));
   }
 
@@ -4716,8 +4745,12 @@ exports.proponiSessionePadel = onCall({ secrets: MAIL_SECRETS }, async (request)
   const tokenAperto = generaToken();
   await db.collection("sessioniPadelInviti").doc(tokenAperto).set({ sessioneId: sessioneRef.id, giocatoreId: null, aperto: true });
   const linkAperto = `${APP_URL}giocatori-padel.html?invito=${tokenAperto}`;
+  // Salvato anche sul documento sessione (già pubblico in lettura) così
+  // stato-partita.html può proporre un pulsante "Vuoi partecipare?" a chi
+  // ha ricevuto solo il link di stato, senza dover esporre una nuova
+  // Cloud Function dedicata.
+  await sessioneRef.update({ tokenAperto });
 
-  const statoLink = `${APP_URL}stato-partita.html?s=${sessioneRef.id}`;
   return { sessioneId: sessioneRef.id, bookingId: bookingRef ? bookingRef.id : null, inviti, linkAperto, statoLink };
 });
 
@@ -4928,7 +4961,11 @@ exports.statoSessionePadel = onCall(async (request) => {
   return {
     date: s.date, startTime: s.startTime, endTime: s.endTime, stato: s.stato,
     organizzatore: { pseudonimo: pseudonimoDi(s.organizerId), quota: organizzatoreQuota },
-    confermati, inAttesa, quotaTotale
+    confermati, inAttesa, quotaTotale,
+    // Solo se ancora aperta ha senso proporre "Vuoi partecipare?" — su
+    // proposte create prima di questo campo sarà undefined, va bene così
+    // (la pagina semplicemente non mostra il pulsante).
+    tokenAperto: s.stato === "aperta" ? (s.tokenAperto || null) : null
   };
 });
 

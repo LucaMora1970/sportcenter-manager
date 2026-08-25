@@ -56,6 +56,13 @@ function pendingScaduto(booking) {
   return (Date.now() - booking.createdAt.toMillis()) > PENDING_SCADUTO_MINUTI * 60000;
 }
 
+function formatOra(ts) {
+  if (!ts || typeof ts.toDate !== "function") return "";
+  const d = ts.toDate();
+  const p = n => String(n).padStart(2, "0");
+  return `${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 const GIORNI_LUNGHI = ["domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"];
 const MESI = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"];
 function formatGiornoEsteso(dataIso) {
@@ -177,7 +184,8 @@ function etichettaOccupato(b) {
     return { testo: "Esente" + (b.blocco && b.blocco.createdByNome ? ` — ${b.blocco.createdByNome}` : ""), classe: "tipo-exempt" };
   }
   if (b.status === "PENDING_CONFIRMATION") {
-    return { testo: "In conferma (proposta partita)", classe: "tipo-hold" };
+    const scadenza = b.scadenzaAt ? ` — libera alle ${formatOra(b.scadenzaAt)} se non confermata` : "";
+    return { testo: `In conferma (proposta partita)${scadenza}`, classe: "tipo-hold" };
   }
   const d = b.dettagli;
   if (!d) return { testo: "Occupato", classe: "" };

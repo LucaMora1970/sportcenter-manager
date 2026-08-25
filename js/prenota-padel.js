@@ -74,6 +74,13 @@ function formatTimestamp(ts) {
   return `${p(d.getDate())}.${p(d.getMonth() + 1)} alle ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+function formatOra(ts) {
+  if (!ts || typeof ts.toDate !== "function") return "";
+  const d = ts.toDate();
+  const p = n => String(n).padStart(2, "0");
+  return `${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 // Un giorno festivo (IMPOSTAZIONI.festivi, js/utils.js) accorcia l'orario
 // come sabato/domenica, fino a IMPOSTAZIONI.chiusuraWeekend (configurabile
 // da Configurazione → Impostazioni generali, default "20:30") — stesso
@@ -327,7 +334,7 @@ function ascoltaPrenotazioniGiorno() {
         state.bookings = snap.docs
           .map(d => d.data())
           .filter(b => (b.status === "PENDING_PAYMENT" && !pendingScaduto(b)) || b.status === "PENDING_CONFIRMATION" || b.status === "CONFIRMED" || b.status === "COMPLETED")
-          .map(b => ({ start: orarioToMin(b.startTime), end: orarioToMin(b.endTime), createdAt: b.createdAt, status: b.status }));
+          .map(b => ({ start: orarioToMin(b.startTime), end: orarioToMin(b.endTime), createdAt: b.createdAt, status: b.status, scadenzaAt: b.scadenzaAt }));
         render();
       },
       (err) => {
@@ -419,7 +426,7 @@ function render() {
         <span class="time">${label(b.start)}–${label(b.end)}</span>
         ${b.createdAt ? `<span class="timestamp">${inPagamento ? "Iniziato" : "Prenotato"} il ${formatTimestamp(b.createdAt)}</span>` : ""}
         ${inPagamento ? `<span class="timestamp">Si libera da solo se non confermato entro pochi minuti</span>` : ""}
-        ${inConferma ? `<span class="timestamp">Si libera da solo se il quorum non si raggiunge in tempo</span>` : ""}
+        ${inConferma ? `<span class="timestamp">${b.scadenzaAt ? `In attesa di conferma — si libera da solo alle ${formatOra(b.scadenzaAt)} se il quorum non si raggiunge` : "Si libera da solo se il quorum non si raggiunge in tempo"}</span>` : ""}
       </div>
     `;
   }).join("");

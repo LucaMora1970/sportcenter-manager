@@ -53,6 +53,19 @@ async function aggiornaStato(sessioneId) {
       ? data.inAttesa.map(c => `<div class="gp-classifica-row"><span>… ${escapeHtml(c.pseudonimo)}</span></div>`).join("")
       : `<p style="color:var(--chalk-grey);font-size:0.84rem;">Nessuno in attesa.</p>`;
 
+    const partecipaEl = document.getElementById("stato-partecipa");
+    if (data.tokenAperto) {
+      partecipaEl.innerHTML = `
+        <div class="gp-card" style="text-align:center;">
+          <p style="margin:0 0 10px;">Vuoi partecipare a questa partita?</p>
+          <a class="btn btn-primary" href="giocatori-padel.html?invito=${encodeURIComponent(data.tokenAperto)}">Rispondi qui</a>
+        </div>
+      `;
+      partecipaEl.classList.remove("hidden");
+    } else {
+      partecipaEl.classList.add("hidden");
+    }
+
     mostraStato("stato-content");
   } catch (err) {
     document.getElementById("stato-errore-testo").textContent = err.message || "Il link non è valido.";

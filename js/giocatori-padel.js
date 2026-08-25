@@ -246,8 +246,8 @@ async function onSubmitRegistrazione(e) {
       nome: document.getElementById("reg-nome").value.trim(),
       cognome: document.getElementById("reg-cognome").value.trim(),
       pseudonimo: document.getElementById("reg-pseudonimo").value.trim(),
-      telefono: document.getElementById("reg-telefono").value.trim(),
-      email: document.getElementById("reg-email").value.trim() || null,
+      telefono: document.getElementById("reg-telefono").value.trim() || null,
+      email: document.getElementById("reg-email").value.trim(),
       playtomicLivello: document.getElementById("reg-playtomic").value !== "" ? parseFloat(document.getElementById("reg-playtomic").value) : null,
       consenso: true
     };
@@ -484,6 +484,7 @@ async function onSubmitProponi(e) {
   const errorEl = document.getElementById("proponi-error");
   errorEl.textContent = "";
   btn.disabled = true;
+  mostraCaricamento("Lancio della proposta in corso…");
 
   try {
     const invitatiIds = Array.from(document.querySelectorAll(".pr-invitato-cb:checked")).map(cb => cb.value);
@@ -540,6 +541,7 @@ async function onSubmitProponi(e) {
       ${rigaLinkStato}
     `;
     esitoEl.querySelectorAll(".copia-invito-btn").forEach(b => b.addEventListener("click", () => copyToClipboard(b.dataset.link, b)));
+    esitoEl.scrollIntoView({ behavior: "smooth", block: "start" });
 
     document.getElementById("proponi-form").reset();
     await caricaMieProposte();
@@ -547,6 +549,7 @@ async function onSubmitProponi(e) {
     showError(errorEl, "Errore: " + err.message);
   } finally {
     btn.disabled = false;
+    nascondiCaricamento();
   }
 }
 
