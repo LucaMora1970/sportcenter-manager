@@ -527,7 +527,7 @@ function ascoltaPrenotazioniGiorno() {
       (snap) => {
         state.bookingsPerCourt = {};
         snap.docs.map(d => ({ id: d.id, ...d.data() }))
-          .filter(b => (b.status === "PENDING_PAYMENT" && !pendingScaduto(b)) || b.status === "CONFIRMED" || b.status === "COMPLETED")
+          .filter(b => (b.status === "PENDING_PAYMENT" && !pendingScaduto(b)) || b.status === "PENDING_CONFIRMATION" || b.status === "CONFIRMED" || b.status === "COMPLETED")
           .forEach(b => {
             (state.bookingsPerCourt[b.courtId] = state.bookingsPerCourt[b.courtId] || []).push(b);
           });

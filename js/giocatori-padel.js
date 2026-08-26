@@ -688,17 +688,22 @@ async function caricaMieProposte() {
     el.innerHTML = proposte.length > 0
       ? proposte.map(s => {
           const confermeSi = (s.invitati || []).filter(i => i.stato === "si").length;
+          const statoLinkUrl = `${location.origin}/stato-partita.html?s=${encodeURIComponent(s.id)}`;
           return `
             <div class="gp-classifica-row" style="align-items:flex-start;">
               <div>
                 <div>${escapeHtml(s.date)} ${escapeHtml(s.startTime)}–${escapeHtml(s.endTime)} — ${escapeHtml(STATO_SESSIONE_LABEL[s.stato] || s.stato)} (${confermeSi}/${(s.targetHeadcount || 0) - 1} conferme)</div>
                 ${rosterHtml(s, nomi)}
               </div>
-              ${s.stato === "aperta" ? `<button type="button" class="btn btn-danger annulla-proposta-btn" data-id="${s.id}" style="width:auto;padding:6px 10px;font-size:0.7rem;">Annulla</button>` : ""}
+              <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
+                <button type="button" class="btn btn-ghost condividi-copia-btn" data-link="${escapeHtml(statoLinkUrl)}" style="width:auto;padding:6px 10px;font-size:0.7rem;">Copia link</button>
+                ${s.stato === "aperta" ? `<button type="button" class="btn btn-danger annulla-proposta-btn" data-id="${s.id}" style="width:auto;padding:6px 10px;font-size:0.7rem;">Annulla</button>` : ""}
+              </div>
             </div>
           `;
         }).join("")
       : `<p style="color:var(--chalk-grey);font-size:0.84rem;">Nessuna proposta lanciata ancora.</p>`;
+    el.querySelectorAll(".condividi-copia-btn").forEach(b => b.addEventListener("click", () => copyToClipboard(b.dataset.link, b)));
     el.querySelectorAll(".annulla-proposta-btn").forEach(b => b.addEventListener("click", () => annullaProposta(b.dataset.id)));
   } catch (err) {
     el.innerHTML = `<p style="color:var(--chalk-grey);font-size:0.84rem;">Errore nel caricamento: ${escapeHtml(err.message)}</p>`;
