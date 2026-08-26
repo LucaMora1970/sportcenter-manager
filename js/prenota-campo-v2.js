@@ -191,6 +191,12 @@ function pendingScaduto(booking) {
   if (!booking.createdAt || typeof booking.createdAt.toMillis !== "function") return false;
   return (Date.now() - booking.createdAt.toMillis()) > 15 * 60000;
 }
+function formatOra(ts) {
+  if (!ts || typeof ts.toDate !== "function") return "";
+  const d = ts.toDate();
+  const p = n => String(n).padStart(2, "0");
+  return `${p(d.getHours())}:${p(d.getMinutes())}`;
+}
 
 const GIORNI_BREVI = ["Dom", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab"];
 function pad2(n) { return String(n).padStart(2, "0"); }
@@ -764,15 +770,28 @@ function renderGrigliaPadel(el, gruppo) {
   const ora = oraLocaleZurigo();
   const oggi = state.data === ora.dataIso;
   const campo = gruppo.campi[0];
-  const bookings = (state.bookingsPerCourt[campo.id] || [])
-    .map(b => ({ start: orarioToMin(b.startTime), end: orarioToMin(b.endTime) }));
+  const bookingsGiorno = state.bookingsPerCourt[campo.id] || [];
+  const bookings = bookingsGiorno.map(b => ({ start: orarioToMin(b.startTime), end: orarioToMin(b.endTime) }));
   const close = padelChiusuraGiorno(state.data);
   const feriale = padelFeriale(state.data);
 
   const starts90 = padelValidStarts(bookings, 90, close, feriale, oggi).filter(s => !(oggi && s <= ora.minuti));
   const starts60 = padelValidStarts(bookings, 60, close, feriale, oggi).filter(s => !(oggi && s <= ora.minuti));
 
-  if (starts90.length === 0 && starts60.length === 0) {
+  // Una proposta Community Padel ancora "in conferma" toglie lo slot dalle
+  // colonne prenotabili (già gestito sopra da padelValidStarts), ma senza
+  // altro segno lo staff vede semplicemente lo slot sparire — indistinguibile
+  // da un bug. Solo per lo staff (stessa privacy già applicata ai nomi via
+  // sessioneStaff), una riga informativa spiega che è provvisorio e quando
+  // si libera da sé, così non prova a "risolvere" un problema inesistente.
+  const holdInConferma = sessioneStaff
+    ? bookingsGiorno
+        .filter(b => b.status === "PENDING_CONFIRMATION")
+        .map(b => ({ start: orarioToMin(b.startTime), scadenzaAt: b.scadenzaAt }))
+        .filter(h => !(oggi && h.start <= ora.minuti))
+    : [];
+
+  if (starts90.length === 0 && starts60.length === 0 && holdInConferma.length === 0) {
     el.innerHTML = `<div class="empty-state"><div class="display">Nessun orario libero</div><p>Prova un altro giorno.</p></div>`;
     return;
   }
@@ -788,10 +807,16 @@ function renderGrigliaPadel(el, gruppo) {
     return prezzo == null ? "" : `<span class="slot-prezzo">${formatoPrezzo(prezzo)}</span>`;
   };
 
-  const righe = [...new Set([...starts90, ...starts60])].sort((a, b) => a - b);
+  const righe = [...new Set([...starts90, ...starts60, ...holdInConferma.map(h => h.start)])].sort((a, b) => a - b);
   let html = `<div class="grid-wrap"><table class="slot-grid"><tr><th></th><th><span class="th-pill th-pill-durata">90 minuti</span></th><th><span class="th-pill th-pill-durata">60 minuti</span></th></tr>`;
   righe.forEach(min => {
     const orario = minutiToOrario(min);
+    const hold = holdInConferma.find(h => h.start === min);
+    if (hold) {
+      const scadenza = hold.scadenzaAt ? ` — libera alle ${formatOra(hold.scadenzaAt)} se non confermata` : "";
+      html += `<tr><td class="time-cell">${orario}</td><td colspan="2"><span class="slot-hold">In conferma (proposta partita)${scadenza}</span></td></tr>`;
+      return;
+    }
     html += `<tr><td class="time-cell">${orario}</td>`;
     html += `<td>${starts90.includes(min) ? `<button type="button" class="slot-btn apri-prenota-btn" data-min="${min}" data-dur="90">${orario}–${minutiToOrario(min + 90)}${prezzoTesto(90, orario)}</button>` : `<span class="slot-empty">—</span>`}</td>`;
     html += `<td>${starts60.includes(min) ? `<button type="button" class="slot-btn dur-60 apri-prenota-btn" data-min="${min}" data-dur="60">${orario}–${minutiToOrario(min + 60)}${prezzoTesto(60, orario)}</button>` : `<span class="slot-empty">—</span>`}</td>`;

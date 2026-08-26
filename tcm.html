@@ -137,6 +137,15 @@
   .slot-btn .slot-prezzo { display: block; font-size: 0.66rem; font-weight: 400; color: var(--chalk-grey); margin-top: 2px; }
   .slot-btn.selected .slot-prezzo { color: var(--court-blue-950); opacity: 0.75; }
   .slot-empty { display: block; padding: 8px 0; text-align: center; color: var(--chalk-grey-dim); font-size: 0.8rem; }
+  /* Riga informativa per lo staff: proposta Community Padel col campo
+     ancora "in conferma" (blocco provvisorio) — stesso oro dello stato
+     "tipo-hold" già usato in tabellone-generale.html, per riconoscerlo a
+     colpo d'occhio come provvisorio e non come una prenotazione vera. */
+  .slot-hold {
+    display: block; padding: 8px 6px; border-radius: var(--radius);
+    background: color-mix(in srgb, #d4b83a 22%, var(--court-blue-900));
+    color: var(--chalk-grey); font-family: 'Oswald', sans-serif; font-size: 0.78rem; font-weight: 500;
+  }
   /* Nome di chi ha prenotato (pseudonimo per un socio, nome vero per lo
      staff, vedi caricaNomiOccupati in prenota-campo-v2.js) — table-layout:
      fixed qui sopra mantiene tutte le colonne della griglia della stessa
