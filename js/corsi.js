@@ -897,6 +897,123 @@ async function aggiornaContatoriDopoModifica(corsoId) {
   if (hasPermission(currentProfile, "iscrizioni:gestisci") || hasPermission(currentProfile, "iscrizioni:gestisci_padel")) aggiornaRiepiloghi();
 }
 
+// ---------- Ricerca allievo su tutti i corsi ----------
+
+// Stessa cache di confermati/in attesa già caricata per i riepiloghi
+// (nessuna lettura extra a Firestore) — annullate escluse, non sono più
+// iscrizioni "attive" da poter spostare. Stesso filtro disciplina dei
+// riepiloghi/panoramiche: un profilo con solo iscrizioni:gestisci_padel
+// non deve vedere né poter spostare allievi di altre discipline.
+function iscrizioniRicercabili() {
+  const discipline = disciplineIscrizioniVisibili(currentProfile);
+  return [...iscrizioniConfermateCache, ...iscrizioniInAttesaCache]
+    .map(i => ({ ...i, corso: corsiCache.find(c => c.id === i.corsoId) }))
+    .filter(i => i.corso && (!discipline || discipline.includes(i.corso.disciplina)));
+}
+
+function renderRicercaAllievi() {
+  const query = document.getElementById("cerca-allievo-input").value.trim().toLowerCase();
+  const risultatiEl = document.getElementById("cerca-allievo-risultati");
+  if (!query) {
+    risultatiEl.innerHTML = "";
+    return;
+  }
+
+  const statoLabel = { in_attesa: "In attesa", confermata: "Confermata" };
+  const statoStyle = {
+    in_attesa: "border-color:var(--chalk-grey-dim);color:var(--chalk-grey);",
+    confermata: "border-color:#7f9e4a;color:#c1e08f;"
+  };
+
+  const risultati = iscrizioniRicercabili()
+    .filter(i => `${i.nome} ${i.cognome}`.toLowerCase().includes(query))
+    .sort((a, b) => (a.cognome || "").localeCompare(b.cognome || "", "it", { sensitivity: "base" })
+      || (a.nome || "").localeCompare(b.nome || "", "it", { sensitivity: "base" }));
+
+  if (risultati.length === 0) {
+    risultatiEl.innerHTML = `<div class="empty-state"><div class="display">Nessun allievo trovato</div></div>`;
+    return;
+  }
+
+  const puoSpostare = hasPermission(currentProfile, "iscrizioni:gestisci") || hasPermission(currentProfile, "iscrizioni:gestisci_padel");
+  const discipline = disciplineIscrizioniVisibili(currentProfile);
+  const corsiDestinazionePossibili = corsiCache.filter(c => c.approvato && (!discipline || discipline.includes(c.disciplina)));
+
+  risultatiEl.innerHTML = risultati.map(i => {
+    const altriCorsi = corsiDestinazionePossibili.filter(c => c.id !== i.corsoId);
+    const opzioniCorsi = altriCorsi.map(c => `<option value="${c.id}">${escapeHtml(c.nome)}</option>`).join("");
+    return `
+      <div class="entry-card">
+        <div class="entry-main">
+          <span class="badge" style="${statoStyle[i.stato] || statoStyle.in_attesa}">${statoLabel[i.stato] || i.stato}</span>
+          <div class="entry-tipo">${escapeHtml(i.cognome)} ${escapeHtml(i.nome)}</div>
+          <div class="entry-meta">${escapeHtml(i.corso.nome)} · ${escapeHtml(disciplinaLabel(i.corso.disciplina))}</div>
+        </div>
+        ${puoSpostare && altriCorsi.length > 0 ? `
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <select class="sposta-corso-select" data-id="${i.id}" style="font-size:0.72rem;padding:6px 8px;">
+              <option value="">Sposta al corso…</option>
+              ${opzioniCorsi}
+            </select>
+            <button type="button" class="btn btn-ghost sposta-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}" data-corso-attuale="${i.corsoId}" data-nome="${escapeHtml(i.nome + " " + i.cognome)}">Sposta</button>
+          </div>
+        ` : ""}
+      </div>
+    `;
+  }).join("");
+
+  risultatiEl.querySelectorAll(".sposta-corso-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const select = risultatiEl.querySelector(`.sposta-corso-select[data-id="${btn.dataset.id}"]`);
+      const nuovoCorsoId = select.value;
+      if (!nuovoCorsoId) { alert("Scegli il corso di destinazione."); return; }
+      spostaCorsoIscrizione(btn.dataset.id, btn.dataset.corsoAttuale, nuovoCorsoId, btn.dataset.nome);
+    });
+  });
+}
+
+// Sposta un'iscrizione su un altro corso in caso di iscrizione errata:
+// l'allievo torna in attesa nel nuovo corso (l'eventuale slot/campo
+// assegnato nel corso di provenienza non ha senso nel nuovo corso, così
+// come il semaforo di valutazione). La carta eventualmente salvata resta
+// valida: non è cambiata la persona, solo il corso a cui è iscritta.
+// Due righe di log (una per corso) così lo Storico di entrambi resta
+// autosufficiente per ricostruire cos'è successo.
+async function spostaCorsoIscrizione(iscrizioneId, corsoAttualeId, nuovoCorsoId, nome) {
+  const corsoAttuale = corsiCache.find(c => c.id === corsoAttualeId);
+  const nuovoCorso = corsiCache.find(c => c.id === nuovoCorsoId);
+  if (!nuovoCorso) return;
+  if (!confirm(`Spostare ${nome} dal corso "${corsoAttuale?.nome || "—"}" al corso "${nuovoCorso.nome}"? Verrà rimesso in attesa nel nuovo corso.`)) return;
+
+  try {
+    await db.collection("iscrizioniCorsi").doc(iscrizioneId).update({
+      corsoId: nuovoCorsoId,
+      stato: "in_attesa",
+      giornoAssegnato: null,
+      orarioAssegnato: null,
+      campoAssegnato: null,
+      semaforo: null,
+      semaforoGiorno: null,
+      semaforoOrario: null,
+      motivoRifiuto: null,
+      gestitaDaUid: currentProfile.uid,
+      gestitaDaNome: currentProfile.nome
+    });
+    await registraLog(iscrizioneId, corsoAttualeId, nome, "spostato", `Spostato al corso "${nuovoCorso.nome}", rimesso in attesa`);
+    await registraLog(iscrizioneId, nuovoCorsoId, nome, "spostato", `Spostato dal corso "${corsoAttuale?.nome || "—"}", rimesso in attesa`);
+
+    await aggiornaContatoriDopoModifica(corsoAttualeId);
+    await aggiornaContatoriDopoModifica(nuovoCorsoId);
+    await ricaricaIscrizioniCorso(corsoAttualeId);
+    await ricaricaIscrizioniCorso(nuovoCorsoId);
+    await ricaricaPanoramicaSeAperta(corsoAttualeId);
+    await ricaricaPanoramicaSeAperta(nuovoCorsoId);
+    renderRicercaAllievi();
+  } catch (err) {
+    showError(document.getElementById("corsi-list-error"), "Errore: " + err.message);
+  }
+}
+
 // Raggruppa le iscrizioni confermate per corso+giorno+orario assegnati, poi
 // tiene solo i gruppi la cui data generata (dal + giorno della settimana,
 // ripetuto per nrSessioni volte) include dataIso.
@@ -1082,7 +1199,8 @@ const AZIONE_LABEL = {
   semaforo: "Semaforo impostato",
   semaforo_rimosso: "Semaforo tolto",
   confermato: "Confermato",
-  rifiutato: "Rifiutato"
+  rifiutato: "Rifiutato",
+  spostato: "Spostato corso"
 };
 
 async function toggleStoricoCorso(corsoId) {
@@ -1286,6 +1404,9 @@ requireAuth(async (profile) => {
     document.getElementById("stampa-settimanale-btn").addEventListener("click", stampaRiepilogoSettimanale);
     await loadIscrizioniConfermate();
     await loadIscrizioniInAttesa();
+
+    document.getElementById("cerca-allievo-sezione").classList.remove("hidden");
+    document.getElementById("cerca-allievo-input").addEventListener("input", renderRicercaAllievi);
   }
 
   await loadCorsi();
