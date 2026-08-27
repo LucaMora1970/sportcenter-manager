@@ -310,6 +310,24 @@ main {
   white-space: nowrap;
 }
 
+/* Righe risultato di "Cerca allievo" (Corsi): il <select> di destinazione
+   contiene nomi di corso di lunghezza variabile, che possono essere più
+   larghi dello spazio rimasto accanto al nome su mobile — .entry-card di
+   base è nowrap e lì si sovrappongono. Stesso approccio di
+   .team-card-row: niente breakpoint, solo flex-wrap + flex-basis, così
+   l'azione va sotto da sola quando non c'entra in riga. */
+.cerca-allievo-card { flex-wrap: wrap; }
+.cerca-allievo-card .entry-main { flex-basis: 200px; }
+.cerca-allievo-card .cerca-allievo-azioni {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1 1 180px;
+  min-width: 180px;
+}
+.cerca-allievo-card .cerca-allievo-azioni select,
+.cerca-allievo-card .cerca-allievo-azioni button { width: 100%; }
+
 .badge {
   display: inline-block;
   font-size: 0.65rem;

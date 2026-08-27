@@ -943,19 +943,19 @@ function renderRicercaAllievi() {
     const altriCorsi = corsiDestinazionePossibili.filter(c => c.id !== i.corsoId);
     const opzioniCorsi = altriCorsi.map(c => `<option value="${c.id}">${escapeHtml(c.nome)}</option>`).join("");
     return `
-      <div class="entry-card">
+      <div class="entry-card cerca-allievo-card">
         <div class="entry-main">
           <span class="badge" style="${statoStyle[i.stato] || statoStyle.in_attesa}">${statoLabel[i.stato] || i.stato}</span>
           <div class="entry-tipo">${escapeHtml(i.cognome)} ${escapeHtml(i.nome)}</div>
           <div class="entry-meta">${escapeHtml(i.corso.nome)} · ${escapeHtml(disciplinaLabel(i.corso.disciplina))}</div>
         </div>
         ${puoSpostare && altriCorsi.length > 0 ? `
-          <div style="display:flex;flex-direction:column;gap:6px;">
+          <div class="cerca-allievo-azioni">
             <select class="sposta-corso-select" data-id="${i.id}" style="font-size:0.72rem;padding:6px 8px;">
               <option value="">Sposta al corso…</option>
               ${opzioniCorsi}
             </select>
-            <button type="button" class="btn btn-ghost sposta-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}" data-corso-attuale="${i.corsoId}" data-nome="${escapeHtml(i.nome + " " + i.cognome)}">Sposta</button>
+            <button type="button" class="btn btn-ghost sposta-corso-btn" style="padding:8px 12px;font-size:0.7rem;" data-id="${i.id}" data-corso-attuale="${i.corsoId}" data-nome="${escapeHtml(i.nome + " " + i.cognome)}">Sposta</button>
           </div>
         ` : ""}
       </div>
