@@ -947,7 +947,7 @@ function renderRicercaAllievi() {
         <div class="entry-main">
           <span class="badge" style="${statoStyle[i.stato] || statoStyle.in_attesa}">${statoLabel[i.stato] || i.stato}</span>
           <div class="entry-tipo">${escapeHtml(i.cognome)} ${escapeHtml(i.nome)}</div>
-          <div class="entry-meta">${escapeHtml(i.corso.nome)} · ${escapeHtml(disciplinaLabel(i.corso.disciplina))}</div>
+          <div class="entry-meta">${escapeHtml(i.corso.nome)} · ${escapeHtml(disciplinaLabel(i.corso.disciplina))}${i.nrOreDesiderate ? " · " + i.nrOreDesiderate + "h/sett." : ""}</div>
         </div>
         ${puoSpostare && altriCorsi.length > 0 ? `
           <div class="cerca-allievo-azioni">
