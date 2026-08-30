@@ -102,6 +102,11 @@
       <div class="section-title" id="corso-form-title"><h2>Nuovo corso</h2></div>
       <form id="corso-form">
 
+        <div class="checkbox-row" style="margin-bottom:16px;">
+          <input type="checkbox" id="corso-forfettario">
+          <label for="corso-forfettario">Corso personalizzato forfettario — dettagli liberi, senza giorni/orari/sessioni: si compilano solo nome, disciplina, date, descrizione, prezzo e condizioni</label>
+        </div>
+
         <div class="field">
           <label for="corso-nome">Nome corso</label>
           <input type="text" id="corso-nome" required placeholder="es. Scuola tennis junior">
@@ -128,7 +133,7 @@
           </div>
         </div>
 
-        <div class="row2">
+        <div class="row2" id="corso-row-sessioni">
           <div class="field">
             <label for="corso-nrsessioni">Nr. sessioni</label>
             <input type="number" id="corso-nrsessioni" min="1" step="1" required placeholder="es. 10">
@@ -139,18 +144,18 @@
           </div>
         </div>
 
-        <div class="field">
+        <div class="field" id="corso-field-giorniorari">
           <label>Giorni e orari proposti</label>
           <p style="color:var(--chalk-grey);font-size:0.78rem;margin:-2px 0 8px;">Ogni giorno ha la sua disponibilità — scegli per ciascuno solo gli orari realmente proponibili (stessi orari prenotabili usati in Diario). Un giorno senza orari selezionati non fa parte della proposta.</p>
           <div id="corso-giorni-orari"></div>
         </div>
 
-        <div class="field">
+        <div class="field" id="corso-field-campi">
           <label>Campi proposti</label>
           <div class="checkbox-list" id="corso-campi-list"></div>
         </div>
 
-        <div class="row2">
+        <div class="row2" id="corso-row-eta">
           <div class="field">
             <label for="corso-eta-min">Età di ammissione — da</label>
             <input type="number" id="corso-eta-min" min="0" step="1" placeholder="es. 6">
@@ -161,7 +166,7 @@
           </div>
         </div>
 
-        <div class="row2">
+        <div class="row2" id="corso-row-iscritti">
           <div class="field">
             <label for="corso-max-iscritti">Max iscritti a sessione</label>
             <input type="number" id="corso-max-iscritti" min="1" step="1" placeholder="es. 8">
@@ -193,11 +198,11 @@
           <textarea id="corso-condizioni" rows="3" placeholder="Termini e condizioni comunicati agli iscritti"></textarea>
         </div>
 
-        <p class="row-label" style="margin: -8px 0 16px;">Il calendario reale delle sessioni si genera dopo, quando dagli iscritti risulta chiaro quale combinazione di giorno/orario/campo attivare.</p>
+        <p class="row-label" id="corso-nota-calendario" style="margin: -8px 0 16px;">Il calendario reale delle sessioni si genera dopo, quando dagli iscritti risulta chiaro quale combinazione di giorno/orario/campo attivare.</p>
 
-        <hr class="court-divider">
+        <hr class="court-divider" id="corso-hr-istruttori">
 
-        <div class="field">
+        <div class="field" id="corso-field-livelli">
           <label>Livello istruttori richiesto</label>
           <div class="checkbox-list">
             <div class="checkbox-row">
@@ -215,7 +220,7 @@
           </div>
         </div>
 
-        <div class="row2">
+        <div class="row2" id="corso-row-costi1">
           <div class="field">
             <label for="corso-costo-istruttore">Costo istruttori/ora (CHF)</label>
             <input type="number" id="corso-costo-istruttore" min="0" step="0.5">
@@ -227,7 +232,7 @@
         </div>
 
         <div class="row2">
-          <div class="field">
+          <div class="field" id="corso-field-materiale">
             <label for="corso-costo-materiale">Costo materiale totale (CHF)</label>
             <input type="number" id="corso-costo-materiale" min="0" step="0.5" placeholder="es. palline">
           </div>
@@ -237,7 +242,7 @@
           </div>
         </div>
 
-        <div class="scoreboard" style="margin: 6px 0 18px;">
+        <div class="scoreboard" id="corso-scoreboard-costo" style="margin: 6px 0 18px;">
           <div>
             <div class="label">Costo minimo a persona</div>
             <div class="value" id="corso-costo-calcolato" style="font-size:1.5rem;">CHF —</div>

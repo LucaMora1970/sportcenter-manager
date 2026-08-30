@@ -104,7 +104,7 @@ function renderCorsiAperti() {
       <div class="entry-main">
         <span class="badge ${c.disciplina}">${escapeHtml(disciplinaLabel(c.disciplina))}</span>
         <div class="entry-tipo">${escapeHtml(c.nome)}</div>
-        <div class="entry-meta">${formatDataBreve(c.dal)}${c.al ? " – " + formatDataBreve(c.al) : ""} · ${c.nrSessioni || "—"} sessioni · CHF ${(c.prezzoRichiesto || 0).toFixed(2)}</div>
+        <div class="entry-meta">${formatDataBreve(c.dal)}${c.al ? " – " + formatDataBreve(c.al) : ""} · ${c.forfettario ? "Forfait" : (c.nrSessioni || "—") + " sessioni"} · CHF ${(c.prezzoRichiesto || 0).toFixed(2)}</div>
         ${c.terminIscrizione ? `<div class="entry-meta">Iscrizioni entro il ${formatDataBreve(c.terminIscrizione)}</div>` : ""}
       </div>
       <button type="button" class="btn btn-primary seleziona-corso-btn" style="width:auto;padding:10px 16px;font-size:0.75rem;" data-id="${c.id}">Iscriviti</button>
@@ -121,6 +121,19 @@ function selezionaCorso(corso) {
 
   document.getElementById("corso-scelto-nome").textContent = corso.nome;
   document.getElementById("corso-scelto-descrizione").textContent = corso.descrizione || "";
+
+  // Corso forfettario: nessun giorno/orario/ore da scegliere, l'iscrizione
+  // è secca (nome, dati anagrafici, condizioni, eventuale carta).
+  document.getElementById("isc-field-nrore").classList.toggle("hidden", corso.forfettario === true);
+  document.getElementById("isc-field-disponibilita").classList.toggle("hidden", corso.forfettario === true);
+
+  // Condizioni generali: mostrate (e da accettare) su qualunque corso che
+  // ne abbia — prima non comparivano da nessuna parte lato pubblico.
+  const condBox = document.getElementById("isc-condizioni-box");
+  const hasCondizioni = !!(corso.condizioniGenerali && corso.condizioniGenerali.trim());
+  condBox.classList.toggle("hidden", !hasCondizioni);
+  document.getElementById("isc-condizioni-testo").textContent = corso.condizioniGenerali || "";
+  document.getElementById("isc-accetto-condizioni").checked = false;
 
   const disponibilitaEl = document.getElementById("isc-disponibilita-list");
   const giorniConOrari = GIORNI_SETTIMANA.filter(g => (corso.giorniOrari || {})[g.id]?.length > 0);
@@ -161,15 +174,27 @@ async function onSubmitIscrizione(e) {
   btn.disabled = true;
   btn.textContent = "Invio…";
 
-  try {
-    const disponibilita = {};
-    document.querySelectorAll(".isc-disponibilita-cb:checked").forEach(cb => {
-      const g = cb.dataset.giorno;
-      if (!disponibilita[g]) disponibilita[g] = [];
-      disponibilita[g].push(cb.value);
-    });
+  const hasCondizioni = !!(corsoSelezionato.condizioniGenerali && corsoSelezionato.condizioniGenerali.trim());
+  if (hasCondizioni && !document.getElementById("isc-accetto-condizioni").checked) {
+    showError(errorEl, "Devi accettare le condizioni generali per procedere.");
+    btn.disabled = false;
+    btn.textContent = "Invia iscrizione";
+    return;
+  }
 
-    const nrOreRaw = document.getElementById("isc-nrore").value;
+  try {
+    const forfettario = corsoSelezionato.forfettario === true;
+
+    const disponibilita = {};
+    if (!forfettario) {
+      document.querySelectorAll(".isc-disponibilita-cb:checked").forEach(cb => {
+        const g = cb.dataset.giorno;
+        if (!disponibilita[g]) disponibilita[g] = [];
+        disponibilita[g].push(cb.value);
+      });
+    }
+
+    const nrOreRaw = forfettario ? "" : document.getElementById("isc-nrore").value;
 
     const iscrizioneRef = await db.collection("iscrizioniCorsi").add({
       corsoId: corsoSelezionato.id,
@@ -191,6 +216,10 @@ async function onSubmitIscrizione(e) {
       disponibilita,
       stato: "in_attesa",
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      ...(hasCondizioni ? {
+        condizioniAccettate: true,
+        condizioniTestoAccettato: corsoSelezionato.condizioniGenerali
+      } : {}),
       ...(staffProfile ? { inseritaDaStaff: true, inseritaDaUid: staffProfile.uid, inseritaDaNome: staffProfile.nome } : {})
     });
 
@@ -198,14 +227,15 @@ async function onSubmitIscrizione(e) {
     document.getElementById("step-fatto").classList.remove("hidden");
     document.getElementById("step-fatto").scrollIntoView({ behavior: "smooth", block: "start" });
 
-    // Il salvataggio carta ha senso solo per corsi con una soglia minima
-    // di iscritti configurata — è il caso a cui serve l'addebito
-    // automatico differito, unico scenario in cui non si conosce ancora
-    // se/quando il corso partirà davvero. tokenizzazioneAttiva permette
-    // allo staff di disattivarlo comunque per corsi specifici (Corsi,
-    // checkbox "Offri il salvataggio carta"); assente sui corsi creati
-    // prima di questa opzione, che restano quindi invariati (!== false).
-    if (corsoSelezionato.minIscrittiConferma && corsoSelezionato.tokenizzazioneAttiva !== false) {
+    // Il salvataggio carta ha senso quando non si conosce ancora se/quando
+    // il pagamento andrà a buon fine al momento dell'iscrizione: corsi con
+    // una soglia minima di iscritti (il corso potrebbe non partire) e corsi
+    // forfettari (l'iscrizione resta "in attesa" finché lo staff non la
+    // conferma). tokenizzazioneAttiva permette allo staff di disattivarlo
+    // comunque per corsi specifici (Corsi, checkbox "Offri il salvataggio
+    // carta"); assente sui corsi creati prima di questa opzione, che
+    // restano quindi invariati (!== false).
+    if ((corsoSelezionato.minIscrittiConferma || corsoSelezionato.forfettario) && corsoSelezionato.tokenizzazioneAttiva !== false) {
       document.getElementById("step-carta").classList.remove("hidden");
       document.getElementById("salva-carta-btn").addEventListener("click", () => avviaSalvataggioCarta(iscrizioneRef.id));
     }

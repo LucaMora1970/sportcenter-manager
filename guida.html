@@ -522,9 +522,15 @@
       </div>
 
       <div class="voce">
+        <span class="dove">Corsi → creazione → toggle "Corso personalizzato forfettario"</span>
+        <div class="cosa">Corso a dettagli liberi, senza calendario</div>
+        <div class="come">Attivando il toggle il form si riduce a nome, disciplina, date (dal/al), descrizione, prezzo, condizioni generali e all'opzione "Offri il salvataggio carta". Spariscono giorni/orari, campi, nr. sessioni/durata, età, soglie min/max iscritti e calcolo costi. Nel modulo pubblico l'iscritto non sceglie giorni/orari né ore desiderate: compila i dati, accetta le condizioni ed eventualmente salva la carta. Lo staff conferma le iscrizioni una per una (nessuno slot da assegnare) — se la carta è stata salvata, alla conferma parte l'addebito automatico dell'importo pieno.</div>
+      </div>
+
+      <div class="voce">
         <span class="dove"><code>iscrizione-corso.html</code> — pagina pubblica, nessun login</span>
         <div class="cosa">Modulo di iscrizione</div>
-        <div class="come">Mostra solo i corsi approvati con termine iscrizione non scaduto. Ogni iscrizione parte "in attesa" — la conferma con assegnazione di giorno/orario è manuale, dal permesso <code>iscrizioni:gestisci</code>.</div>
+        <div class="come">Mostra solo i corsi approvati con termine iscrizione non scaduto. Ogni iscrizione parte "in attesa" — per i corsi normali la conferma con assegnazione di giorno/orario è manuale (permesso <code>iscrizioni:gestisci</code>), per i corsi forfettari è una conferma secca. Se il corso ha delle condizioni generali, ora vengono mostrate nel modulo e l'iscritto deve spuntare "Ho letto e accetto le condizioni generali" (l'accettazione e il testo accettato restano salvati sull'iscrizione).</div>
       </div>
 
     </div>

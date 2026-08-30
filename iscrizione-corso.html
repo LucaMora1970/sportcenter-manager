@@ -123,15 +123,24 @@
           </div>
         </div>
 
-        <div class="field">
+        <div class="field" id="isc-field-nrore">
           <label for="isc-nrore">Nr. ore di corso desiderate (a settimana)</label>
           <input type="number" id="isc-nrore" min="0" step="0.5">
         </div>
 
-        <div class="field">
+        <div class="field" id="isc-field-disponibilita">
           <label>Giorni e orari disponibili</label>
           <p style="color:var(--chalk-grey);font-size:0.78rem;margin:-2px 0 8px;">Seleziona tra le combinazioni proposte da questo corso quelle che ti vanno bene — più ne selezioni, più è probabile trovare un gruppo compatibile.</p>
           <div id="isc-disponibilita-list"></div>
+        </div>
+
+        <div class="field hidden" id="isc-condizioni-box">
+          <label>Condizioni generali</label>
+          <p id="isc-condizioni-testo" style="white-space:pre-wrap;color:var(--chalk-grey);font-size:0.82rem;background:var(--court-blue-700);padding:12px;border-radius:6px;margin:-2px 0 10px;"></p>
+          <div class="checkbox-row">
+            <input type="checkbox" id="isc-accetto-condizioni">
+            <label for="isc-accetto-condizioni">Ho letto e accetto le condizioni generali</label>
+          </div>
         </div>
 
         <div class="error-msg" id="iscrizione-form-error"></div>

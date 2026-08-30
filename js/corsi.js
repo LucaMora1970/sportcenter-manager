@@ -82,6 +82,31 @@ function syncOrariCampiDisciplina() {
     : `<p style="color:var(--chalk-grey);font-size:0.82rem;">Nessun campo configurato per questa disciplina.</p>`;
 }
 
+// ---------- Corso personalizzato forfettario ----------
+
+// Wrapper dei campi che non hanno senso per un corso forfettario (dettagli
+// liberi, senza giorni/orari/sessioni/soglie): vengono nascosti nel form e
+// salvati a null/{}/[] in leggiFormCorso().
+const CAMPI_NON_FORFETTARIO = [
+  "corso-row-sessioni", "corso-field-giorniorari", "corso-field-campi",
+  "corso-row-eta", "corso-row-iscritti", "corso-nota-calendario",
+  "corso-hr-istruttori", "corso-field-livelli", "corso-row-costi1",
+  "corso-field-materiale", "corso-scoreboard-costo"
+];
+
+function syncForfettario() {
+  const forfettario = document.getElementById("corso-forfettario").checked;
+  CAMPI_NON_FORFETTARIO.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle("hidden", forfettario);
+  });
+  // I campi nascosti con l'attributo required bloccherebbero il submit
+  // ("invalid form control is not focusable") pur non essendo visibili.
+  ["corso-nrsessioni", "corso-durata", "corso-min-iscritti"].forEach(id => {
+    document.getElementById(id).required = !forfettario;
+  });
+}
+
 // ---------- Lettura form ----------
 
 function leggiFormCorso() {
@@ -103,12 +128,15 @@ function leggiFormCorso() {
     return raw !== "" ? parseFloat(raw) : null;
   };
 
-  return {
+  const forfettario = document.getElementById("corso-forfettario").checked;
+
+  const form = {
     nome: document.getElementById("corso-nome").value.trim(),
     descrizione: document.getElementById("corso-descrizione").value.trim(),
     disciplina: document.getElementById("corso-disciplina").value,
     dal: document.getElementById("corso-dal").value,
     al: document.getElementById("corso-al").value || null,
+    forfettario,
     nrSessioni: num("corso-nrsessioni"),
     durataSessioneMinuti: num("corso-durata"),
     giorniOrari,
@@ -127,13 +155,33 @@ function leggiFormCorso() {
     costoMateriale: num("corso-costo-materiale"),
     prezzoRichiesto: num("corso-prezzo-richiesto")
   };
+
+  // Corso forfettario: i campi di calendario/soglie/costi non fanno parte
+  // della proposta — vengono azzerati a prescindere da eventuali valori
+  // residui nei campi nascosti (es. dopo aver spuntato il toggle).
+  if (forfettario) {
+    Object.assign(form, {
+      nrSessioni: null, durataSessioneMinuti: null,
+      giorniOrari: {}, campiNumeri: [],
+      etaMin: null, etaMax: null,
+      maxIscrittiPerSessione: null, minIscrittiConferma: null,
+      livelloIstruttori: [],
+      costoIstruttoreOra: null, costoCampoOrganizzazioneOra: null, costoMateriale: null
+    });
+  }
+
+  return form;
 }
 
 // ---------- Costo per partecipante, aggiornato dal vivo ----------
 
 function aggiornaCostoCalcolato() {
-  const form = leggiFormCorso();
   const costoEl = document.getElementById("corso-costo-calcolato");
+  if (document.getElementById("corso-forfettario").checked) {
+    costoEl.textContent = "CHF —";
+    return;
+  }
+  const form = leggiFormCorso();
   const costo = calcolaCostoPerPartecipante(form);
   costoEl.textContent = costo != null
     ? `CHF ${costo.toFixed(2)} (÷ ${form.minIscrittiConferma} iscritti)`
@@ -176,9 +224,11 @@ function corsoCardHtml(c, { puoGestire, puoVedereIscrizioni, puoApprovare }) {
           <div class="entry-tipo">${escapeHtml(c.nome)}</div>
           ${puoVedereIscrizioni && c.approvato ? contatoreIscrittiHtml(c) : ""}
           ${terminIscrizioneHtml(c)}
-          <div class="entry-meta">${formatDataBreve(c.dal)}${c.al ? " – " + formatDataBreve(c.al) : ""} · ${c.nrSessioni || "—"} sessioni da ${c.durataSessioneMinuti || "—"}' · campi: ${campiLabel}</div>
+          ${c.forfettario
+            ? `<div class="entry-meta">${formatDataBreve(c.dal)}${c.al ? " – " + formatDataBreve(c.al) : ""} · Forfait · CHF ${(c.prezzoRichiesto || 0).toFixed(2)}</div>`
+            : `<div class="entry-meta">${formatDataBreve(c.dal)}${c.al ? " – " + formatDataBreve(c.al) : ""} · ${c.nrSessioni || "—"} sessioni da ${c.durataSessioneMinuti || "—"}' · campi: ${campiLabel}</div>
           <div class="entry-meta giorni-toggle" data-id="${c.id}">+ Giorni e orari proposti</div>
-          <div class="hidden" id="giorni-dettaglio-${c.id}">${giorniOrariRighe}</div>
+          <div class="hidden" id="giorni-dettaglio-${c.id}">${giorniOrariRighe}</div>`}
           <div class="entry-meta">Creato da ${escapeHtml(c.creatoDaNome || "—")}${c.approvato ? " · approvato da " + escapeHtml(c.approvatoDaNome || "—") : ""}</div>
         </div>
         <div style="display:flex;flex-direction:column;gap:6px;">
@@ -187,14 +237,14 @@ function corsoCardHtml(c, { puoGestire, puoVedereIscrizioni, puoApprovare }) {
           ${puoVedereIscrizioni && c.approvato ? `<button class="btn btn-primary iscrivi-allievo-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Iscrivi un allievo</button>` : ""}
           ${c.approvato ? `<button class="btn btn-ghost link-diretto-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Copia link diretto</button>` : ""}
           ${puoVedereIscrizioni && c.approvato ? `<button class="btn btn-ghost iscrizioni-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Iscrizioni</button>` : ""}
-          ${puoVedereIscrizioni && c.approvato ? `<button class="btn btn-ghost panoramica-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Panoramica</button>` : ""}
+          ${puoVedereIscrizioni && c.approvato && !c.forfettario ? `<button class="btn btn-ghost panoramica-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Panoramica</button>` : ""}
           ${puoVedereIscrizioni && c.approvato ? `<button class="btn btn-ghost stampa-lista-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Stampa / PDF</button>` : ""}
           ${puoVedereIscrizioni && c.approvato ? `<button class="btn btn-ghost storico-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Storico</button>` : ""}
           ${puoGestire ? `<button class="btn btn-danger delete-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Elimina</button>` : ""}
         </div>
       </div>
       ${puoVedereIscrizioni && c.approvato ? `<div class="dettaglio-giorni hidden" id="iscrizioni-${c.id}"></div>` : ""}
-      ${puoVedereIscrizioni && c.approvato ? `<div class="dettaglio-giorni hidden" id="panoramica-${c.id}"></div>` : ""}
+      ${puoVedereIscrizioni && c.approvato && !c.forfettario ? `<div class="dettaglio-giorni hidden" id="panoramica-${c.id}"></div>` : ""}
       ${puoVedereIscrizioni && c.approvato ? `<div class="dettaglio-giorni hidden" id="storico-${c.id}"></div>` : ""}
     </div>
   `;
@@ -706,7 +756,8 @@ function renderIscrizioniCorso(container, corso, iscrizioni) {
     const disponibileSet = new Set(Object.entries(i.disponibilita || {}).flatMap(([g, orari]) => orari.map(o => `${g}|${o}`)));
 
     const piuCampi = (corso.campiNumeri || []).length > 1;
-    const selectSlot = i.stato === "in_attesa" ? `
+    // Corso forfettario: niente slot da assegnare, la conferma è secca.
+    const selectSlot = (i.stato === "in_attesa" && !corso.forfettario) ? `
       <select class="assegna-slot-select" data-id="${i.id}" style="font-size:0.72rem;padding:6px 8px;">
         ${combinazioni.map(c => `<option value="${c.giorno}|${c.orario}">${c.giornoLabel} ${c.orario}${disponibileSet.has(`${c.giorno}|${c.orario}`) ? " ✓" : ""}</option>`).join("")}
       </select>
@@ -728,7 +779,7 @@ function renderIscrizioniCorso(container, corso, iscrizioni) {
         </div>
         <div style="display:flex;flex-direction:column;gap:6px;">
           ${selectSlot}
-          ${i.stato === "in_attesa" ? `<button class="btn btn-primary conferma-iscrizione-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}" data-corso="${corso.id}" data-nome="${escapeHtml(i.nome + " " + i.cognome)}" data-email="${escapeHtml(i.email || "")}">Conferma in questo slot</button>` : ""}
+          ${i.stato === "in_attesa" ? `<button class="btn btn-primary conferma-iscrizione-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}" data-corso="${corso.id}" data-nome="${escapeHtml(i.nome + " " + i.cognome)}" data-email="${escapeHtml(i.email || "")}">${corso.forfettario ? "Conferma iscrizione" : "Conferma in questo slot"}</button>` : ""}
           ${i.stato === "in_attesa" ? `<button class="btn btn-danger annulla-iscrizione-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}" data-corso="${corso.id}" data-nome="${escapeHtml(i.nome + " " + i.cognome)}" data-email="${escapeHtml(i.email || "")}">Rifiuta</button>` : ""}
         </div>
       </div>
@@ -738,7 +789,7 @@ function renderIscrizioniCorso(container, corso, iscrizioni) {
   container.querySelectorAll(".conferma-iscrizione-btn").forEach(btn => {
     btn.addEventListener("click", () => {
       const select = container.querySelector(`.assegna-slot-select[data-id="${btn.dataset.id}"]`);
-      const [giorno, orario] = select.value.split("|");
+      const [giorno, orario] = select ? select.value.split("|") : [null, null];
       const campoSelect = container.querySelector(`.assegna-campo-select[data-id="${btn.dataset.id}"]`);
       const campo = campoSelect ? campoSelect.value : ((corso.campiNumeri || []).length === 1 ? corso.campiNumeri[0] : null);
       confermaIscrizione(btn.dataset.id, btn.dataset.corso, giorno, orario, btn.dataset.nome, campo, btn.dataset.email);
@@ -771,18 +822,20 @@ function apriEmailCcn(emails, oggetto, corpo) {
 async function confermaIscrizione(iscrizioneId, corsoId, giorno, orario, nome, campo, email) {
   const corso = corsiCache.find(c => c.id === corsoId);
   const giornoLabel = (GIORNI_SETTIMANA.find(g => g.id === giorno) || {}).label || giorno;
+  const forfettario = corso?.forfettario === true;
   const iscrizioneCache = iscrizioniInAttesaCache.find(i => i.id === iscrizioneId);
   try {
     await db.collection("iscrizioniCorsi").doc(iscrizioneId).update({
       stato: "confermata",
-      giornoAssegnato: giorno,
-      orarioAssegnato: orario,
+      giornoAssegnato: giorno || null,
+      orarioAssegnato: orario || null,
       campoAssegnato: campo || null,
       motivoRifiuto: null,
       gestitaDaUid: currentProfile.uid,
       gestitaDaNome: currentProfile.nome
     });
-    await registraLog(iscrizioneId, corsoId, nome, "confermato", `Confermato su ${giornoLabel} ${orario}${campo ? " Campo " + campo : ""}`);
+    await registraLog(iscrizioneId, corsoId, nome, "confermato",
+      forfettario ? "Confermato (corso forfettario)" : `Confermato su ${giornoLabel} ${orario}${campo ? " Campo " + campo : ""}`);
     addebitaIscrittiConCartaSalvata([{ id: iscrizioneId, tokenStato: iscrizioneCache?.tokenStato }]);
     await ricaricaIscrizioniCorso(corsoId);
     await ricaricaPanoramicaSeAperta(corsoId);
@@ -790,7 +843,9 @@ async function confermaIscrizione(iscrizioneId, corsoId, giorno, orario, nome, c
 
     if (email && confirm(`Aprire l'email di conferma per ${nome}?`)) {
       apriEmailA(email, `Conferma iscrizione corso — ${corso?.nome || ""}`,
-        `Gentile ${nome},\n\nSiamo lieti di confermarti nel corso "${corso?.nome || ""}":\n\nGiorno: ${giornoLabel}\nOrario: ${orario}${campo ? "\nCampo: " + campo : ""}\n\nA presto!`);
+        forfettario
+          ? `Gentile ${nome},\n\nSiamo lieti di confermarti nel corso "${corso?.nome || ""}".\n\nA presto!`
+          : `Gentile ${nome},\n\nSiamo lieti di confermarti nel corso "${corso?.nome || ""}":\n\nGiorno: ${giornoLabel}\nOrario: ${orario}${campo ? "\nCampo: " + campo : ""}\n\nA presto!`);
     }
   } catch (err) {
     showError(document.getElementById("corsi-list-error"), "Errore: " + err.message);
@@ -1244,6 +1299,9 @@ function startEditCorso(corso) {
   if (!corso) return;
   editingCorsoId = corso.id;
 
+  document.getElementById("corso-forfettario").checked = corso.forfettario === true;
+  syncForfettario();
+
   document.getElementById("corso-nome").value = corso.nome || "";
   document.getElementById("corso-descrizione").value = corso.descrizione || "";
   document.getElementById("corso-disciplina").value = corso.disciplina || "";
@@ -1289,6 +1347,7 @@ function startEditCorso(corso) {
 function cancelEditCorso() {
   editingCorsoId = null;
   document.getElementById("corso-form").reset();
+  syncForfettario();
   syncOrariCampiDisciplina();
   aggiornaCostoCalcolato();
   document.getElementById("corso-form-title").querySelector("h2").textContent = "Nuovo corso";
@@ -1309,11 +1368,13 @@ async function onSubmitCorso(e) {
     if (!form.nome) throw new Error("Inserisci il nome del corso.");
     if (!form.disciplina) throw new Error("Seleziona la disciplina.");
     if (!form.dal) throw new Error("Inserisci la data di inizio (Dal).");
-    if (!form.nrSessioni || form.nrSessioni < 1) throw new Error("Inserisci il numero di sessioni.");
-    if (!form.durataSessioneMinuti) throw new Error("Inserisci la durata di una sessione.");
-    if (Object.keys(form.giorniOrari).length === 0) throw new Error("Seleziona almeno un orario per almeno un giorno.");
-    if (form.campiNumeri.length === 0) throw new Error("Seleziona almeno un campo proposto.");
-    if (!form.minIscrittiConferma) throw new Error("Inserisci il numero minimo di iscritti per la conferma.");
+    if (!form.forfettario) {
+      if (!form.nrSessioni || form.nrSessioni < 1) throw new Error("Inserisci il numero di sessioni.");
+      if (!form.durataSessioneMinuti) throw new Error("Inserisci la durata di una sessione.");
+      if (Object.keys(form.giorniOrari).length === 0) throw new Error("Seleziona almeno un orario per almeno un giorno.");
+      if (form.campiNumeri.length === 0) throw new Error("Seleziona almeno un campo proposto.");
+      if (!form.minIscrittiConferma) throw new Error("Inserisci il numero minimo di iscritti per la conferma.");
+    }
     if (form.prezzoRichiesto == null) throw new Error("Inserisci il prezzo richiesto.");
     if (!hasPermission(currentProfile, "corsi:gestisci") && form.disciplina !== "padel") {
       throw new Error("Con questo permesso puoi creare/modificare solo corsi di disciplina Padel.");
@@ -1386,9 +1447,14 @@ requireAuth(async (profile) => {
     disciplinaSelect.disabled = true;
   }
 
+  syncForfettario();
   syncOrariCampiDisciplina();
 
   document.getElementById("corso-disciplina").addEventListener("change", syncOrariCampiDisciplina);
+  document.getElementById("corso-forfettario").addEventListener("change", () => {
+    syncForfettario();
+    aggiornaCostoCalcolato();
+  });
 
   ["corso-nrsessioni", "corso-durata", "corso-costo-istruttore", "corso-costo-campo",
     "corso-costo-materiale", "corso-min-iscritti"]
