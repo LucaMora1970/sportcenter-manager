@@ -73,6 +73,7 @@ async function loadCorsiAperti() {
   list.innerHTML = `<div class="empty-state"><div class="display">Caricamento…</div></div>`;
 
   await loadDiscipline();
+  await loadFotoDiscipline();
 
   const snap = await db.collection("corsi").where("approvato", "==", true).get();
   const oggi = todayISO();
@@ -91,15 +92,18 @@ async function loadCorsiAperti() {
   if (corsoDaLink) selezionaCorso(corsoDaLink);
 }
 
-function renderCorsiAperti() {
-  const list = document.getElementById("corsi-aperti-list");
+// Foto disciplina configurata in Configurazione → Foto discipline (stesso
+// FOTO_DISCIPLINE usato da tcm.html e da Corsi lato staff) — per Tennis si
+// preferisce la foto Interno con ripiego su Esterno se mancante.
+function fotoDisciplinaIscrizione(disciplinaId) {
+  if (disciplinaId === "tennis") return FOTO_DISCIPLINE.tennisInterno || FOTO_DISCIPLINE.tennisEsterno || "";
+  return FOTO_DISCIPLINE[disciplinaId] || "";
+}
 
-  if (corsiApertiCache.length === 0) {
-    list.innerHTML = `<div class="empty-state"><div class="display">Nessun corso aperto alle iscrizioni al momento</div></div>`;
-    return;
-  }
+let filtroDisciplinaIscrizione = "tutti";
 
-  list.innerHTML = corsiApertiCache.map(c => `
+function corsoApertoCardHtml(c) {
+  return `
     <div class="entry-card">
       <div class="entry-main">
         <span class="badge ${c.disciplina}">${escapeHtml(disciplinaLabel(c.disciplina))}</span>
@@ -109,7 +113,60 @@ function renderCorsiAperti() {
       </div>
       <button type="button" class="btn btn-primary seleziona-corso-btn" style="width:auto;padding:10px 16px;font-size:0.75rem;" data-id="${c.id}">Iscriviti</button>
     </div>
-  `).join("");
+  `;
+}
+
+function renderCorsiAperti() {
+  const list = document.getElementById("corsi-aperti-list");
+  const pillsEl = document.getElementById("corsi-aperti-filtro-pills");
+
+  if (corsiApertiCache.length === 0) {
+    pillsEl.classList.add("hidden");
+    list.innerHTML = `<div class="empty-state"><div class="display">Nessun corso aperto alle iscrizioni al momento</div></div>`;
+    return;
+  }
+
+  // Sezioni per disciplina, nell'ordine di DISCIPLINE, solo quelle che
+  // hanno almeno un corso aperto (stesso raggruppamento di Corsi staff).
+  const sezioni = DISCIPLINE.filter(d => corsiApertiCache.some(c => c.disciplina === d.id));
+
+  // Ripiego se la lettura di "discipline" è fallita (pagina pubblica senza
+  // regole pubblicate): elenco piatto, senza pill né banner, ma i corsi
+  // restano comunque visibili.
+  if (sezioni.length === 0) {
+    pillsEl.classList.add("hidden");
+    list.innerHTML = corsiApertiCache.map(corsoApertoCardHtml).join("");
+    list.querySelectorAll(".seleziona-corso-btn").forEach(btn => {
+      btn.addEventListener("click", () => selezionaCorso(corsiApertiCache.find(c => c.id === btn.dataset.id)));
+    });
+    return;
+  }
+
+  const isTrasversale = (filtroId) => sezioni.some(d => d.id === filtroId && d.trasversale);
+
+  pillsEl.classList.toggle("hidden", sezioni.length <= 1);
+  pillsEl.innerHTML = [{ id: "tutti", label: "Tutti" }, ...sezioni.map(d => ({ id: d.id, label: d.label }))]
+    .map(d => `<button type="button" data-filtro="${d.id}" aria-pressed="${d.id === filtroDisciplinaIscrizione}">${escapeHtml(d.label)}</button>`)
+    .join("");
+  pillsEl.querySelectorAll("button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      filtroDisciplinaIscrizione = btn.dataset.filtro;
+      renderCorsiAperti();
+    });
+  });
+
+  list.innerHTML = sezioni.map(d => {
+    const corsiSezione = corsiApertiCache.filter(c => c.disciplina === d.id);
+    if (corsiSezione.length === 0) return "";
+    const visibile = filtroDisciplinaIscrizione === "tutti" || filtroDisciplinaIscrizione === d.id
+      || (d.trasversale && !isTrasversale(filtroDisciplinaIscrizione));
+    const foto = fotoDisciplinaIscrizione(d.id);
+    const headerHtml = foto
+      ? `<div class="corsi-sezione-header con-foto" style="background-image:url('${foto}')"><h3>${escapeHtml(d.label)}</h3></div>`
+      : `<div class="corsi-sezione-header"><h3>${escapeHtml(d.label)}</h3></div>`;
+    const cardsHtml = corsiSezione.map(corsoApertoCardHtml).join("");
+    return `<div class="corsi-sezione${visibile ? "" : " hidden"}" data-disciplina="${d.id}">${headerHtml}${cardsHtml}</div>`;
+  }).join("");
 
   list.querySelectorAll(".seleziona-corso-btn").forEach(btn => {
     btn.addEventListener("click", () => selezionaCorso(corsiApertiCache.find(c => c.id === btn.dataset.id)));
