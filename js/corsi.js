@@ -194,8 +194,12 @@ async function loadCorsi() {
   const list = document.getElementById("corsi-list");
   list.innerHTML = `<div class="empty-state"><div class="display">Caricamento…</div></div>`;
 
-  const snap = await db.collection("corsi").orderBy("dal", "desc").get();
-  corsiCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const snap = await db.collection("corsi").get();
+  // Stesso criterio della pagina pubblica di iscrizione: ordine numerico
+  // crescente (corsi senza "ordine" in fondo), a parità la data di inizio.
+  corsiCache = snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (a.ordine ?? Infinity) - (b.ordine ?? Infinity) || a.dal.localeCompare(b.dal));
   renderCorsi();
 }
 
