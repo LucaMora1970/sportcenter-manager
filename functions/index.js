@@ -47,14 +47,13 @@ const {
 // incassare pagamenti veri.
 const FORZA_AMBIENTE_TEST = true;
 
-// Migrazione regione (us-central1 → europe-west6, vedi runbook "Migrazione
-// a Zurigo"): ogni funzione v2 viene deployata su ENTRAMBE le regioni
-// finché il client non è passato del tutto alla nuova — verificato con un
-// deploy di prova su richiediResetPassword che questo non cancella nulla
-// di esistente. Quando la migrazione sarà confermata stabile, questo
-// array va ridotto a solo "europe-west6" (fase di pulizia, con conferma
-// esplicita per eliminare le funzioni us-central1 rimaste orfane).
-setGlobalOptions({ region: ["us-central1", "europe-west6"] });
+// Migrazione regione a Zurigo completata: tutte le funzioni girano solo su
+// europe-west6. Il client usa l'helper cloudFunctions() (js/utils.js) che
+// punta esplicitamente a europe-west6 (fase 4), e il webhook PostFinance
+// nel portale è già l'URL europe-west6 (aggiornato prima della fase 4).
+// Il doppio deploy su us-central1 (fase 1) e le relative funzioni orfane
+// sono stati rimossi in questa fase di pulizia.
+setGlobalOptions({ region: "europe-west6" });
 
 initializeApp();
 const db = getFirestore();
@@ -5139,10 +5138,8 @@ exports.statoSessionePadel = onCall(async (request) => {
 // progetto — la pulizia di PENDING_PAYMENT è finora sempre stata solo
 // opportunistica, vedi pendingScaduto) ----------
 //
-// Region europe-west6 soltanto: funzione nuova, nessun client legacy
-// dipende da us-central1 come per le funzioni onCall/onRequest ancora in
-// doppia regione durante la migrazione (vedi commento su setGlobalOptions
-// in cima al file).
+// Region esplicita europe-west6 (ora coincide col default globale, vedi
+// setGlobalOptions in cima al file — lasciata esplicita per chiarezza).
 exports.manutenzioneCommunityPadel = onSchedule(
   { schedule: "every 5 minutes", region: "europe-west6" },
   async () => {
