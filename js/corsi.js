@@ -472,9 +472,21 @@ async function togglePanoramicaCorso(corsoId) {
   renderPanoramicaCorso(container, corso, iscrizioni);
 }
 
+// "Nome Cognome (età · Nh)" — l'età e, se indicate, le ore/settimana
+// desiderate, nella stessa parentesi.
 function nomeEta(i) {
   const eta = etaDa(i.dataNascita);
-  return `${escapeHtml(i.nome)} ${escapeHtml(i.cognome)}${eta != null ? " (" + eta + ")" : ""}`;
+  const dettagli = [];
+  if (eta != null) dettagli.push(eta);
+  if (i.nrOreDesiderate) dettagli.push(i.nrOreDesiderate + "h");
+  return `${escapeHtml(i.nome)} ${escapeHtml(i.cognome)}${dettagli.length ? " (" + dettagli.join(" · ") + ")" : ""}`;
+}
+
+// Disponibilità dichiarata dall'iscritto, compatta: "Lun 08:00/09:00 · Mer 17:00".
+function disponibilitaBreve(i) {
+  return Object.entries(i.disponibilita || {})
+    .map(([g, orari]) => `${(GIORNI_SETTIMANA.find(x => x.id === g) || {}).label || g} ${(orari || []).join("/")}`)
+    .join(" · ");
 }
 
 // Il semaforo di un candidato vale solo per lo slot per cui è stato messo
@@ -520,9 +532,10 @@ function renderPanoramicaCorso(container, corso, iscrizioni) {
       const attuale = semaforoPerSlot(i, c.giorno, c.orario);
       const dot = (colore) => `<button type="button" class="semaforo-dot ${colore}" data-selected="${attuale === colore}" data-id="${i.id}" data-giorno="${c.giorno}" data-orario="${c.orario}" data-colore="${colore}" aria-label="${colore}"></button>`;
       const campoSelect = piuCampi ? `<select class="candidato-campo-select" data-id="${i.id}" style="font-size:0.7rem;padding:3px 4px;">${campoOptions}</select>` : "";
+      const disp = disponibilitaBreve(i);
       return `
-        <div class="candidato-row">
-          <span class="candidato-nome">${nomeEta(i)}</span>
+        <div class="candidato-row" style="align-items:flex-start;">
+          <span class="candidato-nome">${nomeEta(i)}${disp ? `<span style="display:block;color:var(--chalk-grey-dim);font-size:0.74rem;margin-top:2px;">${disp}</span>` : ""}</span>
           <span class="semaforo">${campoSelect}${dot("rosso")}${dot("giallo")}${dot("verde")}</span>
         </div>
       `;
@@ -573,11 +586,11 @@ function stampaPanoramicaCorso(corsoId, iscrizioni) {
     if (candidati.length === 0 && confermati.length === 0) return;
 
     confermati.forEach(i => {
-      righe += `<tr><td>${c.giornoLabel} ${c.orario}</td><td>${i.campoAssegnato ? "Campo " + escapeHtml(i.campoAssegnato) : "—"}</td><td>${nomeEta(i)}</td><td>Confermato</td></tr>`;
+      righe += `<tr><td>${c.giornoLabel} ${c.orario}</td><td>${i.campoAssegnato ? "Campo " + escapeHtml(i.campoAssegnato) : "—"}</td><td>${nomeEta(i)}</td><td>—</td><td>Confermato</td></tr>`;
     });
     candidati.forEach(i => {
       const colore = semaforoPerSlot(i, c.giorno, c.orario);
-      righe += `<tr><td>${c.giornoLabel} ${c.orario}</td><td>—</td><td>${nomeEta(i)}</td><td>${colore ? SEMAFORO_LABEL[colore] : "Da valutare"}</td></tr>`;
+      righe += `<tr><td>${c.giornoLabel} ${c.orario}</td><td>—</td><td>${nomeEta(i)}</td><td>${escapeHtml(disponibilitaBreve(i)) || "—"}</td><td>${colore ? SEMAFORO_LABEL[colore] : "Da valutare"}</td></tr>`;
     });
   });
 
@@ -586,7 +599,7 @@ function stampaPanoramicaCorso(corsoId, iscrizioni) {
     <h1>Panoramica — ${escapeHtml(corso.nome)}</h1>
     <p>Istantanea del ${new Date().toLocaleString("it-CH")}</p>
     <table>
-      <thead><tr><th>Slot</th><th>Campo</th><th>Nominativo</th><th>Valutazione</th></tr></thead>
+      <thead><tr><th>Slot</th><th>Campo</th><th>Nominativo (età · ore)</th><th>Disponibilità</th><th>Valutazione</th></tr></thead>
       <tbody>${righe}</tbody>
     </table>
   `;
@@ -775,9 +788,7 @@ function renderIscrizioniCorso(container, corso, iscrizioni) {
   const combinazioni = combinazioniCorso(corso);
 
   container.innerHTML = iscrizioni.map(i => {
-    const disponibilitaLabel = Object.entries(i.disponibilita || {})
-      .map(([g, orari]) => `${(GIORNI_SETTIMANA.find(x => x.id === g) || {}).label || g} ${orari.join("/")}`)
-      .join(" · ") || "—";
+    const disponibilitaLabel = disponibilitaBreve(i) || "—";
     const eta = etaDa(i.dataNascita);
     const disponibileSet = new Set(Object.entries(i.disponibilita || {}).flatMap(([g, orari]) => orari.map(o => `${g}|${o}`)));
 
