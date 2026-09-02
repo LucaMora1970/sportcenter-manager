@@ -792,9 +792,94 @@ function renderTutto() {
   document.getElementById("prog-corso-meta").textContent =
     `${disciplinaLabel(corso.disciplina)} · ${corso.nrSessioni || "—"} sessioni da ${corso.durataSessioneMinuti || "—"}' · campi ${(corso.campiNumeri || []).join(", ") || "—"} · età ${corso.etaMin ?? "–"}–${corso.etaMax ?? "–"} · max ${corso.maxIscrittiPerSessione ?? "—"}/gruppo · slot: ${combLabel}`;
   renderStatoPiano();
+  renderAvvisoIscritti();
   renderFiltri();
   renderIscritti();
   renderGruppi();
+}
+
+// ---------- Avviso "pianificazione in corso" agli iscritti in attesa ----------
+
+function testoAvvisoDefault() {
+  return `Il team maestri sta pianificando i gruppi del corso "${corso.nome || ""}" in base alle richieste di giorni, orari e disponibilità che ci avete inviato.\n\n`
+    + `A breve riceverai una comunicazione con la conferma dell'iscrizione e il gruppo assegnato.\n\n`
+    + `Grazie per la pazienza e a presto sui campi!`;
+}
+
+function iscrittiAvvisabili() {
+  return iscrizioni.filter(i => i.stato === "in_attesa" && i.email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(i.email));
+}
+
+function renderAvvisoIscritti() {
+  const el = document.getElementById("prog-avviso");
+  const n = iscrittiAvvisabili().length;
+  const a = corso.avvisoPianificazione;
+  const quando = a && a.inviatoAt && a.inviatoAt.toDate ? a.inviatoAt.toDate().toLocaleString("it-CH") : null;
+  const storico = a
+    ? `<div class="entry-meta">Ultimo avviso inviato${quando ? " il " + quando : ""} a ${a.numero ?? "?"} iscritti${a.inviatoDaNome ? " da " + escapeHtml(a.inviatoDaNome) : ""}.</div>`
+    : "";
+
+  el.innerHTML = `
+    <div class="entry-card" style="display:block;">
+      <div class="entry-main">
+        <div class="entry-tipo" style="font-size:0.85rem;">Avvisa gli iscritti in attesa</div>
+        <div class="entry-meta">Manda una mail dal sistema per dire che il team sta pianificando i gruppi e che la conferma arriva a breve. Destinatari: i ${n} iscritti «in attesa» con email valida.</div>
+        ${storico}
+      </div>
+      <div style="margin-top:10px;">
+        <button type="button" class="btn btn-ghost" id="prog-avviso-apri" style="width:auto;padding:8px 14px;font-size:0.72rem;"${n === 0 ? " disabled" : ""}>${a ? "Invia di nuovo" : "Prepara avviso"}${n ? " (" + n + ")" : ""}</button>
+      </div>
+      <div id="prog-avviso-panel" class="hidden" style="margin-top:12px;">
+        <div class="field">
+          <label for="prog-avviso-testo">Testo del messaggio</label>
+          <textarea id="prog-avviso-testo" rows="7" style="font-size:0.82rem;">${escapeHtml(testoAvvisoDefault())}</textarea>
+        </div>
+        <p class="entry-meta">Ogni destinatario riceve una mail singola con saluto personalizzato ("Gentile <em>nome</em>"), mittente il sistema, risposta all'indirizzo del centro.</p>
+        <div class="error-msg" id="prog-avviso-error"></div>
+        <div style="display:flex;gap:8px;">
+          <button type="button" class="btn btn-primary" id="prog-avviso-invia" style="width:auto;padding:8px 14px;font-size:0.72rem;">Invia ora a ${n}</button>
+          <button type="button" class="btn btn-ghost" id="prog-avviso-annulla" style="width:auto;padding:8px 14px;font-size:0.72rem;">Annulla</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const apri = el.querySelector("#prog-avviso-apri");
+  const panel = el.querySelector("#prog-avviso-panel");
+  if (apri) apri.addEventListener("click", () => panel.classList.toggle("hidden"));
+  const annulla = el.querySelector("#prog-avviso-annulla");
+  if (annulla) annulla.addEventListener("click", () => panel.classList.add("hidden"));
+  const invia = el.querySelector("#prog-avviso-invia");
+  if (invia) invia.addEventListener("click", inviaAvvisoIscritti);
+}
+
+async function inviaAvvisoIscritti() {
+  const btn = document.getElementById("prog-avviso-invia");
+  const errorEl = document.getElementById("prog-avviso-error");
+  errorEl.textContent = "";
+  const testo = document.getElementById("prog-avviso-testo").value.trim();
+  if (!testo) { showError(errorEl, "Il testo non può essere vuoto."); return; }
+  const n = iscrittiAvvisabili().length;
+  if (!confirm(`Inviare l'avviso a ${n} iscritti in attesa? La mail parte subito dal sistema.`)) return;
+
+  btn.disabled = true;
+  mostraCaricamento("Invio avvisi…");
+  try {
+    const res = await cloudFunctions().httpsCallable("avvisaIscrittiPianificazione")({ corsoId, testo });
+    const d = res.data || {};
+    nascondiCaricamento();
+    if (d.nessunDestinatario) {
+      alert("Nessun iscritto in attesa con email valida.");
+    } else {
+      alert(`Avvisi inviati: ${d.inviati}${d.falliti ? ` — falliti: ${d.falliti}` : ""}.`);
+    }
+    await loadTutto();
+    renderTutto();
+  } catch (err) {
+    nascondiCaricamento();
+    showError(errorEl, "Errore nell'invio: " + (err.message || err));
+    btn.disabled = false;
+  }
 }
 
 function renderStatoPiano() {

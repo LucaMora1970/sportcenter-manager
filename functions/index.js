@@ -91,9 +91,17 @@ function mailTransporter() {
   });
 }
 
-async function inviaEmail({ to, subject, html }) {
+async function inviaEmail({ to, subject, html, replyTo }) {
   const transporter = mailTransporter();
-  await transporter.sendMail({ from: MAIL_FROM.value(), to, subject, html });
+  await transporter.sendMail({ from: MAIL_FROM.value(), to, subject, html, replyTo: replyTo || undefined });
+}
+
+// Escape minimale per interpolare testo libero (scritto dallo staff) dentro
+// il corpo HTML di un'email senza rischi di injection.
+function escapeHtmlBase(str) {
+  return String(str == null ? "" : str)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 // URL base dell'app (dominio personalizzato via GitHub Pages), per i
@@ -4304,6 +4312,84 @@ exports.eliminaTokenIscrizione = onCall(
     }
     await iscrizioneRef.update({ tokenStato: "ELIMINATO" });
     return { eliminato: true };
+  }
+);
+
+// Avviso "pianificazione dei gruppi in corso" agli iscritti ancora in
+// attesa di un corso: mail individuale dal mittente di sistema (MAIL_FROM),
+// reply-to all'indirizzo del centro. Testo di default composto dal client e
+// modificabile prima dell'invio. Non tocca lo stato delle iscrizioni —
+// serve solo a comunicare che la conferma arriverà a breve.
+exports.avvisaIscrittiPianificazione = onCall(
+  { secrets: MAIL_SECRETS, timeoutSeconds: 300 },
+  async (request) => {
+    if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+    const { userData, permessi, isAdmin } = await permessiUtente(request.auth.uid);
+
+    const { corsoId, testo } = request.data || {};
+    if (!corsoId) throw new HttpsError("invalid-argument", "corsoId mancante.");
+    if (!testo || !String(testo).trim()) throw new HttpsError("invalid-argument", "Il testo del messaggio è vuoto.");
+
+    const corsoSnap = await db.collection("corsi").doc(corsoId).get();
+    if (!corsoSnap.exists) throw new HttpsError("not-found", "Corso non trovato.");
+    const corso = corsoSnap.data();
+
+    const puoTutte = isAdmin || permessi.includes("iscrizioni:gestisci");
+    const puoPadel = permessi.includes("iscrizioni:gestisci_padel") && corso.disciplina === "padel";
+    if (!puoTutte && !puoPadel) throw new HttpsError("permission-denied", "Permesso mancante.");
+
+    const iscrSnap = await db.collection("iscrizioniCorsi")
+      .where("corsoId", "==", corsoId)
+      .where("stato", "==", "in_attesa")
+      .get();
+    const destinatari = iscrSnap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(i => i.email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(i.email));
+
+    if (destinatari.length === 0) {
+      return { inviati: 0, falliti: 0, nessunDestinatario: true };
+    }
+
+    const centroSnap = await db.collection("impostazioni").doc("centro").get();
+    const centro = centroSnap.exists ? centroSnap.data() : {};
+    const replyTo = centro.email || undefined;
+    const firma = centro.nome || "Sport-OS";
+
+    const corpoHtml = String(testo).trim()
+      .split(/\n{2,}/)
+      .map(p => `<p>${escapeHtmlBase(p).replace(/\n/g, "<br>")}</p>`)
+      .join("");
+    const subject = `${corso.nome || "Corso"} — pianificazione dei gruppi in corso`;
+
+    // Un solo transporter riusato per tutti gli invii (inviaEmail ne creerebbe
+    // uno per messaggio); invii in parallelo con allSettled per stare nel
+    // timeout anche con molti iscritti.
+    const transporter = mailTransporter();
+    const from = MAIL_FROM.value();
+    const esiti = await Promise.allSettled(destinatari.map(i => {
+      const html = `<p>Gentile ${escapeHtmlBase(i.nome || "")},</p>${corpoHtml}<p>—<br>${escapeHtmlBase(firma)}</p>`;
+      return transporter.sendMail({ from, to: i.email, subject, html, replyTo: replyTo || undefined });
+    }));
+
+    let inviati = 0;
+    let falliti = 0;
+    const dettaglioFalliti = [];
+    esiti.forEach((e, idx) => {
+      if (e.status === "fulfilled") { inviati++; return; }
+      falliti++;
+      dettaglioFalliti.push({ email: destinatari[idx].email, errore: e.reason && e.reason.message ? e.reason.message : String(e.reason) });
+    });
+
+    await db.collection("corsi").doc(corsoId).update({
+      avvisoPianificazione: {
+        inviatoAt: FieldValue.serverTimestamp(),
+        inviatoDaUid: request.auth.uid,
+        inviatoDaNome: (userData && userData.nome) || null,
+        numero: inviati
+      }
+    });
+
+    return { inviati, falliti, dettaglioFalliti };
   }
 );
 

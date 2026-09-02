@@ -551,6 +551,12 @@
         <div class="come">Pagina dedicata (<code>programmazione-corso.html</code>) con l'anagrafica completa degli iscritti — età, livello (assegnabile inline, si salva subito), ore/settimana, disponibilità — e i gruppi. "Genera proposta" crea automaticamente una prima suddivisione per slot giorno/orario × campo, rispettando età, livello, capienza (<code>maxIscrittiPerSessione</code>), disponibilità e numero di sessioni necessarie (un allievo che chiede 2h con sessioni da 1h finisce in 2 gruppi). La proposta è un punto di partenza: si spostano gli allievi tra i gruppi, si rinominano, si cambia capienza/istruttore. Due modi di salvare: <strong>"Salva bozza"</strong> memorizza il piano (visibile a chiunque apra la programmazione del corso, così ci si lavora in più persone / lo si fa rivedere al supervisore) <em>senza</em> toccare le iscrizioni né avviare pagamenti; <strong>"Conferma definitiva"</strong> (con doppio avviso) porta gli iscritti a "confermata" con gruppo e slot assegnati, avvia l'addebito per chi ha la carta salvata, e fa comparire i gruppi nei riepiloghi/stampe di Corsi. In cima alla pagina un badge indica se il piano è BOZZA o CONFERMATA e chi l'ha toccato per ultimo. Il vecchio flusso "Panoramica → Conferma gruppo" resta valido in parallelo.</div>
       </div>
 
+      <div class="voce">
+        <span class="dove">Programmazione → sezione Iscritti → "Prepara avviso"</span>
+        <div class="cosa">Avvisare gli iscritti che la pianificazione è in corso</div>
+        <div class="come">Invia una mail <strong>dal sistema</strong> (mittente <code>MAIL_FROM</code>, risposta all'indirizzo del centro) a tutti gli iscritti ancora «in attesa» con email valida, per comunicare che il team maestri sta formando i gruppi e che la conferma arriverà a breve. Il testo è precompilato e modificabile prima dell'invio; ogni destinatario riceve una mail singola con saluto personalizzato. Non cambia lo stato delle iscrizioni. La pagina ricorda data, numero di destinatari e mittente dell'ultimo avviso; si può reinviare.</div>
+      </div>
+
     </div>
     </details>
 
