@@ -592,6 +592,9 @@ function stampaPanoramicaCorso(corsoId, iscrizioni) {
       const colore = semaforoPerSlot(i, c.giorno, c.orario);
       righe += `<tr><td>${c.giornoLabel} ${c.orario}</td><td>—</td><td>${nomeEta(i)}</td><td>${escapeHtml(disponibilitaBreve(i)) || "—"}</td><td>${colore ? SEMAFORO_LABEL[colore] : "Da valutare"}</td></tr>`;
     });
+    // Riga vuota di separazione dopo ogni slot (giorno/orario) per rendere
+    // i gruppi leggibili a colpo d'occhio sulla stampa.
+    righe += `<tr class="spacer"><td colspan="5">&nbsp;</td></tr>`;
   });
 
   document.getElementById("print-area").innerHTML = `

@@ -1118,4 +1118,6 @@ select:focus, input:focus, textarea:focus {
   #print-area table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.82rem; }
   #print-area th, #print-area td { border: 1px solid #999; padding: 6px 8px; text-align: left; }
   #print-area th { background: #eee; }
+  /* Riga di separazione tra i gruppi/slot: gap pulito, senza bordi. */
+  #print-area tr.spacer td { border: none; padding: 4px; }
 }
