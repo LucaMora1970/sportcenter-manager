@@ -1371,6 +1371,7 @@ function gruppiConfermatiPerData(dataIso) {
   // 1) Gruppi persistenti del modulo di programmazione: i membri sono le
   // iscrizioni confermate che hanno l'id del gruppo in gruppoIds.
   gruppiCorsoCache.forEach(g => {
+    if (g.bozza === true) return; // le bozze non entrano nei riepiloghi
     if (!g.giorno || !g.orario) return;
     const corso = corsiCache.find(c => c.id === g.corsoId);
     if (!corsoVisibile(corso)) return;

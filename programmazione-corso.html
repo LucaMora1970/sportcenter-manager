@@ -38,7 +38,8 @@
       <div class="error-msg" id="prog-error"></div>
 
       <div class="section-title"><h2 id="prog-corso-nome">Corso</h2></div>
-      <p id="prog-corso-meta" style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;"></p>
+      <p id="prog-corso-meta" style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 6px;"></p>
+      <div id="prog-stato" style="margin-bottom:14px;"></div>
 
       <hr class="court-divider">
 
@@ -68,9 +69,11 @@
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
         <button type="button" class="btn btn-ghost" id="prog-genera-btn" style="width:auto;padding:10px 16px;">Genera proposta</button>
         <button type="button" class="btn btn-ghost" id="prog-nuovo-gruppo-btn" style="width:auto;padding:10px 16px;">Nuovo gruppo</button>
-        <button type="button" class="btn btn-primary" id="prog-salva-btn" style="width:auto;padding:10px 16px;">Salva programmazione</button>
         <button type="button" class="btn btn-ghost" id="prog-stampa-btn" style="width:auto;padding:10px 16px;">Stampa / PDF</button>
+        <button type="button" class="btn btn-primary" id="prog-salva-bozza-btn" style="width:auto;padding:10px 16px;">Salva bozza</button>
+        <button type="button" class="btn btn-primary" id="prog-conferma-btn" style="width:auto;padding:10px 16px;">Conferma definitiva</button>
       </div>
+      <p style="color:var(--chalk-grey);font-size:0.78rem;margin:-4px 0 12px;"><strong>Salva bozza</strong>: memorizza il piano senza toccare le iscrizioni — condivisibile con altri e col supervisore. <strong>Conferma definitiva</strong>: porta gli iscritti a «confermata», assegna gli slot e avvia gli addebiti per chi ha la carta salvata.</p>
       <div id="prog-avvisi"></div>
       <div id="prog-gruppi-list">
         <div class="empty-state"><div class="display">Nessun gruppo — genera una proposta o creane uno a mano</div></div>

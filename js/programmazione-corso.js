@@ -21,6 +21,7 @@ let corsoId = null;
 let corso = null;
 let livelliCache = [];        // [{livello, nome, ...}] attivi, ordinati
 let iscrizioni = [];          // tutte le iscrizioni del corso
+let gruppiSalvati = [];       // gruppiCorso come letti da Firestore
 let gruppiLavoro = [];        // modello di lavoro (salvati + bozza)
 
 let filtroStato = "tutti";
@@ -123,24 +124,50 @@ async function loadTutto() {
 
   iscrizioni = iscrSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-  const salvati = gruppiSnap.docs
+  gruppiSalvati = gruppiSnap.docs
     .map(d => ({ id: d.id, ...d.data() }))
     .sort((a, b) => (a.ordine ?? 99) - (b.ordine ?? 99));
 
-  gruppiLavoro = salvati.map((g, idx) => ({
-    tempId: "g" + idx,
-    firestoreId: g.id,
-    nome: g.nome || "",
-    giorno: g.giorno || null,
-    orario: g.orario || null,
-    campo: g.campo || null,
-    capienza: g.capienza != null ? g.capienza : (corso.maxIscrittiPerSessione || null),
-    istruttoreNome: g.istruttoreNome || "",
-    note: g.note || "",
-    ordine: g.ordine != null ? g.ordine : idx,
-    membri: iscrizioni.filter(i => (i.gruppoIds || []).includes(g.id)).map(i => i.id),
-    _deleted: false
-  }));
+  gruppiLavoro = gruppiSalvati.map((g, idx) => {
+    // membriIds è la fonte autorevole dell'appartenenza (funziona anche in
+    // bozza, quando le iscrizioni non sono ancora state toccate); ripiego
+    // su iscrizioniCorsi.gruppoIds per compatibilità.
+    const daMembriIds = Array.isArray(g.membriIds) ? g.membriIds.filter(id => iscrizioni.some(i => i.id === id)) : null;
+    const membri = daMembriIds && daMembriIds.length
+      ? daMembriIds
+      : iscrizioni.filter(i => (i.gruppoIds || []).includes(g.id)).map(i => i.id);
+    return {
+      tempId: "g" + idx,
+      firestoreId: g.id,
+      bozza: g.bozza !== false,
+      nome: g.nome || "",
+      giorno: g.giorno || null,
+      orario: g.orario || null,
+      campo: g.campo || null,
+      capienza: g.capienza != null ? g.capienza : (corso.maxIscrittiPerSessione || null),
+      istruttoreNome: g.istruttoreNome || "",
+      note: g.note || "",
+      ordine: g.ordine != null ? g.ordine : idx,
+      membri,
+      _deleted: false
+    };
+  });
+}
+
+// Stato complessivo del piano salvato (non del modello di lavoro):
+// "nessuno" | "bozza" | "confermato".
+function statoPianoSalvato() {
+  if (!gruppiSalvati.length) return "nessuno";
+  return gruppiSalvati.every(g => g.bozza === false) ? "confermato" : "bozza";
+}
+
+function ultimaModificaPiano() {
+  let best = null;
+  gruppiSalvati.forEach(g => {
+    const t = g.aggiornatoAt?.toMillis ? g.aggiornatoAt.toMillis() : 0;
+    if (!best || t > best.t) best = { t, nome: g.aggiornatoDaNome || g.creatoDaNome || "—", at: g.aggiornatoAt || g.createdAt || null };
+  });
+  return best;
 }
 
 // ---------- Anagrafica iscritti ----------
@@ -305,6 +332,7 @@ function creaGruppoVuoto(giorno, orario, campo) {
   return {
     tempId: nuovoTempId(),
     firestoreId: null,
+    bozza: true,
     nome: "",
     giorno: giorno ?? null,
     orario: orario ?? null,
@@ -423,7 +451,9 @@ function renderGruppi() {
             <input type="number" class="prog-g-capienza" data-id="${g.tempId}" value="${g.capienza != null ? g.capienza : ""}" min="1" step="1" placeholder="capienza" style="width:90px;font-size:0.72rem;padding:6px 8px;">
             <input type="text" class="prog-g-istruttore" data-id="${g.tempId}" value="${escapeHtml(g.istruttoreNome)}" placeholder="istruttore" style="width:130px;font-size:0.72rem;padding:6px 8px;">
           </div>
-          ${g.firestoreId ? "" : `<div class="entry-meta" style="margin-top:6px;">bozza — non ancora salvato</div>`}
+          ${!g.firestoreId ? `<div class="entry-meta" style="margin-top:6px;">nuovo — mai salvato</div>`
+            : g.bozza ? `<div class="entry-meta" style="margin-top:6px;color:#d4b83a;">bozza</div>`
+            : `<div class="entry-meta" style="margin-top:6px;color:#c1e08f;">confermato</div>`}
           ${avvisi.length ? `<div class="entry-meta" style="color:var(--danger);margin-top:6px;">⚠ ${avvisi.join(" · ")}</div>` : ""}
           <div style="margin-top:10px;">${righe}</div>
           <div style="margin-top:10px;">
@@ -555,101 +585,155 @@ function miglioreContenitore(compatibili, iscritto, slotUsati) {
 }
 
 // ---------- Salvataggio ----------
+//
+// Due azioni distinte:
+// - "Salva bozza": scrive solo i documenti gruppiCorso (bozza:true, con
+//   l'elenco membri sul gruppo stesso). NON tocca le iscrizioni, nessun
+//   addebito. Serve a lavorare in più mani / far rivedere al supervisore.
+// - "Conferma definitiva": doppio avviso, poi scrive i gruppi (bozza:false)
+//   E sincronizza le iscrizioni (stato "confermata", gruppoIds, slot
+//   assegnato) avviando gli addebiti per chi ha la carta salvata.
 
-async function salvaProgrammazione() {
-  const btn = document.getElementById("prog-salva-btn");
+// Scrive create/update/delete dei gruppiCorso nel batch. definitivo=false
+// lascia i gruppi in bozza. Ritorna i gruppi non eliminati con id Firestore.
+function scriviGruppiInBatch(batch, definitivo) {
+  gruppiLavoro.forEach(g => {
+    if (g._deleted) return;
+    if (!g.firestoreId) {
+      g.firestoreId = db.collection("gruppiCorso").doc().id;
+      g._isNew = true;
+    }
+  });
+
+  gruppiLavoro.forEach(g => {
+    if (g._deleted) {
+      if (g.firestoreId && !g._isNew) batch.delete(db.collection("gruppiCorso").doc(g.firestoreId));
+      return;
+    }
+    if (!g.firestoreId) return;
+
+    const dati = {
+      corsoId,
+      disciplina: corso.disciplina,
+      bozza: !definitivo,
+      nome: g.nome || nomeGruppo(g),
+      giorno: g.giorno || null,
+      orario: g.orario || null,
+      campo: g.campo || null,
+      durataMinuti: corso.durataSessioneMinuti || null,
+      capienza: g.capienza != null ? g.capienza : null,
+      istruttoreNome: g.istruttoreNome || null,
+      note: g.note || null,
+      ordine: g.ordine ?? 99,
+      membriIds: g.membri.slice(),
+      aggiornatoDaUid: currentProfile.uid,
+      aggiornatoDaNome: currentProfile.nome,
+      aggiornatoAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+    const ref = db.collection("gruppiCorso").doc(g.firestoreId);
+    if (g._isNew) {
+      batch.set(ref, { ...dati, creatoDaUid: currentProfile.uid, creatoDaNome: currentProfile.nome, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+    } else {
+      batch.update(ref, dati);
+    }
+  });
+
+  return gruppiLavoro.filter(g => !g._deleted && g.firestoreId);
+}
+
+// Sincronizza le iscrizioni con l'appartenenza ai gruppi (solo conferma
+// definitiva). Ritorna { logs, daNotificare }.
+function sincronizzaIscrizioniInBatch(batch, gruppiAttivi) {
+  const daNotificare = [];
+  const logs = [];
+
+  iscrizioni.forEach(i => {
+    if (i.stato === "annullata") return;
+    const nuoviIds = gruppiAttivi.filter(g => g.membri.includes(i.id)).map(g => g.firestoreId);
+    const vecchiIds = (i.gruppoIds || []).slice();
+    const cambiatoGruppi = nuoviIds.slice().sort().join("|") !== vecchiIds.slice().sort().join("|");
+    const cambiatoStato = nuoviIds.length && i.stato !== "confermata";
+    if (!cambiatoGruppi && !cambiatoStato) return;
+
+    const primario = gruppiAttivi
+      .filter(g => nuoviIds.includes(g.firestoreId))
+      .sort((a, b) => (a.ordine ?? 99) - (b.ordine ?? 99))[0] || null;
+
+    const nuovoStato = nuoviIds.length ? "confermata" : (i.stato === "confermata" ? "in_attesa" : i.stato);
+
+    const patch = {
+      gruppoIds: nuoviIds,
+      stato: nuovoStato,
+      giornoAssegnato: primario ? primario.giorno : null,
+      orarioAssegnato: primario ? primario.orario : null,
+      campoAssegnato: primario ? (primario.campo || null) : null,
+      gestitaDaUid: currentProfile.uid,
+      gestitaDaNome: currentProfile.nome
+    };
+    if (nuoviIds.length) patch.motivoRifiuto = null;
+
+    batch.update(db.collection("iscrizioniCorsi").doc(i.id), patch);
+
+    const nomeCompleto = `${i.nome} ${i.cognome}`;
+    const dettaglio = nuoviIds.length
+      ? `In ${nuoviIds.length} ${nuoviIds.length === 1 ? "gruppo" : "gruppi"}${primario && primario.giorno ? " — primario " + giornoLabel(primario.giorno) + " " + primario.orario : ""}`
+      : "Rimosso da tutti i gruppi";
+    logs.push({ id: i.id, nome: nomeCompleto, azione: "raggruppato", dettaglio });
+
+    if (nuoviIds.length && i.stato !== "confermata" && i.tokenStato === "ATTIVO") daNotificare.push(i);
+  });
+
+  return { logs, daNotificare };
+}
+
+async function salvaBozza() {
+  const btn = document.getElementById("prog-salva-bozza-btn");
+  if (statoPianoSalvato() === "confermato" &&
+      !confirm("Questo piano è già stato confermato. Salvandolo come bozza i gruppi non compariranno più nei riepiloghi finché non lo riconfermi (le iscrizioni restano «confermata»). Continuare?")) {
+    return;
+  }
   btn.disabled = true;
-  mostraCaricamento("Salvataggio programmazione…");
+  mostraCaricamento("Salvataggio bozza…");
   try {
     const batch = db.batch();
+    scriviGruppiInBatch(batch, false);
+    await batch.commit();
+    await loadTutto();
+    renderTutto();
+    nascondiCaricamento();
+    alert("Bozza salvata. Chi apre la programmazione di questo corso vede e può continuare questa bozza.");
+  } catch (err) {
+    nascondiCaricamento();
+    showError(document.getElementById("prog-error"), "Errore nel salvataggio: " + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
 
-    // Assegna un id Firestore definitivo a ogni gruppo nuovo non vuoto
-    gruppiLavoro.forEach(g => {
-      if (g._deleted) return;
-      if (!g.firestoreId && g.membri.length) {
-        g.firestoreId = db.collection("gruppiCorso").doc().id;
-        g._isNew = true;
-      }
-    });
+async function confermaDefinitiva() {
+  const btn = document.getElementById("prog-conferma-btn");
+  const inGruppo = iscrizioniProgrammabili().filter(i => gruppiDi(i.id).length > 0).length;
+  const conCarta = iscrizioniProgrammabili().filter(i => gruppiDi(i.id).length > 0 && i.stato !== "confermata" && i.tokenStato === "ATTIVO").length;
 
-    gruppiLavoro.forEach(g => {
-      if (g._deleted) {
-        if (g.firestoreId) batch.delete(db.collection("gruppiCorso").doc(g.firestoreId));
-        return;
-      }
-      if (!g.firestoreId) return; // bozza vuota, non salvata
-      const dati = {
-        corsoId,
-        disciplina: corso.disciplina,
-        nome: g.nome || nomeGruppo(g),
-        giorno: g.giorno || null,
-        orario: g.orario || null,
-        campo: g.campo || null,
-        durataMinuti: corso.durataSessioneMinuti || null,
-        capienza: g.capienza != null ? g.capienza : null,
-        istruttoreNome: g.istruttoreNome || null,
-        note: g.note || null,
-        ordine: g.ordine ?? 99
-      };
-      const ref = db.collection("gruppiCorso").doc(g.firestoreId);
-      if (g._isNew) {
-        batch.set(ref, {
-          ...dati,
-          creatoDaUid: currentProfile.uid,
-          creatoDaNome: currentProfile.nome,
-          createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-      } else {
-        // gruppo già esistente: aggiorna solo i campi modificabili, lascia
-        // intatti createdAt/creatoDa.
-        batch.update(ref, dati);
-      }
-    });
+  if (!confirm(
+    `Confermare definitivamente la programmazione?\n\n` +
+    `• ${inGruppo} iscritti nei gruppi passano a stato «confermata» con giorno/orario/campo assegnati.\n` +
+    (conCarta ? `• Per ${conCarta} di loro (carta salvata) parte subito l'addebito automatico dell'importo.\n` : "") +
+    `• I gruppi diventano quelli definitivi e compaiono nei riepiloghi.`
+  )) return;
 
-    // Aggiorna le iscrizioni la cui appartenenza è cambiata
-    const gruppiAttivi = gruppiLavoro.filter(g => !g._deleted && g.firestoreId);
-    const daNotificare = [];
-    const logs = [];
+  if (!confirm("Sei sicuro? L'operazione modifica le iscrizioni e non è annullabile automaticamente.")) return;
 
-    iscrizioni.forEach(i => {
-      if (i.stato === "annullata") return;
-      const nuoviIds = gruppiAttivi.filter(g => g.membri.includes(i.id)).map(g => g.firestoreId);
-      const vecchiIds = (i.gruppoIds || []).slice();
-      const cambiato = nuoviIds.slice().sort().join("|") !== vecchiIds.slice().sort().join("|");
-      if (!cambiato) return;
-
-      const primario = gruppiAttivi
-        .filter(g => nuoviIds.includes(g.firestoreId))
-        .sort((a, b) => (a.ordine ?? 99) - (b.ordine ?? 99))[0] || null;
-
-      const nuovoStato = nuoviIds.length ? "confermata" : (i.stato === "confermata" ? "in_attesa" : i.stato);
-
-      const patch = {
-        gruppoIds: nuoviIds,
-        stato: nuovoStato,
-        giornoAssegnato: primario ? primario.giorno : null,
-        orarioAssegnato: primario ? primario.orario : null,
-        campoAssegnato: primario ? (primario.campo || null) : null,
-        gestitaDaUid: currentProfile.uid,
-        gestitaDaNome: currentProfile.nome
-      };
-      if (nuoviIds.length) patch.motivoRifiuto = null;
-
-      batch.update(db.collection("iscrizioniCorsi").doc(i.id), patch);
-
-      const nomeCompleto = `${i.nome} ${i.cognome}`;
-      const dettaglio = nuoviIds.length
-        ? `In ${nuoviIds.length} ${nuoviIds.length === 1 ? "gruppo" : "gruppi"}${primario && primario.giorno ? " — primario " + giornoLabel(primario.giorno) + " " + primario.orario : ""}`
-        : "Rimosso da tutti i gruppi";
-      logs.push({ id: i.id, nome: nomeCompleto, azione: "raggruppato", dettaglio });
-
-      if (nuoviIds.length && i.stato !== "confermata" && i.tokenStato === "ATTIVO") daNotificare.push(i);
-    });
+  btn.disabled = true;
+  mostraCaricamento("Conferma programmazione…");
+  try {
+    const batch = db.batch();
+    const gruppiAttivi = scriviGruppiInBatch(batch, true);
+    const { logs, daNotificare } = sincronizzaIscrizioniInBatch(batch, gruppiAttivi);
 
     await batch.commit();
     await Promise.all(logs.map(l => registraLog(l.id, l.nome, l.azione, l.dettaglio)));
 
-    // Addebito automatico per chi aveva la carta salvata ed è appena stato confermato
     if (daNotificare.length) {
       const fn = cloudFunctions().httpsCallable("addebitaIscrizioneCorso");
       daNotificare.forEach(i => fn({ iscrizioneId: i.id }).catch(err => console.error("addebitaIscrizioneCorso:", err)));
@@ -658,10 +742,10 @@ async function salvaProgrammazione() {
     await loadTutto();
     renderTutto();
     nascondiCaricamento();
-    alert("Programmazione salvata.");
+    alert("Programmazione confermata.");
   } catch (err) {
     nascondiCaricamento();
-    showError(document.getElementById("prog-error"), "Errore nel salvataggio: " + err.message);
+    showError(document.getElementById("prog-error"), "Errore nella conferma: " + err.message);
   } finally {
     btn.disabled = false;
   }
@@ -707,9 +791,28 @@ function renderTutto() {
   const combLabel = combinazioniCorso().map(c => `${giornoLabel(c.giorno)} ${c.orario}`).join(" · ") || "—";
   document.getElementById("prog-corso-meta").textContent =
     `${disciplinaLabel(corso.disciplina)} · ${corso.nrSessioni || "—"} sessioni da ${corso.durataSessioneMinuti || "—"}' · campi ${(corso.campiNumeri || []).join(", ") || "—"} · età ${corso.etaMin ?? "–"}–${corso.etaMax ?? "–"} · max ${corso.maxIscrittiPerSessione ?? "—"}/gruppo · slot: ${combLabel}`;
+  renderStatoPiano();
   renderFiltri();
   renderIscritti();
   renderGruppi();
+}
+
+function renderStatoPiano() {
+  const el = document.getElementById("prog-stato");
+  const stato = statoPianoSalvato();
+  const ultima = ultimaModificaPiano();
+  const quando = ultima && ultima.at && ultima.at.toDate ? ultima.at.toDate().toLocaleString("it-CH") : null;
+  const info = ultima ? ` · ultima modifica: ${escapeHtml(ultima.nome)}${quando ? " il " + quando : ""}` : "";
+
+  if (stato === "nessuno") {
+    el.innerHTML = `<span class="badge" style="border-color:var(--chalk-grey-dim);color:var(--chalk-grey);">Nessun piano salvato</span>`;
+    return;
+  }
+  if (stato === "bozza") {
+    el.innerHTML = `<span class="badge" style="border-color:#d4b83a;color:#d4b83a;">BOZZA</span><span class="entry-meta" style="display:inline;margin-left:8px;">non ancora confermata — le iscrizioni non sono state toccate${info}</span>`;
+    return;
+  }
+  el.innerHTML = `<span class="badge" style="border-color:#7f9e4a;color:#c1e08f;">CONFERMATA</span><span class="entry-meta" style="display:inline;margin-left:8px;">iscritti confermati e slot assegnati${info}</span>`;
 }
 
 // ---------- Init ----------
@@ -755,7 +858,8 @@ requireAuth(async (profile) => {
   document.getElementById("prog-filtro-giorno").addEventListener("change", (e) => { filtroGiorno = e.target.value; renderIscritti(); });
   document.getElementById("prog-genera-btn").addEventListener("click", generaProposta);
   document.getElementById("prog-nuovo-gruppo-btn").addEventListener("click", aggiungiGruppoManuale);
-  document.getElementById("prog-salva-btn").addEventListener("click", salvaProgrammazione);
+  document.getElementById("prog-salva-bozza-btn").addEventListener("click", salvaBozza);
+  document.getElementById("prog-conferma-btn").addEventListener("click", confermaDefinitiva);
   document.getElementById("prog-stampa-btn").addEventListener("click", stampaProgrammazione);
 
   renderTutto();
