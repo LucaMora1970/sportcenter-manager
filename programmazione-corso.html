@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Programmazione corso — Sport-OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script>if(localStorage.getItem("sportos-tema")==="light")document.documentElement.setAttribute("data-theme","light");</script>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d1f30">
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <h1>Programmazione</h1>
+    <div class="user-chip" id="user-chip">—</div>
+    <div class="topbar-actions">
+      <button type="button" class="topbar-link" id="theme-toggle-btn">Tema chiaro</button>
+      <a href="corsi.html" class="topbar-link">← Corsi</a>
+    </div>
+  </div>
+
+  <main>
+
+    <div id="access-denied" class="empty-state hidden">
+      <div class="display">Accesso non consentito</div>
+      <p>Questa sezione è riservata a chi gestisce le iscrizioni ai corsi.</p>
+    </div>
+
+    <div id="content" class="hidden">
+
+      <div class="error-msg" id="prog-error"></div>
+
+      <div class="section-title"><h2 id="prog-corso-nome">Corso</h2></div>
+      <p id="prog-corso-meta" style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;"></p>
+
+      <hr class="court-divider">
+
+      <!-- Anagrafica iscritti -->
+      <div class="section-title"><h2>Iscritti</h2></div>
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 10px;">Assegna a ogni allievo un livello 1–10 (scala configurabile in Configurazione → Livelli corso). Serve alla proposta automatica dei gruppi.</p>
+      <div class="gruppo-pills" id="prog-filtri-stato"></div>
+      <div class="row2">
+        <div class="field">
+          <label for="prog-filtro-livello">Livello</label>
+          <select id="prog-filtro-livello"><option value="">Tutti</option></select>
+        </div>
+        <div class="field">
+          <label for="prog-filtro-giorno">Disponibile il</label>
+          <select id="prog-filtro-giorno"><option value="">Qualsiasi giorno</option></select>
+        </div>
+      </div>
+      <div id="prog-iscritti-list">
+        <div class="empty-state"><div class="display">Caricamento…</div></div>
+      </div>
+
+      <hr class="court-divider">
+
+      <!-- Gruppi -->
+      <div class="section-title"><h2>Gruppi</h2></div>
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 10px;">La proposta automatica è un punto di partenza: spostala e correggila a mano, poi salva. Nulla viene scritto finché non premi "Salva programmazione".</p>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+        <button type="button" class="btn btn-ghost" id="prog-genera-btn" style="width:auto;padding:10px 16px;">Genera proposta</button>
+        <button type="button" class="btn btn-ghost" id="prog-nuovo-gruppo-btn" style="width:auto;padding:10px 16px;">Nuovo gruppo</button>
+        <button type="button" class="btn btn-primary" id="prog-salva-btn" style="width:auto;padding:10px 16px;">Salva programmazione</button>
+        <button type="button" class="btn btn-ghost" id="prog-stampa-btn" style="width:auto;padding:10px 16px;">Stampa / PDF</button>
+      </div>
+      <div id="prog-avvisi"></div>
+      <div id="prog-gruppi-list">
+        <div class="empty-state"><div class="display">Nessun gruppo — genera una proposta o creane uno a mano</div></div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <nav class="bottom-nav">
+    <a href="diario.html">Diario</a>
+    <a href="resoconto.html">Resoconto</a>
+    <a href="cassa.html">Cassa</a>
+    <a href="corsi.html" class="active">Corsi</a>
+    <a href="prenotazioni.html">Prenotazioni</a>
+    <a href="#" title="In arrivo">Camp</a>
+    <a href="soci.html">Soci</a>
+    <a href="utenti.html">Team</a>
+    <a href="configurazione.html">Config</a>
+    <a href="#" id="logout-link">Esci</a>
+  </nav>
+
+  <script>
+    document.querySelector(".bottom-nav a.active")?.scrollIntoView({ inline: "center", block: "nearest" });
+  </script>
+
+</div>
+
+<div id="print-area"></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/programmazione-corso.js"></script>
+</body>
+</html>

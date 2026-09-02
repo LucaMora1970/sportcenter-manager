@@ -358,6 +358,32 @@ service cloud.firestore {
             && get(/databases/$(database)/documents/corsi/$(request.resource.data.corsoId)).data.disciplina == "padel");
     }
 
+    // Scala di livello/capacità degli allievi dei corsi (1–10 con etichette
+    // libere), configurata in Configurazione → Livelli corso. Non è un dato
+    // sensibile ma non serve al pubblico: lettura ai soli utenti loggati,
+    // scrittura a chi gestisce la configurazione.
+    match /livelliCorso/{id} {
+      allow read: if isSignedIn();
+      allow write: if hasPermission("config:gestisci");
+    }
+
+    // Gruppi dei corsi (modulo di programmazione): entità persistente che
+    // raggruppa gli iscritti per slot/campo. Gestita da chi gestisce le
+    // iscrizioni; la disciplina è denormalizzata sul gruppo così il permesso
+    // scoped Padel può verificarla sia in create (request) sia in
+    // update/delete (resource) senza un get() sul corso.
+    match /gruppiCorso/{id} {
+      allow read: if hasPermission("iscrizioni:gestisci")
+        || (hasPermission("iscrizioni:gestisci_padel") && resource.data.disciplina == "padel");
+      allow create: if hasPermission("iscrizioni:gestisci")
+        || (hasPermission("iscrizioni:gestisci_padel") && request.resource.data.disciplina == "padel");
+      allow update: if hasPermission("iscrizioni:gestisci")
+        || (hasPermission("iscrizioni:gestisci_padel")
+            && resource.data.disciplina == "padel" && request.resource.data.disciplina == "padel");
+      allow delete: if hasPermission("iscrizioni:gestisci")
+        || (hasPermission("iscrizioni:gestisci_padel") && resource.data.disciplina == "padel");
+    }
+
     // ============================================================
     // Prenotazione padel pubblica (senza login) con pagamento reale:
     // tutte le scritture passano da Cloud Functions con Admin SDK, che

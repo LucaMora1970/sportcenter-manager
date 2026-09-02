@@ -533,6 +533,24 @@
         <div class="come">Mostra solo i corsi approvati con termine iscrizione non scaduto. Ogni iscrizione parte "in attesa" — per i corsi normali la conferma con assegnazione di giorno/orario è manuale (permesso <code>iscrizioni:gestisci</code>), per i corsi forfettari è una conferma secca. Se il corso ha delle condizioni generali, ora vengono mostrate nel modulo e l'iscritto deve spuntare "Ho letto e accetto le condizioni generali" (l'accettazione e il testo accettato restano salvati sull'iscrizione).</div>
       </div>
 
+      <div class="voce">
+        <span class="dove">Corsi → pannello "Iscrizioni" di un corso, oppure "Cerca allievo" → bottone "Modifica" (permesso <code>iscrizioni:gestisci</code> / <code>iscrizioni:gestisci_padel</code>)</span>
+        <div class="cosa">Correggere i dati di un'iscrizione già inviata</div>
+        <div class="come">Apre un form con tutti i campi del modulo pubblico — anagrafica, contatti, ore/settimana desiderate, <strong>livello</strong> e disponibilità giorni/orari (queste ultime tre solo per i corsi non forfettari). Funziona sia sulle iscrizioni in attesa sia su quelle confermate. Ogni salvataggio lascia una riga nello Storico del corso ("Iscrizione modificata" con l'elenco dei campi cambiati, chi e quando). Non tocca lo stato, lo slot assegnato o il pagamento: per i corsi normali il prezzo è a livello di corso, quindi cambiare le ore non modifica l'importo dovuto.</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove">Configurazione → Livelli corso</span>
+        <div class="cosa">Scala di capacità 1–10 degli allievi</div>
+        <div class="come">Definisci le etichette dei livelli da 1 a 10 (es. 1 = Primi palleggi … 10 = Agonista). Al primo accesso viene creata una scala di default, poi personalizzabile. Il livello si attribuisce a ogni allievo dallo staff (pagina Programmazione o modifica di un'iscrizione) e serve alla proposta automatica dei gruppi.</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove">Corsi → card del corso → "Programmazione" (permesso <code>iscrizioni:gestisci</code> / <code>iscrizioni:gestisci_padel</code>, solo corsi approvati non forfettari)</span>
+        <div class="cosa">Suddividere gli iscritti in gruppi</div>
+        <div class="come">Pagina dedicata (<code>programmazione-corso.html</code>) con l'anagrafica completa degli iscritti — età, livello (assegnabile inline), ore/settimana, disponibilità — e i gruppi. "Genera proposta" crea automaticamente una prima suddivisione per slot giorno/orario × campo, rispettando età, livello, capienza (<code>maxIscrittiPerSessione</code>), disponibilità e numero di sessioni necessarie (un allievo che chiede 2h con sessioni da 1h finisce in 2 gruppi). La proposta è un punto di partenza: si spostano gli allievi tra i gruppi, si rinominano, si cambia capienza/istruttore, poi "Salva programmazione". Al salvataggio ogni gruppo diventa un documento persistente, gli iscritti passano a "confermata" con il gruppo assegnato, e i riepiloghi giornaliero/settimanale e le stampe in Corsi mostrano i gruppi. Il vecchio flusso "Panoramica → Conferma gruppo" resta valido in parallelo.</div>
+      </div>
+
     </div>
     </details>
 

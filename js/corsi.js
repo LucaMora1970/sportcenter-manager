@@ -13,9 +13,24 @@
 let currentProfile = null;
 let corsiCache = [];
 let campiCache = [];
+let livelliCorsoCache = []; // [{livello, nome, ...}] attivi, per il <select> livello
+let gruppiCorsoCache = []; // [{id, corsoId, giorno, orario, campo, ...}] dal modulo di programmazione
 let iscrizioniConfermateCache = [];
 let iscrizioniInAttesaCache = [];
 let editingCorsoId = null;
+
+async function loadLivelliCorso() {
+  try {
+    const snap = await db.collection("livelliCorso").get();
+    livelliCorsoCache = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(l => l.attivo !== false)
+      .sort((a, b) => (a.ordine ?? a.livello ?? 99) - (b.ordine ?? b.livello ?? 99));
+  } catch (err) {
+    console.warn("loadLivelliCorso:", err.message);
+    livelliCorsoCache = [];
+  }
+}
 
 function formatDataBreve(dataStr) {
   const [y, m, d] = dataStr.split("-");
@@ -242,6 +257,7 @@ function corsoCardHtml(c, { puoGestire, puoVedereIscrizioni, puoApprovare }) {
           ${c.approvato ? `<button class="btn btn-ghost link-diretto-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Copia link diretto</button>` : ""}
           ${puoVedereIscrizioni && c.approvato ? `<button class="btn btn-ghost iscrizioni-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Iscrizioni</button>` : ""}
           ${puoVedereIscrizioni && c.approvato && !c.forfettario ? `<button class="btn btn-ghost panoramica-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Panoramica</button>` : ""}
+          ${puoVedereIscrizioni && c.approvato && !c.forfettario ? `<button class="btn btn-ghost programmazione-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Programmazione</button>` : ""}
           ${puoVedereIscrizioni && c.approvato ? `<button class="btn btn-ghost stampa-lista-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Stampa / PDF</button>` : ""}
           ${puoVedereIscrizioni && c.approvato ? `<button class="btn btn-ghost storico-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Storico</button>` : ""}
           ${puoGestire ? `<button class="btn btn-danger delete-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Elimina</button>` : ""}
@@ -371,6 +387,12 @@ function renderCorsi() {
 
   list.querySelectorAll(".panoramica-corso-btn").forEach(btn => {
     btn.addEventListener("click", () => togglePanoramicaCorso(btn.dataset.id));
+  });
+
+  list.querySelectorAll(".programmazione-corso-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      window.open(basePageUrl() + "programmazione-corso.html?corso=" + btn.dataset.id, "_blank");
+    });
   });
 
   list.querySelectorAll(".stampa-lista-corso-btn").forEach(btn => {
@@ -785,8 +807,10 @@ function renderIscrizioniCorso(container, corso, iscrizioni) {
           ${selectSlot}
           ${i.stato === "in_attesa" ? `<button class="btn btn-primary conferma-iscrizione-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}" data-corso="${corso.id}" data-nome="${escapeHtml(i.nome + " " + i.cognome)}" data-email="${escapeHtml(i.email || "")}">${corso.forfettario ? "Conferma iscrizione" : "Conferma in questo slot"}</button>` : ""}
           ${i.stato === "in_attesa" ? `<button class="btn btn-danger annulla-iscrizione-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}" data-corso="${corso.id}" data-nome="${escapeHtml(i.nome + " " + i.cognome)}" data-email="${escapeHtml(i.email || "")}">Rifiuta</button>` : ""}
+          ${i.stato !== "annullata" ? `<button class="btn btn-ghost modifica-iscrizione-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}">Modifica</button>` : ""}
         </div>
       </div>
+      ${i.stato !== "annullata" ? `<div class="dettaglio-giorni hidden" id="modifica-isc-iscrizioni-${i.id}"></div>` : ""}
     `;
   }).join("");
 
@@ -802,6 +826,228 @@ function renderIscrizioniCorso(container, corso, iscrizioni) {
   container.querySelectorAll(".annulla-iscrizione-btn").forEach(btn => {
     btn.addEventListener("click", () => rifiutaIscrizione(btn.dataset.id, btn.dataset.corso, btn.dataset.nome, btn.dataset.email));
   });
+  container.querySelectorAll(".modifica-iscrizione-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const i = iscrizioni.find(x => x.id === btn.dataset.id);
+      if (i) toggleModificaIscrizione(i, corso, "iscrizioni");
+    });
+  });
+}
+
+// ---------- Modifica parametri di un'iscrizione ----------
+// Un'iscrizione arriva dal modulo pubblico (iscrizione-corso.js) e finora
+// era immutabile: lo staff poteva solo confermare/rifiutare/spostare di
+// corso. Qui si permette di correggerne i dati (anagrafica, contatti,
+// ore/settimana e disponibilità) sia in attesa sia confermata, lasciando
+// una riga nello Storico. Stessi campi del modulo pubblico; ore e
+// disponibilità solo sui corsi non forfettari, esattamente come lì. Non
+// tocca stato, slot assegnato o pagamento (per i corsi normali il prezzo
+// è a livello di corso, non per ora: cambiare le ore non lo modifica).
+
+// Ordina chiavi e orari così due disponibilità si confrontano stabilmente.
+function normalizzaDisponibilita(d) {
+  const out = {};
+  Object.keys(d || {}).sort().forEach(g => {
+    const orari = [...(d[g] || [])].sort();
+    if (orari.length) out[g] = orari;
+  });
+  return out;
+}
+
+function formModificaIscrizioneHtml(i, corso, uid) {
+  const v = s => escapeHtml(s == null ? "" : String(s));
+  const forfettario = corso?.forfettario === true;
+
+  const dispSet = new Set(
+    Object.entries(i.disponibilita || {}).flatMap(([g, orari]) => (orari || []).map(o => `${g}|${o}`))
+  );
+  const giorniConOrari = GIORNI_SETTIMANA.filter(g => (corso?.giorniOrari || {})[g.id]?.length > 0);
+  const disponibilitaHtml = giorniConOrari.map(g => `
+    <div class="row-label" style="margin:10px 0 4px;">${g.label}</div>
+    <div class="checkbox-list">
+      ${corso.giorniOrari[g.id].map(o => `
+        <div class="checkbox-row">
+          <input type="checkbox" class="mod-disp-cb" data-giorno="${g.id}" value="${o}" id="mod-${uid}-disp-${g.id}-${o}"${dispSet.has(`${g.id}|${o}`) ? " checked" : ""}>
+          <label for="mod-${uid}-disp-${g.id}-${o}">${o}</label>
+        </div>
+      `).join("")}
+    </div>
+  `).join("");
+
+  return `
+    <div class="entry-card" style="margin-top:8px;">
+      <div class="row-label" style="margin-bottom:10px;">Modifica iscrizione</div>
+      <div class="row2">
+        <div class="field"><label for="mod-${uid}-nome">Nome</label><input type="text" id="mod-${uid}-nome" value="${v(i.nome)}"></div>
+        <div class="field"><label for="mod-${uid}-cognome">Cognome</label><input type="text" id="mod-${uid}-cognome" value="${v(i.cognome)}"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label for="mod-${uid}-datanascita">Data di nascita</label><input type="date" id="mod-${uid}-datanascita" value="${v(i.dataNascita)}"></div>
+        <div class="field"><label for="mod-${uid}-nazionalita">Nazionalità</label><input type="text" id="mod-${uid}-nazionalita" value="${v(i.nazionalita)}"></div>
+      </div>
+      <div class="field"><label for="mod-${uid}-via">Via</label><input type="text" id="mod-${uid}-via" value="${v(i.via)}"></div>
+      <div class="row2">
+        <div class="field" style="flex:0 0 110px;"><label for="mod-${uid}-cap">CAP</label><input type="text" id="mod-${uid}-cap" value="${v(i.cap)}"></div>
+        <div class="field"><label for="mod-${uid}-localita">Località</label><input type="text" id="mod-${uid}-localita" value="${v(i.localita)}"></div>
+      </div>
+      <div class="field"><label for="mod-${uid}-email">Email</label><input type="email" id="mod-${uid}-email" value="${v(i.email)}"></div>
+      <div class="row2">
+        <div class="field"><label for="mod-${uid}-nomegenitore">Nome del genitore</label><input type="text" id="mod-${uid}-nomegenitore" value="${v(i.nomeGenitore)}"></div>
+        <div class="field"><label for="mod-${uid}-telgenitore">Telefono del genitore</label><input type="tel" id="mod-${uid}-telgenitore" value="${v(i.telefonoGenitore)}"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label for="mod-${uid}-scuola">Scuola frequentata</label><input type="text" id="mod-${uid}-scuola" value="${v(i.scuolaFrequentata)}"></div>
+        <div class="field"><label for="mod-${uid}-altrisport">Altri sport praticati</label><input type="text" id="mod-${uid}-altrisport" value="${v(i.altriSportPraticati)}"></div>
+      </div>
+      ${forfettario ? "" : `
+        <div class="row2">
+          <div class="field">
+            <label for="mod-${uid}-nrore">Nr. ore di corso desiderate (a settimana)</label>
+            <input type="number" min="0" step="0.5" id="mod-${uid}-nrore" value="${i.nrOreDesiderate != null ? i.nrOreDesiderate : ""}">
+          </div>
+          <div class="field">
+            <label for="mod-${uid}-livello">Livello</label>
+            <select id="mod-${uid}-livello">
+              <option value="">—</option>
+              ${livelliCorsoCache.map(l => `<option value="${l.livello}"${String(i.livello) === String(l.livello) ? " selected" : ""}>${l.livello} · ${escapeHtml(l.nome)}</option>`).join("")}
+            </select>
+          </div>
+        </div>
+        ${disponibilitaHtml ? `<div class="field"><label>Giorni e orari disponibili</label>${disponibilitaHtml}</div>` : ""}
+      `}
+      <div class="error-msg mod-error"></div>
+      <div style="display:flex;gap:8px;">
+        <button type="button" class="btn btn-primary mod-salva-btn" style="width:auto;padding:8px 14px;font-size:0.72rem;">Salva</button>
+        <button type="button" class="btn btn-ghost mod-annulla-btn" style="width:auto;padding:8px 14px;font-size:0.72rem;">Annulla</button>
+      </div>
+    </div>
+  `;
+}
+
+// origine: "iscrizioni" (pannello Iscrizioni di un corso) o "cerca"
+// (sezione Cerca allievo) — serve a sapere cosa ridisegnare dopo il salvataggio
+// e a dare id univoci ai campi (lo stesso allievo può comparire in entrambi).
+function toggleModificaIscrizione(iscrizione, corso, origine) {
+  const container = document.getElementById(`modifica-isc-${origine}-${iscrizione.id}`);
+  if (!container || !corso) return;
+
+  if (!container.classList.contains("hidden")) {
+    container.classList.add("hidden");
+    container.innerHTML = "";
+    return;
+  }
+
+  const uid = `${origine}-${iscrizione.id}`;
+  container.innerHTML = formModificaIscrizioneHtml(iscrizione, corso, uid);
+  container.classList.remove("hidden");
+
+  container.querySelector(".mod-salva-btn").addEventListener("click", () => salvaModificaIscrizione(iscrizione, corso, origine, container, uid));
+  container.querySelector(".mod-annulla-btn").addEventListener("click", () => {
+    container.classList.add("hidden");
+    container.innerHTML = "";
+  });
+}
+
+async function salvaModificaIscrizione(iscrizione, corso, origine, container, uid) {
+  const id = iscrizione.id;
+  const corsoId = corso.id;
+  const errorEl = container.querySelector(".mod-error");
+  const get = suffix => document.getElementById(`mod-${uid}-${suffix}`);
+  const val = suffix => (get(suffix)?.value || "").trim();
+  errorEl.textContent = "";
+
+  const forfettario = corso.forfettario === true;
+
+  const nuovo = {
+    nome: val("nome"),
+    cognome: val("cognome"),
+    dataNascita: get("datanascita")?.value || "",
+    nazionalita: val("nazionalita"),
+    via: val("via"),
+    cap: val("cap"),
+    localita: val("localita"),
+    email: val("email"),
+    nomeGenitore: val("nomegenitore"),
+    telefonoGenitore: val("telgenitore"),
+    scuolaFrequentata: val("scuola"),
+    altriSportPraticati: val("altrisport")
+  };
+  nuovo.eta = etaDa(nuovo.dataNascita);
+
+  if (!forfettario) {
+    const nrOreRaw = get("nrore")?.value ?? "";
+    nuovo.nrOreDesiderate = nrOreRaw !== "" ? parseFloat(nrOreRaw) : null;
+    const livRaw = get("livello")?.value ?? "";
+    nuovo.livello = livRaw !== "" ? parseInt(livRaw, 10) : null;
+    const disponibilita = {};
+    container.querySelectorAll(".mod-disp-cb:checked").forEach(cb => {
+      const g = cb.dataset.giorno;
+      (disponibilita[g] = disponibilita[g] || []).push(cb.value);
+    });
+    nuovo.disponibilita = disponibilita;
+  }
+
+  // Stesse regole del modulo pubblico e delle firestore.rules.
+  if (!nuovo.nome || !nuovo.cognome) { showError(errorEl, "Nome e cognome sono obbligatori."); return; }
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(nuovo.email)) { showError(errorEl, "Email non valida."); return; }
+  if (nuovo.eta != null && nuovo.eta < 18 && (!nuovo.nomeGenitore || !nuovo.telefonoGenitore)) {
+    showError(errorEl, "Per un allievo minorenne servono nome e telefono di un genitore.");
+    return;
+  }
+
+  const etichette = {
+    nome: "Nome", cognome: "Cognome", dataNascita: "Data di nascita", nazionalita: "Nazionalità",
+    via: "Via", cap: "CAP", localita: "Località", email: "Email", nomeGenitore: "Genitore",
+    telefonoGenitore: "Tel. genitore", scuolaFrequentata: "Scuola", altriSportPraticati: "Altri sport",
+    nrOreDesiderate: "Ore/sett.", livello: "Livello"
+  };
+  const fmt = x => (x == null || x === "") ? "—" : String(x);
+  const cambi = [];
+  const payload = {};
+  Object.keys(etichette).forEach(k => {
+    if (!(k in nuovo)) return;
+    const prima = iscrizione[k] ?? null;
+    const dopo = nuovo[k] ?? null;
+    if (fmt(prima) !== fmt(dopo)) {
+      cambi.push(`${etichette[k]}: ${fmt(prima)} → ${fmt(dopo)}`);
+      payload[k] = dopo;
+    }
+  });
+  if ((iscrizione.eta ?? null) !== (nuovo.eta ?? null)) payload.eta = nuovo.eta ?? null;
+
+  if (!forfettario) {
+    const dispPrima = JSON.stringify(normalizzaDisponibilita(iscrizione.disponibilita));
+    const dispDopo = JSON.stringify(normalizzaDisponibilita(nuovo.disponibilita));
+    if (dispPrima !== dispDopo) {
+      cambi.push("Disponibilità aggiornata");
+      payload.disponibilita = nuovo.disponibilita;
+    }
+  }
+
+  if (cambi.length === 0) { showError(errorEl, "Nessuna modifica da salvare."); return; }
+
+  const salvaBtn = container.querySelector(".mod-salva-btn");
+  if (salvaBtn) { salvaBtn.disabled = true; salvaBtn.textContent = "Salvataggio…"; }
+
+  try {
+    await db.collection("iscrizioniCorsi").doc(id).update({
+      ...payload,
+      modificataDaUid: currentProfile.uid,
+      modificataDaNome: currentProfile.nome,
+      modificataAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    await registraLog(id, corsoId, `${nuovo.nome} ${nuovo.cognome}`, "modificato", cambi.join(" · "));
+    await aggiornaContatoriDopoModifica(corsoId);
+    if (origine === "cerca") {
+      renderRicercaAllievi();
+    } else {
+      await ricaricaIscrizioniCorso(corsoId);
+      await ricaricaPanoramicaSeAperta(corsoId);
+    }
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+    if (salvaBtn) { salvaBtn.disabled = false; salvaBtn.textContent = "Salva"; }
+  }
 }
 
 // Bozza email pronta ma invio manuale (nessun backend per l'invio
@@ -901,6 +1147,24 @@ async function loadIscrizioniConfermate() {
 async function loadIscrizioniInAttesa() {
   const snap = await db.collection("iscrizioniCorsi").where("stato", "==", "in_attesa").get();
   iscrizioniInAttesaCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+// Gruppi persistenti creati nel modulo di programmazione (programmazione-corso.html).
+// Collection piccola: si legge tutta e si filtra lato client come il resto del modulo.
+async function loadGruppiCorso() {
+  try {
+    // Chi ha solo il permesso scoped Padel non può leggere in blocco tutta
+    // la collection (le rules rifiutano la query se un doc non è padel):
+    // in quel caso si filtra la query alla sola disciplina consentita.
+    const discipline = disciplineIscrizioniVisibili(currentProfile);
+    let query = db.collection("gruppiCorso");
+    if (discipline && discipline.length === 1) query = query.where("disciplina", "==", discipline[0]);
+    const snap = await query.get();
+    gruppiCorsoCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch (err) {
+    console.warn("loadGruppiCorso:", err.message);
+    gruppiCorsoCache = [];
+  }
 }
 
 // Conteggio iscritti per corso, visibile in elenco senza dover aprire
@@ -1008,16 +1272,20 @@ function renderRicercaAllievi() {
           <div class="entry-tipo">${escapeHtml(i.cognome)} ${escapeHtml(i.nome)}</div>
           <div class="entry-meta">${escapeHtml(i.corso.nome)} · ${escapeHtml(disciplinaLabel(i.corso.disciplina))}${i.nrOreDesiderate ? " · " + i.nrOreDesiderate + "h/sett." : ""}</div>
         </div>
-        ${puoSpostare && altriCorsi.length > 0 ? `
+        ${puoSpostare ? `
           <div class="cerca-allievo-azioni">
-            <select class="sposta-corso-select" data-id="${i.id}" style="font-size:0.72rem;padding:6px 8px;">
-              <option value="">Sposta al corso…</option>
-              ${opzioniCorsi}
-            </select>
-            <button type="button" class="btn btn-ghost sposta-corso-btn" style="padding:8px 12px;font-size:0.7rem;" data-id="${i.id}" data-corso-attuale="${i.corsoId}" data-nome="${escapeHtml(i.nome + " " + i.cognome)}">Sposta</button>
+            ${altriCorsi.length > 0 ? `
+              <select class="sposta-corso-select" data-id="${i.id}" style="font-size:0.72rem;padding:6px 8px;">
+                <option value="">Sposta al corso…</option>
+                ${opzioniCorsi}
+              </select>
+              <button type="button" class="btn btn-ghost sposta-corso-btn" style="padding:8px 12px;font-size:0.7rem;" data-id="${i.id}" data-corso-attuale="${i.corsoId}" data-nome="${escapeHtml(i.nome + " " + i.cognome)}">Sposta</button>
+            ` : ""}
+            <button type="button" class="btn btn-ghost modifica-iscrizione-btn" style="padding:8px 12px;font-size:0.7rem;" data-id="${i.id}">Modifica</button>
           </div>
         ` : ""}
       </div>
+      ${puoSpostare ? `<div class="dettaglio-giorni hidden" id="modifica-isc-cerca-${i.id}"></div>` : ""}
     `;
   }).join("");
 
@@ -1027,6 +1295,12 @@ function renderRicercaAllievi() {
       const nuovoCorsoId = select.value;
       if (!nuovoCorsoId) { alert("Scegli il corso di destinazione."); return; }
       spostaCorsoIscrizione(btn.dataset.id, btn.dataset.corsoAttuale, nuovoCorsoId, btn.dataset.nome);
+    });
+  });
+  risultatiEl.querySelectorAll(".modifica-iscrizione-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const i = risultati.find(x => x.id === btn.dataset.id);
+      if (i) toggleModificaIscrizione(i, i.corso, "cerca");
     });
   });
 }
@@ -1091,15 +1365,30 @@ function disciplineIscrizioniVisibili(profile) {
 
 function gruppiConfermatiPerData(dataIso) {
   const discipline = disciplineIscrizioniVisibili(currentProfile);
+  const corsoVisibile = (corso) => corso && (!discipline || discipline.includes(corso.disciplina));
   const gruppiMap = {};
+
+  // 1) Gruppi persistenti del modulo di programmazione: i membri sono le
+  // iscrizioni confermate che hanno l'id del gruppo in gruppoIds.
+  gruppiCorsoCache.forEach(g => {
+    if (!g.giorno || !g.orario) return;
+    const corso = corsiCache.find(c => c.id === g.corsoId);
+    if (!corsoVisibile(corso)) return;
+    const iscritti = iscrizioniConfermateCache.filter(i => (i.gruppoIds || []).includes(g.id));
+    if (iscritti.length === 0) return;
+    gruppiMap["G:" + g.id] = { corso, nome: g.nome || null, giorno: g.giorno, orario: g.orario, campo: g.campo || null, iscritti };
+  });
+
+  // 2) Flusso storico (Panoramica / "Conferma gruppo"): confermati senza
+  // gruppoIds, raggruppati per corso+giorno+orario+campo assegnati.
   iscrizioniConfermateCache.forEach(i => {
+    if ((i.gruppoIds || []).length) return;
     if (!i.giornoAssegnato || !i.orarioAssegnato) return;
     const corso = corsiCache.find(c => c.id === i.corsoId);
-    if (!corso) return;
-    if (discipline && !discipline.includes(corso.disciplina)) return;
-    const key = `${i.corsoId}|${i.giornoAssegnato}|${i.orarioAssegnato}|${i.campoAssegnato || ""}`;
+    if (!corsoVisibile(corso)) return;
+    const key = `L:${i.corsoId}|${i.giornoAssegnato}|${i.orarioAssegnato}|${i.campoAssegnato || ""}`;
     if (!gruppiMap[key]) {
-      gruppiMap[key] = { corso, giorno: i.giornoAssegnato, orario: i.orarioAssegnato, campo: i.campoAssegnato || null, iscritti: [] };
+      gruppiMap[key] = { corso, nome: null, giorno: i.giornoAssegnato, orario: i.orarioAssegnato, campo: i.campoAssegnato || null, iscritti: [] };
     }
     gruppiMap[key].iscritti.push(i);
   });
@@ -1126,6 +1415,7 @@ function gruppoCardHtml(g) {
       <div class="entry-main">
         <span class="badge ${g.corso.disciplina}">${escapeHtml(disciplinaLabel(g.corso.disciplina))}</span>
         <div class="entry-tipo">${g.orario}${g.campo ? " · Campo " + escapeHtml(g.campo) : ""} · ${escapeHtml(g.corso.nome)}</div>
+        ${g.nome ? `<div class="entry-meta">${escapeHtml(g.nome)}</div>` : ""}
         <div class="entry-meta">${g.iscritti.length} iscritti</div>
         <ul style="margin:8px 0 0;padding-left:18px;font-size:0.82rem;color:var(--chalk-grey);">${righeIscritti}</ul>
       </div>
@@ -1259,7 +1549,10 @@ const AZIONE_LABEL = {
   semaforo_rimosso: "Semaforo tolto",
   confermato: "Confermato",
   rifiutato: "Rifiutato",
-  spostato: "Spostato corso"
+  spostato: "Spostato corso",
+  modificato: "Iscrizione modificata",
+  livello_impostato: "Livello impostato",
+  raggruppato: "Gruppi aggiornati"
 };
 
 async function toggleStoricoCorso(corsoId) {
@@ -1468,12 +1761,14 @@ requireAuth(async (profile) => {
   document.getElementById("corso-cancel-edit-btn").addEventListener("click", cancelEditCorso);
 
   if (puoVedereIscrizioniAlmenoPadel) {
+    await loadLivelliCorso();
     document.getElementById("riepilogo-sezione").classList.remove("hidden");
     document.getElementById("riepilogo-data").value = toISODate(new Date());
     document.getElementById("riepilogo-data").addEventListener("change", aggiornaRiepiloghi);
     document.getElementById("stampa-settimanale-btn").addEventListener("click", stampaRiepilogoSettimanale);
     await loadIscrizioniConfermate();
     await loadIscrizioniInAttesa();
+    await loadGruppiCorso();
 
     document.getElementById("cerca-allievo-sezione").classList.remove("hidden");
     document.getElementById("cerca-allievo-input").addEventListener("input", renderRicercaAllievi);

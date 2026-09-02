@@ -1342,6 +1342,102 @@ async function onCreateCategoriaSocio(e) {
   }
 }
 
+// ---------- Livelli corso ----------
+
+// Scala 1–10 di capacità degli allievi dei corsi, usata dal modulo di
+// programmazione per proporre gruppi omogenei. L'ID del documento è il
+// numero del livello (stringa "1".."10"): riaggiungere lo stesso numero
+// sovrascrive invece di duplicare. Etichette libere, personalizzabili.
+let editingLivelloCorsoId = null;
+
+const DEFAULT_LIVELLI_CORSO_SEED = [
+  { livello: 1, nome: "Primi palleggi", descrizione: "Prende confidenza con racchetta e palla" },
+  { livello: 2, nome: "Principiante", descrizione: "Scambi brevi da fermo" },
+  { livello: 3, nome: "Base", descrizione: "Scambia in movimento su lato dritto e rovescio" },
+  { livello: 4, nome: "Base+", descrizione: "Continuità negli scambi, prime volée" },
+  { livello: 5, nome: "Intermedio", descrizione: "Scambia con continuità dal fondo, servizio in campo" },
+  { livello: 6, nome: "Intermedio+", descrizione: "Varia direzioni e altezze, gioca a rete" },
+  { livello: 7, nome: "Avanzato", descrizione: "Controllo di rotazioni e ritmo, tattica di base" },
+  { livello: 8, nome: "Avanzato+", descrizione: "Punto costruito, buona mobilità" },
+  { livello: 9, nome: "Pre-agonista", descrizione: "Prepara o disputa tornei" },
+  { livello: 10, nome: "Agonista", descrizione: "Attività agonistica regolare" }
+];
+
+async function seedLivelliCorsoIfEmpty() {
+  const snap = await db.collection("livelliCorso").limit(1).get();
+  if (!snap.empty) return;
+
+  const batch = db.batch();
+  DEFAULT_LIVELLI_CORSO_SEED.forEach(l => {
+    batch.set(db.collection("livelliCorso").doc(String(l.livello)), {
+      livello: l.livello, nome: l.nome, descrizione: l.descrizione, ordine: l.livello, attivo: true
+    });
+  });
+  await batch.commit();
+}
+
+async function loadLivelliCorso() {
+  const snap = await db.collection("livelliCorso").get();
+  const livelli = sortByOrdine(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+  renderSimpleList(
+    "livellicorso-list",
+    livelli,
+    it => `${it.livello} · ${it.nome}`,
+    it => it.descrizione || "",
+    "livelliCorso",
+    loadLivelliCorso,
+    startEditLivelloCorso
+  );
+}
+
+function startEditLivelloCorso(item) {
+  editingLivelloCorsoId = item.id;
+  document.getElementById("new-livellocorso-livello").value = item.livello != null ? item.livello : item.id;
+  document.getElementById("new-livellocorso-livello").disabled = true;
+  document.getElementById("new-livellocorso-nome").value = item.nome || "";
+  document.getElementById("new-livellocorso-descrizione").value = item.descrizione || "";
+  document.getElementById("create-livellocorso-btn").textContent = "Salva modifiche";
+  document.getElementById("cancel-edit-livellocorso-btn").classList.remove("hidden");
+  document.getElementById("new-livellocorso-form").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function cancelEditLivelloCorso() {
+  editingLivelloCorsoId = null;
+  document.getElementById("new-livellocorso-form").reset();
+  document.getElementById("new-livellocorso-livello").disabled = false;
+  document.getElementById("create-livellocorso-btn").textContent = "+ Aggiungi livello";
+  document.getElementById("cancel-edit-livellocorso-btn").classList.add("hidden");
+}
+
+async function onCreateLivelloCorso(e) {
+  e.preventDefault();
+  const btn = document.getElementById("create-livellocorso-btn");
+  const errorEl = document.getElementById("new-livellocorso-error");
+  errorEl.textContent = "";
+  btn.disabled = true;
+
+  const nome = document.getElementById("new-livellocorso-nome").value.trim();
+  const descrizione = document.getElementById("new-livellocorso-descrizione").value.trim();
+
+  try {
+    if (!nome) throw new Error("Inserisci un'etichetta.");
+    if (editingLivelloCorsoId) {
+      await db.collection("livelliCorso").doc(editingLivelloCorsoId).update({ nome, descrizione });
+    } else {
+      const livelloRaw = document.getElementById("new-livellocorso-livello").value;
+      const livello = livelloRaw !== "" ? parseInt(livelloRaw, 10) : NaN;
+      if (isNaN(livello) || livello < 1 || livello > 10) throw new Error("Il livello deve essere un numero da 1 a 10.");
+      await db.collection("livelliCorso").doc(String(livello)).set({ livello, nome, descrizione, ordine: livello, attivo: true });
+    }
+    cancelEditLivelloCorso();
+    await loadLivelliCorso();
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // Ripopola tutti i punti che elencano le categorie (select Tariffe campi,
 // checkbox Forfait stagionale, form giorni di anticipo) — richiamata dopo
 // ogni modifica a "Categorie socio" o "Aziende convenzionate" così restano
@@ -2299,6 +2395,8 @@ requireAuth(async (profile) => {
 
   document.getElementById("new-categoriasocio-form").addEventListener("submit", onCreateCategoriaSocio);
   document.getElementById("cancel-edit-categoriasocio-btn").addEventListener("click", cancelEditCategoriaSocio);
+  document.getElementById("new-livellocorso-form").addEventListener("submit", onCreateLivelloCorso);
+  document.getElementById("cancel-edit-livellocorso-btn").addEventListener("click", cancelEditLivelloCorso);
   document.getElementById("new-azienda-form").addEventListener("submit", onCreateAzienda);
   document.getElementById("cancel-edit-azienda-btn").addEventListener("click", cancelEditAzienda);
   document.getElementById("new-tariffacampo-form").addEventListener("submit", onCreateTariffaCampo);
@@ -2333,6 +2431,8 @@ requireAuth(async (profile) => {
   await loadQuotaSocioImpostazioni();
   document.getElementById("quotasocio-impostazioni-form").addEventListener("submit", onSaveQuotaSocioImpostazioni);
   await loadCategorieSocio();
+  await seedLivelliCorsoIfEmpty();
+  await loadLivelliCorso();
   await popolaSelectReferente();
   initLinkPrenotazioneAziende();
   await loadAziende();

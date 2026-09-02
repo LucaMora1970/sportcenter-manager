@@ -656,6 +656,36 @@
       </details>
 
       <details class="config-section">
+      <summary><h2>Livelli corso</h2></summary>
+      <div class="config-section-body">
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Scala di capacità da 1 a 10 attribuibile a ogni allievo di un corso (dallo staff, nella pagina Programmazione o nella modifica di un'iscrizione). Serve al modulo di programmazione per proporre gruppi omogenei per livello. Le etichette sono libere: personalizzale in base a come descrivi i livelli nella tua scuola.</p>
+      <div id="livellicorso-list">
+        <div class="empty-state"><div class="display">Caricamento…</div></div>
+      </div>
+
+      <form id="new-livellocorso-form">
+        <div class="row2">
+          <div class="field">
+            <label for="new-livellocorso-livello">Livello (1–10)</label>
+            <input type="number" id="new-livellocorso-livello" min="1" max="10" step="1" required placeholder="es. 3">
+          </div>
+          <div class="field">
+            <label for="new-livellocorso-nome">Etichetta</label>
+            <input type="text" id="new-livellocorso-nome" required placeholder="es. Intermedio">
+          </div>
+        </div>
+        <div class="field">
+          <label for="new-livellocorso-descrizione">Descrizione (facoltativa)</label>
+          <input type="text" id="new-livellocorso-descrizione" placeholder="es. Scambia con continuità dal fondo, prime volée">
+        </div>
+        <div class="error-msg" id="new-livellocorso-error"></div>
+        <button type="submit" class="btn btn-ghost" id="create-livellocorso-btn">+ Aggiungi livello</button>
+        <button type="button" class="btn btn-ghost hidden" id="cancel-edit-livellocorso-btn" style="margin-top:10px;">Annulla modifica</button>
+      </form>
+      </div>
+      </details>
+
+      <details class="config-section">
       <summary><h2>Aziende convenzionate</h2></summary>
       <div class="config-section-body">
       <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 8px;">Ogni azienda convenzionata diventa una categoria a sé, con le proprie tariffe in "Tariffe campi" qui sotto (prezzo diretto, es. CHF 0 per gratuito). Il tetto di spesa mensile è facoltativo — oltre quel limite (aziendale o del singolo dipendente) la prenotazione passa automaticamente alla tariffa esterno, senza bloccarsi.</p>
