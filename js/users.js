@@ -32,12 +32,40 @@ function permessoLabel(id) {
   return (KNOWN_PERMISSIONS.find(p => p.id === id) || {}).label || id;
 }
 
-function tariffeSummary(u) {
-  const t = u.tariffeOrarie || {};
+function oggiISO() {
+  const d = new Date();
+  const p = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+// Righe tariffa di un utente nel formato nuovo. Chi ha ancora solo il
+// formato storico (tariffeOrarie, una mappa senza periodo) lo vede qui
+// come righe con le date vuote: valgono "da sempre", ed è esattamente
+// come le tratta il Resoconto — così aprire la scheda e salvare non
+// cambia nulla di nascosto.
+function tariffeRowsFor(u) {
+  if (Array.isArray(u.tariffe)) return u.tariffe;
+  const storiche = u.tariffeOrarie || {};
   return DISCIPLINE
-    .filter(d => t[d.id])
-    .map(d => `${d.label} CHF${t[d.id].toFixed(2)}/ora`)
+    .filter(d => storiche[d.id])
+    .map(d => ({ disciplina: d.id, importo: storiche[d.id], periodoInizio: null, periodoFine: null }));
+}
+
+function tariffaValidaOggi(t, oggi) {
+  return (!t.periodoInizio || oggi >= t.periodoInizio) && (!t.periodoFine || oggi <= t.periodoFine);
+}
+
+function tariffeSummary(u) {
+  const oggi = oggiISO();
+  const righe = tariffeRowsFor(u);
+  const inCorso = righe.filter(t => tariffaValidaOggi(t, oggi));
+  const testo = inCorso
+    .map(t => `${disciplinaLabel(t.disciplina)} CHF${Number(t.importo).toFixed(2)}/ora`)
     .join(", ");
+
+  const fuoriPeriodo = righe.length - inCorso.length;
+  if (!fuoriPeriodo) return testo;
+  return (testo ? testo + " · " : "") + `${fuoriPeriodo} non in corso`;
 }
 
 function renderNewUserTariffeFields() {
@@ -158,12 +186,14 @@ async function loadUsers() {
 
         <div class="team-card-section">
           <div class="team-card-section-label">Tariffe orarie (CHF)</div>
-          <div class="team-card-row">
-            ${DISCIPLINE.map(d => `
-              <input type="number" class="user-tariffa-input" min="0" step="0.5" placeholder="${d.label}" value="${(u.tariffeOrarie && u.tariffeOrarie[d.id]) || ""}" data-uid="${u.id}" data-disciplina="${d.id}">
-            `).join("")}
-            <button class="btn btn-ghost save-tariffa-btn" data-uid="${u.id}">Salva</button>
+          <div class="tariffe-container" data-uid="${u.id}">
+            ${tariffeRowsFor(u).map(t => tariffaRowHtml(t)).join("")}
           </div>
+          <div class="team-card-row" style="margin-top:8px;">
+            <button class="btn btn-ghost add-tariffa-btn" data-uid="${u.id}">+ Aggiungi tariffa</button>
+            <button class="btn btn-ghost save-tariffa-btn" data-uid="${u.id}">Salva tariffe</button>
+          </div>
+          <p class="tariffa-hint">Date vuote = vale per tutte le ore. Chiudi una tariffa con "Al" e aprine una nuova con "Dal" per un aumento: i periodi già chiusi restano valutati alla tariffa di allora.</p>
         </div>
 
         <div class="team-card-actions">
@@ -203,6 +233,18 @@ async function loadUsers() {
   });
   list.querySelectorAll(".save-tariffa-btn").forEach(btn => {
     btn.addEventListener("click", onSaveTariffa);
+  });
+  list.querySelectorAll(".add-tariffa-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelector(`.tariffe-container[data-uid="${btn.dataset.uid}"]`)
+        .insertAdjacentHTML("beforeend", tariffaRowHtml());
+    });
+  });
+  // Delega sulla lista: le righe aggiunte dopo il render non avrebbero
+  // un listener proprio.
+  list.addEventListener("click", e => {
+    const btn = e.target.closest(".tariffa-remove-btn");
+    if (btn) btn.closest(".tariffa-row").remove();
   });
   list.querySelectorAll(".save-ruolo-btn").forEach(btn => {
     btn.addEventListener("click", onSaveRuolo);
@@ -370,21 +412,57 @@ async function onTogglePagamentoOnline(e) {
   }
 }
 
+function tariffaRowHtml(t = {}) {
+  return `
+    <div class="tariffa-row">
+      <select class="tariffa-disciplina">
+        ${DISCIPLINE.map(d => `<option value="${d.id}" ${d.id === t.disciplina ? "selected" : ""}>${escapeHtml(d.label)}</option>`).join("")}
+      </select>
+      <input type="number" class="tariffa-importo" min="0" step="0.5" placeholder="CHF/ora" value="${t.importo != null ? t.importo : ""}">
+      <input type="date" class="tariffa-dal" aria-label="Valida dal" value="${t.periodoInizio || ""}">
+      <input type="date" class="tariffa-al" aria-label="Valida fino al" value="${t.periodoFine || ""}">
+      <button type="button" class="btn btn-ghost tariffa-remove-btn" aria-label="Rimuovi tariffa">×</button>
+    </div>
+  `;
+}
+
 async function onSaveTariffa(e) {
   const btn = e.currentTarget;
   const uid = btn.dataset.uid;
-  const inputs = document.querySelectorAll(`.user-tariffa-input[data-uid="${uid}"]`);
-  const tariffeOrarie = {};
-  inputs.forEach(input => {
-    const val = parseFloat(input.value) || 0;
-    if (val > 0) tariffeOrarie[input.dataset.disciplina] = val;
-  });
+  const errorEl = document.getElementById("users-list-error");
+  errorEl.innerHTML = "";
+
+  const tariffe = [];
+  for (const row of document.querySelectorAll(`.tariffe-container[data-uid="${uid}"] .tariffa-row`)) {
+    const importoRaw = row.querySelector(".tariffa-importo").value;
+    if (!importoRaw) continue; // riga aggiunta e lasciata vuota
+    const periodoInizio = row.querySelector(".tariffa-dal").value || null;
+    const periodoFine = row.querySelector(".tariffa-al").value || null;
+    if (periodoInizio && periodoFine && periodoInizio > periodoFine) {
+      showError(errorEl, "Una tariffa ha la data di fine precedente a quella di inizio.");
+      return;
+    }
+    tariffe.push({
+      disciplina: row.querySelector(".tariffa-disciplina").value,
+      importo: parseFloat(importoRaw),
+      periodoInizio,
+      periodoFine
+    });
+  }
+
   btn.disabled = true;
   try {
-    await db.collection("users").doc(uid).update({ tariffeOrarie });
+    // tariffeOrarie (formato storico senza periodo) viene rimosso: da qui
+    // in poi comanda l'array. Tenerlo significherebbe che togliere una
+    // riga non ha effetto, perché il vecchio valore resterebbe come
+    // fallback nel calcolo del compenso.
+    await db.collection("users").doc(uid).update({
+      tariffe,
+      tariffeOrarie: firebase.firestore.FieldValue.delete()
+    });
     await loadUsers();
   } catch (err) {
-    showError(document.getElementById("users-list-error"), "Errore: " + err.message);
+    showError(errorEl, "Errore: " + err.message);
     btn.disabled = false;
   }
 }
@@ -432,10 +510,13 @@ async function onCreateUser(e) {
   const password = document.getElementById("new-user-password").value;
   const soggettoQuotaCampo = document.getElementById("new-user-quotacampo").checked;
 
-  const tariffeOrarie = {};
+  // Il form di creazione resta senza date: le tariffe iniziali valgono
+  // da sempre. I periodi si aggiungono poi dalla scheda, al primo
+  // adeguamento.
+  const tariffe = [];
   document.querySelectorAll(".new-user-tariffa-input").forEach(input => {
     const val = parseFloat(input.value) || 0;
-    if (val > 0) tariffeOrarie[input.dataset.disciplina] = val;
+    if (val > 0) tariffe.push({ disciplina: input.dataset.disciplina, importo: val, periodoInizio: null, periodoFine: null });
   });
 
   try {
@@ -450,7 +531,7 @@ async function onCreateUser(e) {
       ruoloNome: ruoloId,
       attivo: true,
       soggettoQuotaCampo,
-      tariffeOrarie
+      tariffe
     });
 
     await secondaryAuth.signOut();

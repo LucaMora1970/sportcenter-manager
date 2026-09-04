@@ -207,6 +207,34 @@ button.topbar-link {
 .team-card-row input[type=number] { flex: 1 1 90px; min-width: 80px; }
 .team-card-row .btn { width: auto; flex: 0 0 auto; padding: 8px 12px; font-size: 0.7rem; }
 
+/* Riga tariffa nella scheda utente: disciplina, importo, dal, al e il
+   pulsante di rimozione. Le due date vanno in fondo e su schermo stretto
+   scendono a capo insieme (flex-basis largo), così non si spezzano una
+   per riga lasciando l'importo isolato. */
+.tariffa-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.tariffa-row select { flex: 1 1 100px; min-width: 90px; }
+.tariffa-row input[type=number] { flex: 1 1 80px; min-width: 70px; }
+.tariffa-row input[type=date] { flex: 1 1 130px; min-width: 120px; }
+.tariffa-row .tariffa-remove-btn {
+  width: auto;
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+.tariffa-hint {
+  color: var(--chalk-grey);
+  font-size: 0.72rem;
+  line-height: 1.45;
+  margin: 8px 0 0;
+}
+
 .team-card-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 .team-card-actions .btn { width: auto; flex: 1 1 auto; padding: 8px 10px; font-size: 0.7rem; }
 
