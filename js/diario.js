@@ -831,7 +831,10 @@ function renderVociDaApprovare(entries) {
 // campi del diario. Non tocca userId/userNome/createdAt/approvato: la voce
 // resta attribuita a chi l'ha inserita, si aggiunge solo il chip di chi
 // l'ha corretta.
-function toggleModificaVoce(en) {
+// onSalvato: cosa fare dopo un salvataggio riuscito. Dalla lista di
+// approvazione si ridisegna la lista; dalla correzione via link non
+// esiste nessuna lista, quindi il chiamante passa la propria.
+function toggleModificaVoce(en, onSalvato) {
   const container = document.querySelector(`.modifica-container[data-modifica-id="${en.id}"]`);
   if (!container) return;
 
@@ -873,7 +876,7 @@ function toggleModificaVoce(en) {
   rowEl.querySelector(".row-orainizio-auto").addEventListener("change", () => aggiornaOraFineAuto(rowEl));
   rowEl.querySelector(".row-add-allievo-btn").addEventListener("click", () => addAllievoItem(rowEl));
 
-  container.querySelector(".salva-modifica-btn").addEventListener("click", (e) => onSalvaModificaVoce(en, rowEl, e.currentTarget));
+  container.querySelector(".salva-modifica-btn").addEventListener("click", (e) => onSalvaModificaVoce(en, rowEl, e.currentTarget, onSalvato));
 }
 
 // Precompila la riga con i valori esistenti della voce, DOPO che
@@ -923,7 +926,7 @@ function precompilaRigaModifica(rowEl, en) {
   }
 }
 
-async function onSalvaModificaVoce(en, rowEl, btn) {
+async function onSalvaModificaVoce(en, rowEl, btn, onSalvato) {
   const errorEl = rowEl.closest(".modifica-container").querySelector(".modifica-error");
   errorEl.textContent = "";
   btn.disabled = true;
@@ -956,12 +959,80 @@ async function onSalvaModificaVoce(en, rowEl, btn) {
     });
 
     Object.assign(en, contenuto, { modificatoDaNome: currentProfile.nome });
-    renderVociDaApprovare(ultimeVociDaApprovare);
+    if (onSalvato) onSalvato(en);
+    else renderVociDaApprovare(ultimeVociDaApprovare);
   } catch (err) {
     showError(errorEl, "Errore nel salvataggio: " + err.message);
     btn.disabled = false;
     btn.textContent = "Salva modifica";
   }
+}
+
+// ---------- Correzione di una voce aperta dal Resoconto ----------
+//
+// Il Resoconto elenca le voci ma non sa modificarle: manda qui con
+// ?voce=<id> (più il periodo, per il link di ritorno). Riusa lo stesso
+// form di modifica della lista di approvazione, quindi le regole di
+// validazione restano scritte in un posto solo.
+async function apriCorrezioneDaLink() {
+  const params = new URLSearchParams(location.search);
+  const voceId = params.get("voce");
+  if (!voceId) return;
+
+  const section = document.getElementById("correzione-section");
+  const errorEl = document.getElementById("correzione-error");
+  section.classList.remove("hidden");
+
+  const dal = params.get("dal");
+  const al = params.get("al");
+  if (dal && al) {
+    document.getElementById("correzione-torna-link").href =
+      `resoconto.html?dal=${encodeURIComponent(dal)}&al=${encodeURIComponent(al)}`;
+  }
+
+  try {
+    const doc = await db.collection("diario").doc(voceId).get();
+    if (!doc.exists) {
+      showError(errorEl, "Voce non trovata: potrebbe essere stata eliminata nel frattempo.");
+      return;
+    }
+    const en = { id: doc.id, ...doc.data() };
+    if (!puoModificareVoceDiario(en, currentProfile)) {
+      showError(errorEl, en.approvato === true
+        ? "Questa voce è già approvata: solo un amministratore può correggerla."
+        : "Non hai i permessi per correggere questa voce.");
+      return;
+    }
+    renderCorrezioneVoce(en);
+    section.scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (err) {
+    showError(errorEl, "Errore nel caricamento della voce: " + err.message);
+  }
+}
+
+function renderCorrezioneVoce(en, opts = {}) {
+  const metaParts = [formatDataBreve(en.data)];
+  if (en.userNome) metaParts.push(en.userNome);
+  if (en.campoNumero) metaParts.push("Campo " + en.campoNumero);
+  if (en.oraInizio || en.oraFine) metaParts.push(`${en.oraInizio || "—"}–${en.oraFine || "—"}`);
+  if (nomiAllievi(en)) metaParts.push("Allievo: " + nomiAllievi(en));
+
+  document.getElementById("correzione-container").innerHTML = `
+    <div class="entry-card">
+      <div class="entry-main">
+        <span class="badge ${en.disciplina}">${disciplinaLabel(en.disciplina)}</span>
+        <div class="entry-tipo">${escapeHtml(tipoAttivitaLabelFor(en))}</div>
+        <div class="entry-meta">${escapeHtml(metaParts.join(" · "))}</div>
+        ${opts.salvata ? `<div style="margin-top:6px;"><span class="chip-audit approvato">Voce corretta · ricalcola il periodo nel Resoconto</span></div>` : ""}
+      </div>
+      <div class="entry-ore">${(en.ore || 0).toFixed(1)}h</div>
+    </div>
+    <div class="modifica-container hidden" data-modifica-id="${en.id}" style="margin:-4px 0 14px;"></div>
+  `;
+
+  // Aperta subito: si arriva qui apposta per correggere, un ulteriore
+  // click su "Modifica" sarebbe solo un passaggio in più.
+  if (!opts.salvata) toggleModificaVoce(en, corretta => renderCorrezioneVoce(corretta, { salvata: true }));
 }
 
 async function approvaVoci(ids, btn) {
@@ -1057,6 +1128,10 @@ requireAuth(async (profile) => {
   await loadCatalogs();
   initForm();
   listenToday();
+
+  // Dopo initForm: il form di modifica riusa rowHtml/populateRowDependents,
+  // che hanno bisogno dei cataloghi già caricati.
+  await apriCorrezioneDaLink();
 });
 
 document.getElementById("logout-link").addEventListener("click", (e) => {

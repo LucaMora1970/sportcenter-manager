@@ -28,6 +28,17 @@
 
   <main>
 
+    <!-- Correzione di una singola voce, aperta dal link "Modifica" del
+         Resoconto (?voce=<id>). Nascosta in tutti gli altri casi. -->
+    <div id="correzione-section" class="hidden">
+      <div class="section-title"><h2>Correzione voce</h2></div>
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Voce aperta dal Resoconto. Dopo il salvataggio, ricalcola il periodo nel Resoconto per vedere gli importi aggiornati.</p>
+      <div id="correzione-container"></div>
+      <div class="error-msg" id="correzione-error"></div>
+      <a class="btn btn-ghost" id="correzione-torna-link" href="resoconto.html" style="width:auto;padding:8px 14px;font-size:0.76rem;">Torna al Resoconto</a>
+      <hr class="court-divider">
+    </div>
+
     <!-- Scoreboard: totale ore di oggi, elemento firma della pagina -->
     <div class="scoreboard">
       <div>

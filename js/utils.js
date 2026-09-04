@@ -200,6 +200,20 @@ function nomiAllievi(entry) {
   return entry.allievoNome || "";
 }
 
+// Specchio della regola di update su /diario in firestore.rules: un
+// amministratore corregge qualsiasi voce, gli altri solo quelle non
+// ancora approvate (le proprie, o quelle di tutti con
+// diario:gestisci_tutti / diario:approva). Sta qui e non nelle singole
+// pagine perché Diario e Resoconto devono mostrare il pulsante negli
+// stessi casi — e negli stessi in cui il salvataggio poi passa.
+function puoModificareVoceDiario(entry, profile) {
+  if (isAdmin(profile)) return true;
+  if (entry.approvato === true) return false;
+  return entry.userId === profile.uid
+    || hasPermission(profile, "diario:gestisci_tutti")
+    || hasPermission(profile, "diario:approva");
+}
+
 function puoEliminareVoceDiario(entry, profile) {
   if (entry.approvato === true) return isAdmin(profile);
   if (hasPermission(profile, "diario:gestisci_tutti")) return true;

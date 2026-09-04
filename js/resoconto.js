@@ -88,12 +88,37 @@ async function loadConfigCalcoli() {
 // L'importo torna null quando la voce *è* soggetta ma la tariffa o la
 // quota corrispondente non è configurata: è un errore da segnalare,
 // diverso da "non dovuto" (soggettaQuota/retribuita a false).
+// Tariffa oraria del collaboratore per una disciplina a una certa data.
+// Due formati convivono, senza migrazione dei dati:
+// - tariffe: [{disciplina, importo, periodoInizio, periodoFine}] — con
+//   validità nel tempo, così ricalcolare un periodo già chiuso non lo
+//   rivaluta alla tariffa di oggi;
+// - tariffeOrarie: {disciplina: importo} — formato storico senza periodo,
+//   vale "da sempre", per gli utenti mai ripassati dalla scheda in Team.
+// Se l'array c'è comanda da solo: una disciplina che non vi compare non
+// ha tariffa (e la voce viene segnalata), invece di ricadere su un
+// vecchio valore che l'amministratore aveva appena tolto.
+function tariffaOrariaPerData(utente, disciplina, dataStr) {
+  if (!utente) return null;
+
+  if (Array.isArray(utente.tariffe)) {
+    const candidate = utente.tariffe
+      .filter(t => t.disciplina === disciplina)
+      .filter(t => !t.periodoInizio || dataStr >= t.periodoInizio)
+      .filter(t => !t.periodoFine || dataStr <= t.periodoFine)
+      .sort((a, b) => (b.periodoInizio || "").localeCompare(a.periodoInizio || ""))[0];
+    return candidate ? candidate.importo : null;
+  }
+
+  return utente.tariffeOrarie ? utente.tariffeOrarie[disciplina] : null;
+}
+
 function importiPerEntry(e, utente, config) {
   const tipo = e.tipoAttivitaId ? config.tipiById[e.tipoAttivitaId] : null;
 
   const soggettaQuota = !!(utente && utente.soggettoQuotaCampo && tipo && tipo.soggettoQuotaCampo);
   const retribuita = !!(tipo && tipo.retribuitoCollaboratore);
-  const tariffaDisciplina = utente && utente.tariffeOrarie ? utente.tariffeOrarie[e.disciplina] : null;
+  const tariffaDisciplina = tariffaOrariaPerData(utente, e.disciplina, e.data);
 
   return {
     tipo,
@@ -577,6 +602,21 @@ function renderDettaglioGiorniHtml(dipendente, opts = {}) {
   }).join("");
 }
 
+// La correzione di una voce vive nel Diario, dove il form di modifica
+// esiste già con tutte le sue regole (slot orari, campo obbligatorio o
+// meno, allievi, gruppi padel): duplicarlo qui vorrebbe dire due
+// implementazioni che col tempo si disallineano. Il periodo viaggia nel
+// link così il ritorno riporta il Resoconto sulle stesse date, invece
+// che sul mese corrente di default.
+function linkCorrezioneVoce(en) {
+  const params = new URLSearchParams({ voce: en.id });
+  if (ultimoPeriodo) {
+    params.set("dal", ultimoPeriodo.dal);
+    params.set("al", ultimoPeriodo.al);
+  }
+  return "diario.html?" + params.toString();
+}
+
 function entryRowHtml(en, opts = {}) {
   const metaParts = [];
   if (en.campoNumero) metaParts.push("Campo " + en.campoNumero);
@@ -596,6 +636,7 @@ function entryRowHtml(en, opts = {}) {
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
         <div class="entry-ore">${(en.ore || 0).toFixed(1)}h</div>
+        ${puoModificareVoceDiario(en, currentProfile) ? `<a class="btn btn-ghost" style="width:auto;padding:6px 10px;font-size:0.65rem;" href="${linkCorrezioneVoce(en)}">Modifica</a>` : ""}
         ${puoEliminareVoceDiario(en, currentProfile) ? `<button type="button" class="btn btn-danger delete-diario-btn" style="width:auto;padding:6px 10px;font-size:0.65rem;" data-id="${en.id}">Elimina</button>` : ""}
       </div>
     </div>
@@ -1000,9 +1041,13 @@ requireAuth(async (profile) => {
   currentProfile = profile;
   document.getElementById("user-chip").textContent = profile.nome + (profile.ruoloNome ? " · " + profile.ruoloNome : "");
 
-  const [dal, al] = currentMonthRange();
-  document.getElementById("dal").value = dal;
-  document.getElementById("al").value = al;
+  // Tornando dalla correzione di una voce nel Diario il periodo arriva
+  // nel link: si riapre su quello che si stava guardando, non sul mese
+  // corrente.
+  const params = new URLSearchParams(location.search);
+  const [meseDal, meseAl] = currentMonthRange();
+  document.getElementById("dal").value = params.get("dal") || meseDal;
+  document.getElementById("al").value = params.get("al") || meseAl;
 
   if (hasPermission(profile, "diario:leggi_tutti")) {
     document.getElementById("admin-section").classList.remove("hidden");
