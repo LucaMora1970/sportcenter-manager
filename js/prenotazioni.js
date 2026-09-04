@@ -918,7 +918,12 @@ async function calcolaResocontoPeriodo(e) {
       }))
       .filter(t => t.status === "CONFIRMED" || t.status === "COMPLETED");
 
-    const quoteCampoList = quoteCampoSnap.docs.map(d => d.data());
+    // Come nel Resoconto: una quota disattivata in Configurazione non si
+    // applica più. Le due pagine devono concordare, altrimenti la stessa
+    // quota campo risulterebbe dovuta in una e non nell'altra.
+    const quoteCampoList = quoteCampoSnap.docs
+      .map(d => d.data())
+      .filter(q => q.attivo !== false);
 
     const perDurata = {};
     let totaleVendite = 0;

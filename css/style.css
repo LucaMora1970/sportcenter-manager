@@ -688,6 +688,41 @@ select:focus, input:focus, textarea:focus {
 .dipendente-block { margin-bottom: 10px; }
 .dipendente-block .entry-card { margin-bottom: 0; border-radius: var(--radius) var(--radius) 0 0; }
 
+/* Righe ore/compenso/quota campo per disciplina. Due contenitori per la
+   stessa tabella: .dipendente-discipline è incastrata tra la scheda del
+   dipendente e la barra dei pulsanti (niente bordo sopra e sotto, così i
+   tre blocchi restano un pezzo solo), .tabella-discipline sta da sola
+   nella vista personale del collaboratore. Su schermo stretto la tabella
+   (celle a nowrap) scorre da sola invece di allargare la pagina. */
+.dipendente-discipline,
+.tabella-discipline {
+  background: var(--court-blue-950);
+  border: 1px solid var(--court-blue-700);
+  padding: 2px 10px 6px;
+  overflow-x: auto;
+}
+.dipendente-discipline { border-top: none; border-bottom: none; }
+.tabella-discipline { border-radius: var(--radius); margin-bottom: 12px; }
+.dipendente-discipline .app-table th,
+.dipendente-discipline .app-table td,
+.tabella-discipline .app-table th,
+.tabella-discipline .app-table td { padding: 6px 8px; }
+.dipendente-discipline .badge,
+.tabella-discipline .badge { margin-right: 0; }
+
+/* Nota sotto un importo: "2 voci senza tariffa oraria". È un errore di
+   configurazione da correggere, non un dettaglio — colore danger, e
+   white-space rimesso a normal perché le celle della tabella sono a
+   nowrap e la nota è una frase. */
+.app-table .cella-nota {
+  margin-top: 2px;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.62rem;
+  font-weight: 400;
+  color: var(--danger);
+  white-space: normal;
+}
+
 /* Scheda corso in Corsi: più badge e righe meta impilate rispetto alle
    altre schede — merita più respiro tra un elemento e l'altro. */
 .corso-card .badge { margin-bottom: 6px; }
@@ -1112,6 +1147,7 @@ select:focus, input:focus, textarea:focus {
     font-family: Arial, sans-serif;
   }
   #print-area h1 { font-size: 1.3rem; margin: 0 0 4px; text-transform: none; }
+  #print-area h2 { font-size: 1rem; margin: 18px 0 0; text-transform: none; }
   #print-area p { margin: 4px 0; font-size: 0.9rem; }
   .stampa-intestazione { margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid #999; font-size: 0.8rem; color: #333; }
   .stampa-intestazione strong { display: block; font-size: 1rem; color: #000; margin-bottom: 2px; }

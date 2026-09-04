@@ -6,7 +6,12 @@
 // dovuta al circolo dai collaboratori/tipi attività marcati come
 // soggetti, compenso dovuto ai collaboratori (tariffa oraria per
 // utente sui tipi attività marcati come retribuibili), e totale
-// complessivo.
+// complessivo. Ogni dipendente è spaccato per disciplina (ore, compenso
+// dal club, quota campo al club): le tariffe orarie sono per disciplina,
+// quindi è lì che i conti si possono verificare. La vista personale
+// mostra le stesse tre colonne per le proprie voci, calcolate dalla
+// stessa funzione (importiPerEntry), così il maestro e la segretaria
+// non possono leggere numeri diversi.
 // Richiede firebase-config.js, utils.js e auth.js già caricati.
 // ============================================================
 
@@ -42,20 +47,120 @@ function last7DaysRange() {
   return [toISO(settimanaFa), toISO(oggi)];
 }
 
-async function loadPersonal(uid, dal, al) {
-  const snap = await db.collection("diario")
-    .where("userId", "==", uid)
-    .where("data", ">=", dal)
-    .where("data", "<=", al)
-    .get();
+// Configurazione che serve sia al calcolo personale sia a quello admin:
+// tipi attività, campi e quote campo. Caricata una volta sola da
+// calcola() e passata a entrambi — sono le stesse tre collection, e chi
+// ha diario:leggi_tutti esegue i due calcoli uno dopo l'altro.
+// Tutte e tre sono leggibili da qualsiasi utente loggato (firestore.rules),
+// quindi anche un collaboratore senza permessi speciali può calcolarsi
+// la propria quota campo e il proprio compenso.
+async function loadConfigCalcoli() {
+  const [tipiSnap, campiSnap, quoteCampoSnap] = await Promise.all([
+    db.collection("tipiAttivita").get(),
+    db.collection("campi").get(),
+    db.collection("quoteCampo").get()
+  ]);
 
-  const entries = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  const totale = entries.reduce((s, e) => s + (e.ore || 0), 0);
-  const perDisciplina = {};
-  entries.forEach(e => {
-    perDisciplina[e.disciplina] = (perDisciplina[e.disciplina] || 0) + (e.ore || 0);
+  const tipiById = {};
+  tipiSnap.docs.forEach(d => { tipiById[d.id] = { id: d.id, ...d.data() }; });
+
+  const campiById = {};
+  campiSnap.docs.forEach(d => {
+    const c = d.data();
+    campiById[c.disciplina + "|" + c.numero] = c;
   });
-  return { totale, perDisciplina, entries };
+
+  // Le quote disattivate dalla lista in Configurazione sono escluse dal
+  // calcolo: finché non lo erano, il pulsante Attivo/Disattivato non
+  // aveva alcun effetto e una quota "spenta" continuava ad applicarsi.
+  const quoteCampoList = quoteCampoSnap.docs
+    .map(d => d.data())
+    .filter(q => q.attivo !== false);
+
+  return { tipiById, campiById, quoteCampoList };
+}
+
+// Quota campo e compenso di una singola voce di diario. È l'unico punto
+// in cui queste due regole sono scritte: la vista personale e quella
+// admin lo chiamano entrambe, così i numeri che il maestro vede sul
+// proprio telefono e quelli che la segretaria stampa non possono
+// divergere.
+// L'importo torna null quando la voce *è* soggetta ma la tariffa o la
+// quota corrispondente non è configurata: è un errore da segnalare,
+// diverso da "non dovuto" (soggettaQuota/retribuita a false).
+function importiPerEntry(e, utente, config) {
+  const tipo = e.tipoAttivitaId ? config.tipiById[e.tipoAttivitaId] : null;
+
+  const soggettaQuota = !!(utente && utente.soggettoQuotaCampo && tipo && tipo.soggettoQuotaCampo);
+  const retribuita = !!(tipo && tipo.retribuitoCollaboratore);
+  const tariffaDisciplina = utente && utente.tariffeOrarie ? utente.tariffeOrarie[e.disciplina] : null;
+
+  return {
+    tipo,
+    soggettaQuota,
+    quotaCampo: soggettaQuota ? quotaCampoPerEntry(e, config.campiById, config.quoteCampoList) : null,
+    retribuita,
+    compenso: retribuita && tariffaDisciplina ? (e.ore || 0) * tariffaDisciplina : null
+  };
+}
+
+// Somma una voce nella riga della sua disciplina. Conta a parte le voci
+// rimaste senza importo: sono quelle da correggere in configurazione, e
+// senza questo contatore una disciplina con la tariffa mancante
+// mostrerebbe uno zero indistinguibile da un "non dovuto".
+function accumulaDisciplina(mappa, e, importi) {
+  const id = e.disciplina || "";
+  if (!mappa[id]) {
+    mappa[id] = { disciplina: id, ore: 0, quotaCampo: 0, compenso: 0, pagatoOnline: 0, vociSenzaQuotaCampo: 0, vociSenzaCompenso: 0 };
+  }
+  const riga = mappa[id];
+
+  riga.ore += (e.ore || 0);
+  if (e.pagamentoOnlineStato === "PAID") riga.pagatoOnline += (e.pagamentoOnlineImporto || 0);
+
+  if (importi.soggettaQuota) {
+    if (importi.quotaCampo != null) riga.quotaCampo += importi.quotaCampo;
+    else riga.vociSenzaQuotaCampo++;
+  }
+  if (importi.retribuita) {
+    if (importi.compenso != null) riga.compenso += importi.compenso;
+    else riga.vociSenzaCompenso++;
+  }
+  return riga;
+}
+
+function sommaRighe(righe, campo) {
+  return righe.reduce((s, r) => s + (r[campo] || 0), 0);
+}
+
+// Vista personale: le stesse ore di prima, ma ora anche quota campo e
+// compenso per disciplina, calcolati con la stessa funzione della vista
+// admin. Serve il proprio doc users (tariffe orarie e flag quota campo),
+// leggibile dal proprietario.
+async function loadPersonal(uid, dal, al, config) {
+  const [diarioSnap, userDoc] = await Promise.all([
+    db.collection("diario")
+      .where("userId", "==", uid)
+      .where("data", ">=", dal)
+      .where("data", "<=", al)
+      .get(),
+    db.collection("users").doc(uid).get()
+  ]);
+
+  const entries = diarioSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const utente = userDoc.exists ? userDoc.data() : null;
+
+  const mappa = {};
+  entries.forEach(e => accumulaDisciplina(mappa, e, importiPerEntry(e, utente, config)));
+  const perDisciplina = ordinaPerDisciplina(mappa);
+
+  return {
+    totale: entries.reduce((s, e) => s + (e.ore || 0), 0),
+    perDisciplina,
+    quotaCampo: sommaRighe(perDisciplina, "quotaCampo"),
+    compenso: sommaRighe(perDisciplina, "compenso"),
+    entries
+  };
 }
 
 // Tra le tariffe di un tipo attività, trova quella "per tutti" (senza
@@ -132,55 +237,42 @@ function quotaCampoPerEntry(entry, campiById, quoteCampoList) {
   return entry.disciplina === "padel" ? match.importo : (entry.ore || 0) * match.importo;
 }
 
-async function loadTutti(dal, al) {
-  const [diarioSnap, tipiSnap, campiSnap, usersSnap, quoteCampoSnap] = await Promise.all([
+async function loadTutti(dal, al, config) {
+  const [diarioSnap, usersSnap] = await Promise.all([
     db.collection("diario").where("data", ">=", dal).where("data", "<=", al).get(),
-    db.collection("tipiAttivita").get(),
-    db.collection("campi").get(),
-    db.collection("users").get(),
-    db.collection("quoteCampo").get()
+    db.collection("users").get()
   ]);
 
   const entries = diarioSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-  const tipiById = {};
-  tipiSnap.docs.forEach(d => { tipiById[d.id] = { id: d.id, ...d.data() }; });
-
-  const campiById = {};
-  campiSnap.docs.forEach(d => {
-    const c = d.data();
-    campiById[c.disciplina + "|" + c.numero] = c;
-  });
-
   const usersById = {};
   usersSnap.docs.forEach(d => { usersById[d.id] = d.data(); });
-
-  const quoteCampoList = quoteCampoSnap.docs.map(d => d.data());
 
   const perUtente = {};
   const perTipo = {};
   const perAllievo = {};
   let totaleOre = 0;
   let totaleCosto = 0;
-  let totaleQuotaCampo = 0;
-  let totaleCompenso = 0;
   let totalePagatoOnline = 0;
   let vociSenzaTariffa = 0;
-  let vociSenzaQuotaCampo = 0;
-  let vociSenzaCompenso = 0;
 
   entries.forEach(e => {
     const ore = e.ore || 0;
     totaleOre += ore;
 
-    if (!perUtente[e.userId]) perUtente[e.userId] = { uid: e.userId, nome: e.userNome || e.userId, totale: 0, quotaCampo: 0, compenso: 0, pagatoOnline: 0, entries: [] };
+    if (!perUtente[e.userId]) perUtente[e.userId] = { uid: e.userId, nome: e.userNome || e.userId, totale: 0, quotaCampo: 0, compenso: 0, pagatoOnline: 0, perDisciplina: {}, entries: [] };
     perUtente[e.userId].totale += ore;
     perUtente[e.userId].entries.push(e);
 
-    if (e.pagamentoOnlineStato === "PAID") {
-      perUtente[e.userId].pagatoOnline += (e.pagamentoOnlineImporto || 0);
-      totalePagatoOnline += (e.pagamentoOnlineImporto || 0);
-    }
+    const importi = importiPerEntry(e, usersById[e.userId], config);
+
+    // Le righe per disciplina sono la base del conteggio: i totali del
+    // dipendente sono la loro somma (vedi sotto), così quello che si
+    // legge riga per riga torna col totale per costruzione, invece di
+    // essere una seconda somma che potrebbe divergere.
+    accumulaDisciplina(perUtente[e.userId].perDisciplina, e, importi);
+
+    if (e.pagamentoOnlineStato === "PAID") totalePagatoOnline += (e.pagamentoOnlineImporto || 0);
 
     const tipoKey = (e.tipoAttivitaId || ("legacy:" + (e.tipoAttivita || "altro"))) + "|" + (e.disciplina || "");
     if (!perTipo[tipoKey]) perTipo[tipoKey] = { nome: tipoAttivitaLabelFor(e), disciplina: e.disciplina, ore: 0, costo: 0 };
@@ -212,8 +304,7 @@ async function loadTutti(dal, al) {
       perAllievo[chiave].entries.push(e);
     });
 
-    const tipoAttivitaDoc = e.tipoAttivitaId ? tipiById[e.tipoAttivitaId] : null;
-    const prezzoOra = prezzoPerData(tipoAttivitaDoc, e.data);
+    const prezzoOra = prezzoPerData(importi.tipo, e.data);
     if (prezzoOra != null) {
       const costo = ore * prezzoOra;
       perTipo[tipoKey].costo += costo;
@@ -222,31 +313,31 @@ async function loadTutti(dal, al) {
       vociSenzaTariffa++;
     }
 
-    const utente = usersById[e.userId];
-    if (utente && utente.soggettoQuotaCampo && tipoAttivitaDoc && tipoAttivitaDoc.soggettoQuotaCampo) {
-      const quota = quotaCampoPerEntry(e, campiById, quoteCampoList);
-      if (quota != null) {
-        perUtente[e.userId].quotaCampo += quota;
-        totaleQuotaCampo += quota;
-      } else {
-        vociSenzaQuotaCampo++;
-      }
-    }
-
-    if (tipoAttivitaDoc && tipoAttivitaDoc.retribuitoCollaboratore) {
-      const tariffaDisciplina = utente && utente.tariffeOrarie ? utente.tariffeOrarie[e.disciplina] : null;
-      if (tariffaDisciplina) {
-        const compenso = ore * tariffaDisciplina;
-        perUtente[e.userId].compenso += compenso;
-        totaleCompenso += compenso;
-      } else {
-        vociSenzaCompenso++;
-      }
-    }
   });
 
+  // Totali del dipendente ricavati dalle sue righe per disciplina, non
+  // accumulati a parte: è ciò che rende impossibile una scheda in cui le
+  // righe non tornano col totale.
+  const perDipendente = Object.values(perUtente).map(u => {
+    const perDisciplina = ordinaPerDisciplina(u.perDisciplina);
+    return {
+      ...u,
+      perDisciplina,
+      quotaCampo: sommaRighe(perDisciplina, "quotaCampo"),
+      compenso: sommaRighe(perDisciplina, "compenso"),
+      pagatoOnline: sommaRighe(perDisciplina, "pagatoOnline"),
+      vociSenzaQuotaCampo: sommaRighe(perDisciplina, "vociSenzaQuotaCampo"),
+      vociSenzaCompenso: sommaRighe(perDisciplina, "vociSenzaCompenso")
+    };
+  }).sort((a, b) => b.totale - a.totale);
+
+  const totaleQuotaCampo = sommaRighe(perDipendente, "quotaCampo");
+  const totaleCompenso = sommaRighe(perDipendente, "compenso");
+  const vociSenzaQuotaCampo = sommaRighe(perDipendente, "vociSenzaQuotaCampo");
+  const vociSenzaCompenso = sommaRighe(perDipendente, "vociSenzaCompenso");
+
   return {
-    perDipendente: Object.values(perUtente).sort((a, b) => b.totale - a.totale),
+    perDipendente,
     perTipoAttivita: Object.values(perTipo).sort((a, b) => b.ore - a.ore),
     perAllievo: Object.values(perAllievo).sort((a, b) => a.nome.localeCompare(b.nome)),
     totaleOre,
@@ -260,23 +351,95 @@ async function loadTutti(dal, al) {
   };
 }
 
-function renderDisciplinaBreakdown(perDisciplina) {
-  const el = document.getElementById("disciplina-breakdown");
-  const righe = DISCIPLINE.filter(d => perDisciplina[d.id]);
+// Ore per disciplina ricavate dalle sole voci: la vista personale e
+// quella per allievo non passano da loadTutti, quindi non hanno importi
+// da mostrare — bastano le ore per il riepilogo in testa alla stampa.
+function perDisciplinaDaEntries(entries) {
+  const mappa = {};
+  (entries || []).forEach(en => {
+    const id = en.disciplina || "";
+    if (!mappa[id]) mappa[id] = { disciplina: id, ore: 0, quotaCampo: 0, compenso: 0, pagatoOnline: 0, vociSenzaQuotaCampo: 0, vociSenzaCompenso: 0 };
+    mappa[id].ore += (en.ore || 0);
+  });
+  return ordinaPerDisciplina(mappa);
+}
 
-  if (righe.length === 0) {
-    el.innerHTML = "";
-    return;
-  }
+// Le righe per disciplina seguono lo stesso ordine di DISCIPLINE
+// (configurabile), non l'ordine casuale in cui compaiono le voci: così
+// un maestro ritrova sempre le sue discipline nella stessa posizione da
+// un periodo all'altro. Le discipline non più configurate finiscono in
+// fondo invece di sparire — le ore storiche vanno comunque mostrate.
+function ordinaPerDisciplina(mappa) {
+  const ordine = DISCIPLINE.map(d => d.id);
+  const rango = id => {
+    const i = ordine.indexOf(id);
+    return i === -1 ? ordine.length : i;
+  };
+  return Object.values(mappa).sort((a, b) => rango(a.disciplina) - rango(b.disciplina));
+}
 
-  el.innerHTML = righe.map(d => `
-    <div class="entry-card">
-      <div class="entry-main">
-        <span class="badge ${d.id}">${d.label}</span>
-      </div>
-      <div class="entry-ore">${(perDisciplina[d.id] || 0).toFixed(1)}h</div>
+// Tabella per disciplina, usata sia nella scheda del dipendente (vista
+// admin) sia in cima alla vista personale del collaboratore: stessi
+// numeri, stesso ordine di colonne, così chi guarda i due schermi non
+// deve reinterpretare nulla.
+// Le colonne di denaro sono etichettate in modo esplicito ("dal club" /
+// "al club") invece che dal punto di vista di chi legge: la stessa riga
+// la guardano il maestro e la segretaria, e un "da ricevere" per l'uno
+// è un "da pagare" per l'altra.
+function disciplineTableHtml(dip, opts = {}) {
+  const righe = dip.perDisciplina || [];
+  if (righe.length === 0) return "";
+
+  // Le colonne compaiono se la persona è soggetta a quota campo o
+  // compenso, anche quando l'importo non si è potuto calcolare: è
+  // proprio il caso da mostrare, non da nascondere.
+  const mostraImporti = righe.some(r =>
+    r.quotaCampo > 0 || r.compenso > 0 || r.vociSenzaQuotaCampo > 0 || r.vociSenzaCompenso > 0);
+
+  const cella = (valore, mancanti, motivo) => {
+    const testo = valore > 0 ? "CHF " + valore.toFixed(2) : "—";
+    if (!mancanti) return testo;
+    return `${testo}<div class="cella-nota">${mancanti} ${mancanti === 1 ? "voce" : "voci"} ${motivo}</div>`;
+  };
+  const cellaCompenso = r => cella(r.compenso, r.vociSenzaCompenso, "senza tariffa oraria");
+  const cellaQuota = r => cella(r.quotaCampo, r.vociSenzaQuotaCampo, "senza quota configurata");
+
+  const totali = {
+    compenso: sommaRighe(righe, "compenso"),
+    quotaCampo: sommaRighe(righe, "quotaCampo"),
+    vociSenzaCompenso: sommaRighe(righe, "vociSenzaCompenso"),
+    vociSenzaQuotaCampo: sommaRighe(righe, "vociSenzaQuotaCampo")
+  };
+
+  return `
+    <div class="${opts.wrapperClass || "dipendente-discipline"}">
+      <table class="app-table">
+        <thead>
+          <tr>
+            <th>Disciplina</th>
+            <th>Ore</th>
+            ${mostraImporti ? "<th>Compenso dal club</th><th>Quota campo al club</th>" : ""}
+          </tr>
+        </thead>
+        <tbody>
+          ${righe.map(r => `
+            <tr>
+              <td><span class="badge ${escapeHtml(r.disciplina)}">${escapeHtml(disciplinaLabel(r.disciplina) || "—")}</span></td>
+              <td>${r.ore.toFixed(1)}h</td>
+              ${mostraImporti ? `<td>${cellaCompenso(r)}</td><td>${cellaQuota(r)}</td>` : ""}
+            </tr>
+          `).join("")}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td><strong>Totale</strong></td>
+            <td><strong>${sommaRighe(righe, "ore").toFixed(1)}h</strong></td>
+            ${mostraImporti ? `<td><strong>${cellaCompenso(totali)}</strong></td><td><strong>${cellaQuota(totali)}</strong></td>` : ""}
+          </tr>
+        </tfoot>
+      </table>
     </div>
-  `).join("");
+  `;
 }
 
 function renderDipendenti(lista) {
@@ -292,12 +455,11 @@ function renderDipendenti(lista) {
       <div class="entry-card">
         <div class="entry-main">
           <div class="entry-tipo">${escapeHtml(d.nome)}</div>
-          ${d.quotaCampo > 0 ? `<div class="entry-meta">Quota campo dovuta: CHF ${d.quotaCampo.toFixed(2)}</div>` : ""}
-          ${d.compenso > 0 ? `<div class="entry-meta">Compenso dovuto: CHF ${d.compenso.toFixed(2)}</div>` : ""}
           ${d.pagatoOnline > 0 ? `<div style="margin-top:6px;"><span class="chip-audit approvato">Incassato online CHF ${d.pagatoOnline.toFixed(2)}</span></div>` : ""}
         </div>
         <div class="entry-ore">${d.totale.toFixed(1)}h</div>
       </div>
+      ${disciplineTableHtml(d)}
       <div class="dipendente-actions">
         <button type="button" class="btn btn-ghost toggle-dettaglio-btn" data-uid="${d.uid}">Dettaglio</button>
         <button type="button" class="btn btn-ghost stampa-btn" data-uid="${d.uid}">Stampa / PDF</button>
@@ -387,7 +549,7 @@ function toggleDettaglioAllievo(aid) {
 function stampaReportAllievo(aid) {
   const allievo = (ultimoTutti.perAllievo || []).find(a => a.aid === aid);
   if (!allievo) return;
-  stampaReport({ nome: allievo.nome, entries: allievo.entries, totale: allievo.totale, quotaCampo: 0, compenso: 0 });
+  stampaReport({ nome: allievo.nome, entries: allievo.entries, totale: allievo.totale, quotaCampo: 0, compenso: 0, perDisciplina: perDisciplinaDaEntries(allievo.entries) });
 }
 
 // Raggruppa le voci di un dipendente per data (più recente prima), con
@@ -467,9 +629,66 @@ function toggleDettaglioDipendente(uid) {
   container.classList.remove("hidden");
 }
 
+// Riepilogo per disciplina in testa alla stampa: è la parte che il
+// maestro si porta via e su cui fa il controllo. Le colonne di denaro
+// compaiono solo se ci sono importi — nel report personale il
+// collaboratore ha solo le ore, quota campo e compenso li calcola la
+// vista admin.
+function riepilogoDisciplineStampaHtml(perDisciplina) {
+  if (!perDisciplina || perDisciplina.length === 0) return "";
+
+  const mostraImporti = perDisciplina.some(r =>
+    r.compenso > 0 || r.quotaCampo > 0 || r.vociSenzaCompenso > 0 || r.vociSenzaQuotaCampo > 0);
+  const totali = {
+    ore: sommaRighe(perDisciplina, "ore"),
+    compenso: sommaRighe(perDisciplina, "compenso"),
+    quotaCampo: sommaRighe(perDisciplina, "quotaCampo"),
+    vociSenzaCompenso: sommaRighe(perDisciplina, "vociSenzaCompenso"),
+    vociSenzaQuotaCampo: sommaRighe(perDisciplina, "vociSenzaQuotaCampo")
+  };
+
+  // Le voci senza importo restano scritte accanto al numero anche sul
+  // cartaceo: è la copia su cui maestro e segretaria si confrontano, e
+  // un totale più basso del dovuto senza spiegazione è peggio di un
+  // totale con la riga da sistemare indicata.
+  const cella = (valore, mancanti) => {
+    const testo = valore > 0 ? valore.toFixed(2) : "—";
+    return mancanti ? `${testo} (${mancanti} da sistemare)` : testo;
+  };
+
+  return `
+    <h2>Riepilogo per disciplina</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Disciplina</th>
+          <th>Ore</th>
+          ${mostraImporti ? "<th>Compenso dal club (CHF)</th><th>Quota campo al club (CHF)</th>" : ""}
+        </tr>
+      </thead>
+      <tbody>
+        ${perDisciplina.map(r => `
+          <tr>
+            <td>${escapeHtml(disciplinaLabel(r.disciplina) || "—")}</td>
+            <td>${r.ore.toFixed(2)}</td>
+            ${mostraImporti ? `<td>${cella(r.compenso, r.vociSenzaCompenso)}</td><td>${cella(r.quotaCampo, r.vociSenzaQuotaCampo)}</td>` : ""}
+          </tr>
+        `).join("")}
+      </tbody>
+      <tfoot>
+        <tr>
+          <th>Totale</th>
+          <th>${totali.ore.toFixed(2)}</th>
+          ${mostraImporti ? `<th>${cella(totali.compenso, totali.vociSenzaCompenso)}</th><th>${cella(totali.quotaCampo, totali.vociSenzaQuotaCampo)}</th>` : ""}
+        </tr>
+      </tfoot>
+    </table>
+  `;
+}
+
 // Tabella di stampa condivisa tra il report di un singolo dipendente
 // (vista admin) e il report personale (vista collaboratore).
-function stampaReport({ nome, entries, totale, quotaCampo, compenso, pagatoOnline }) {
+function stampaReport({ nome, entries, totale, quotaCampo, compenso, pagatoOnline, perDisciplina }) {
   const perGiorno = {};
   entries.forEach(en => {
     if (!perGiorno[en.data]) perGiorno[en.data] = [];
@@ -494,13 +713,15 @@ function stampaReport({ nome, entries, totale, quotaCampo, compenso, pagatoOnlin
   ).join("");
 
   const totaliParts = [`<p><strong>Totale ore:</strong> ${totale.toFixed(2)}</p>`];
-  if (quotaCampo > 0) totaliParts.push(`<p><strong>Quota campo dovuta:</strong> CHF ${quotaCampo.toFixed(2)}</p>`);
-  if (compenso > 0) totaliParts.push(`<p><strong>Compenso dovuto:</strong> CHF ${compenso.toFixed(2)}</p>`);
+  if (quotaCampo > 0) totaliParts.push(`<p><strong>Quota campo al club:</strong> CHF ${quotaCampo.toFixed(2)}</p>`);
+  if (compenso > 0) totaliParts.push(`<p><strong>Compenso dal club:</strong> CHF ${compenso.toFixed(2)}</p>`);
   if (pagatoOnline > 0) totaliParts.push(`<p><strong>Pagato online dai clienti:</strong> CHF ${pagatoOnline.toFixed(2)}</p>`);
 
   document.getElementById("print-area").innerHTML = `
     <h1>${escapeHtml(nome)}</h1>
     <p>Periodo: ${formatDataBreve(ultimoPeriodo.dal)} – ${formatDataBreve(ultimoPeriodo.al)}</p>
+    ${riepilogoDisciplineStampaHtml(perDisciplina)}
+    <h2>Dettaglio</h2>
     <table>
       <thead>
         <tr><th>Data</th><th>Disciplina</th><th>Tipo attività</th><th>Campo</th><th>Allievo</th><th>Orario</th><th>Ore</th><th>Pagato online</th><th>Note</th></tr>
@@ -516,12 +737,19 @@ function stampaReport({ nome, entries, totale, quotaCampo, compenso, pagatoOnlin
 function stampaReportDipendente(uid) {
   const dipendente = (ultimoTutti.perDipendente || []).find(d => d.uid === uid);
   if (!dipendente) return;
-  stampaReport({ nome: dipendente.nome, entries: dipendente.entries, totale: dipendente.totale, quotaCampo: dipendente.quotaCampo, compenso: dipendente.compenso, pagatoOnline: dipendente.pagatoOnline });
+  stampaReport({ nome: dipendente.nome, entries: dipendente.entries, totale: dipendente.totale, quotaCampo: dipendente.quotaCampo, compenso: dipendente.compenso, pagatoOnline: dipendente.pagatoOnline, perDisciplina: dipendente.perDisciplina });
 }
 
 function stampaReportPersonale() {
   if (!ultimoPersonal) return;
-  stampaReport({ nome: currentProfile.nome, entries: ultimoPersonal.entries, totale: ultimoPersonal.totale, quotaCampo: 0, compenso: 0 });
+  stampaReport({
+    nome: currentProfile.nome,
+    entries: ultimoPersonal.entries,
+    totale: ultimoPersonal.totale,
+    quotaCampo: ultimoPersonal.quotaCampo,
+    compenso: ultimoPersonal.compenso,
+    perDisciplina: ultimoPersonal.perDisciplina
+  });
 }
 
 function togglePersonalDettaglio() {
@@ -569,7 +797,7 @@ function renderRiepilogoContabilita(lista) {
   el.innerHTML = `
     <table class="app-table">
       <thead>
-        <tr><th>Dipendente</th><th>Ore</th><th>Da retribuire</th><th>Da ricevere</th><th>Pagato online</th></tr>
+        <tr><th>Dipendente</th><th>Ore</th><th>Compenso dal club</th><th>Quota campo al club</th><th>Pagato online</th></tr>
       </thead>
       <tbody>
         ${lista.map(d => `
@@ -599,14 +827,30 @@ function stampaRiepilogoCompleto() {
   if (!ultimoTutti || !ultimoTutti.perDipendente) return;
   const lista = ultimoTutti.perDipendente;
 
+  // Riga del dipendente col totale, poi una sotto-riga per disciplina:
+  // in un unico PDF la segretaria ha sia il colpo d'occhio sia il
+  // dettaglio con cui verificare ore × tariffa, senza stampare il report
+  // di ogni maestro uno per uno.
+  const importo = v => (v > 0 ? v.toFixed(2) : "—");
+  const cella = (valore, mancanti) => (mancanti ? `${importo(valore)} (${mancanti} da sistemare)` : importo(valore));
   const righe = lista.map(d => `
     <tr>
-      <td>${escapeHtml(d.nome)}</td>
-      <td>${d.totale.toFixed(2)}</td>
-      <td>${d.compenso > 0 ? d.compenso.toFixed(2) : "—"}</td>
-      <td>${d.quotaCampo > 0 ? d.quotaCampo.toFixed(2) : "—"}</td>
-      <td>${d.pagatoOnline > 0 ? d.pagatoOnline.toFixed(2) : "—"}</td>
+      <td><strong>${escapeHtml(d.nome)}</strong></td>
+      <td><strong>${d.totale.toFixed(2)}</strong></td>
+      <td><strong>${importo(d.compenso)}</strong></td>
+      <td><strong>${importo(d.quotaCampo)}</strong></td>
+      <td><strong>${importo(d.pagatoOnline)}</strong></td>
     </tr>
+    ${(d.perDisciplina || []).map(r => `
+      <tr>
+        <td style="padding-left:22px;">${escapeHtml(disciplinaLabel(r.disciplina) || "—")}</td>
+        <td>${r.ore.toFixed(2)}</td>
+        <td>${cella(r.compenso, r.vociSenzaCompenso)}</td>
+        <td>${cella(r.quotaCampo, r.vociSenzaQuotaCampo)}</td>
+        <td>${importo(r.pagatoOnline)}</td>
+      </tr>
+    `).join("")}
+    <tr class="spacer"><td colspan="5"></td></tr>
   `).join("");
 
   const totOre = lista.reduce((s, d) => s + d.totale, 0);
@@ -619,7 +863,7 @@ function stampaRiepilogoCompleto() {
     <p>Periodo: ${formatDataBreve(ultimoPeriodo.dal)} – ${formatDataBreve(ultimoPeriodo.al)}</p>
     <table>
       <thead>
-        <tr><th>Dipendente</th><th>Ore</th><th>Da retribuire (CHF)</th><th>Da ricevere (CHF)</th><th>Pagato online (CHF)</th></tr>
+        <tr><th>Dipendente / disciplina</th><th>Ore</th><th>Compenso dal club (CHF)</th><th>Quota campo al club (CHF)</th><th>Pagato online (CHF)</th></tr>
       </thead>
       <tbody>${righe}</tbody>
       <tfoot>
@@ -701,17 +945,22 @@ async function calcola() {
   try {
     ultimoPeriodo = { dal, al };
 
-    const personal = await loadPersonal(currentProfile.uid, dal, al);
+    // Una sola lettura di tipi attività/campi/quote campo per entrambi i
+    // calcoli: chi ha diario:leggi_tutti li esegue tutti e due di fila.
+    const config = await loadConfigCalcoli();
+
+    const personal = await loadPersonal(currentProfile.uid, dal, al, config);
     ultimoPersonal = personal;
     document.getElementById("totale-ore").innerHTML = `${personal.totale.toFixed(1)}<small>h</small>`;
-    renderDisciplinaBreakdown(personal.perDisciplina);
+    document.getElementById("disciplina-breakdown").innerHTML =
+      disciplineTableHtml(personal, { wrapperClass: "tabella-discipline" });
 
     const personalDettaglioEl = document.getElementById("personal-dettaglio");
     personalDettaglioEl.innerHTML = "";
     personalDettaglioEl.classList.add("hidden");
 
     if (hasPermission(currentProfile, "diario:leggi_tutti")) {
-      const tutti = await loadTutti(dal, al);
+      const tutti = await loadTutti(dal, al, config);
       ultimoTutti = tutti;
       renderDipendenti(tutti.perDipendente);
       renderRiepilogoContabilita(tutti.perDipendente);
