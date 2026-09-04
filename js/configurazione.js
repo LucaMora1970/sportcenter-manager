@@ -9,6 +9,7 @@ let tipiUtenzaCache = []; // [{id, nome, attivo}]
 let tipiAttivitaCache = [];
 let prezzoRowCounter = 0;
 let editingTipoAttivitaId = null;
+let editingQuotaCampoId = null;
 let editingTipoUtenzaId = null;
 let editingCampoId = null;
 let editingDisciplinaId = null;
@@ -1048,7 +1049,7 @@ async function loadQuoteCampo() {
   const snap = await db.collection("quoteCampo").get();
   const quote = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-  renderSimpleList("quotecampo-list", quote, quotaCampoLabel, quotaCampoMeta, "quoteCampo", loadQuoteCampo);
+  renderSimpleList("quotecampo-list", quote, quotaCampoLabel, quotaCampoMeta, "quoteCampo", loadQuoteCampo, startEditQuotaCampo);
 }
 
 function syncQuotaCampoPadelFields() {
@@ -1057,41 +1058,88 @@ function syncQuotaCampoPadelFields() {
   document.getElementById("quotacampo-importo-label").textContent = isPadel ? "Importo (CHF a lezione)" : "Importo (CHF/ora)";
 }
 
+// Ricarica una quota esistente nel form. Prima si poteva solo eliminare
+// e ricreare: con periodi, posizione e (per il padel) durata e fascia da
+// reinserire a mano, correggere un importo significava rifare tutto —
+// e nel frattempo la quota spariva dai calcoli del Resoconto.
+function startEditQuotaCampo(quota) {
+  editingQuotaCampoId = quota.id;
+
+  document.getElementById("new-quotacampo-disciplina").value = quota.disciplina || "";
+  // I campi padel vanno mostrati prima di valorizzarli, altrimenti si
+  // riempirebbero dei select ancora nascosti.
+  syncQuotaCampoPadelFields();
+
+  document.getElementById("new-quotacampo-posizione").value = quota.posizione || "";
+  document.getElementById("new-quotacampo-dal").value = quota.periodoInizio || "";
+  document.getElementById("new-quotacampo-al").value = quota.periodoFine || "";
+  document.getElementById("new-quotacampo-giorno").value = quota.tipoGiorno || "";
+  document.getElementById("new-quotacampo-importo").value = quota.importo != null ? quota.importo : "";
+
+  if (quota.disciplina === "padel") {
+    document.getElementById("new-quotacampo-durata").value = quota.durataMinuti != null ? quota.durataMinuti : "60";
+    document.getElementById("new-quotacampo-fascia").value = quota.fasciaOraria || "prima_17";
+  }
+
+  document.getElementById("quotacampo-form-title").textContent = "Modifica quota campo";
+  document.getElementById("create-quotacampo-btn").textContent = "Salva modifiche";
+  document.getElementById("cancel-edit-quotacampo-btn").classList.remove("hidden");
+
+  document.getElementById("new-quotacampo-form").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function cancelEditQuotaCampo() {
+  editingQuotaCampoId = null;
+  document.getElementById("new-quotacampo-form").reset();
+  syncQuotaCampoPadelFields();
+  document.getElementById("quotacampo-form-title").textContent = "Nuova quota campo";
+  document.getElementById("create-quotacampo-btn").textContent = "+ Aggiungi quota campo";
+  document.getElementById("cancel-edit-quotacampo-btn").classList.add("hidden");
+}
+
 async function onCreateQuotaCampo(e) {
   e.preventDefault();
-  const btn = e.target.querySelector("button[type=submit]");
+  const btn = document.getElementById("create-quotacampo-btn");
   const errorEl = document.getElementById("new-quotacampo-error");
   errorEl.textContent = "";
   btn.disabled = true;
+  btn.textContent = editingQuotaCampoId ? "Salvataggio…" : "Creazione…";
 
   const disciplina = document.getElementById("new-quotacampo-disciplina").value;
   const importoRaw = document.getElementById("new-quotacampo-importo").value;
+  const isPadel = disciplina === "padel";
 
+  // durataMinuti/fasciaOraria vengono scritti sempre, a null fuori dal
+  // padel: in modifica una quota passata da padel a un'altra disciplina
+  // si porterebbe dietro i vecchi valori, e per il padel il calcolo
+  // richiede corrispondenza esatta su entrambi.
   const quota = {
     disciplina,
     posizione: document.getElementById("new-quotacampo-posizione").value || null,
     periodoInizio: document.getElementById("new-quotacampo-dal").value || null,
     periodoFine: document.getElementById("new-quotacampo-al").value || null,
     tipoGiorno: document.getElementById("new-quotacampo-giorno").value || null,
-    importo: parseFloat(importoRaw),
-    attivo: true
+    durataMinuti: isPadel ? parseInt(document.getElementById("new-quotacampo-durata").value, 10) : null,
+    fasciaOraria: isPadel ? document.getElementById("new-quotacampo-fascia").value : null,
+    importo: parseFloat(importoRaw)
   };
-
-  if (disciplina === "padel") {
-    quota.durataMinuti = parseInt(document.getElementById("new-quotacampo-durata").value, 10);
-    quota.fasciaOraria = document.getElementById("new-quotacampo-fascia").value;
-  }
 
   try {
     if (!importoRaw) throw new Error("Inserisci un importo.");
-    await db.collection("quoteCampo").add(quota);
-    document.getElementById("new-quotacampo-form").reset();
-    syncQuotaCampoPadelFields();
+    if (editingQuotaCampoId) {
+      // "attivo" non è nel payload apposta: è governato dal pulsante
+      // Attivo/Disattivato nella lista, salvare qui lo riporterebbe a true.
+      await db.collection("quoteCampo").doc(editingQuotaCampoId).update(quota);
+    } else {
+      await db.collection("quoteCampo").add({ ...quota, attivo: true });
+    }
+    cancelEditQuotaCampo();
     await loadQuoteCampo();
   } catch (err) {
     showError(errorEl, "Errore: " + err.message);
   } finally {
     btn.disabled = false;
+    btn.textContent = editingQuotaCampoId ? "Salva modifiche" : "+ Aggiungi quota campo";
   }
 }
 
@@ -2388,6 +2436,7 @@ requireAuth(async (profile) => {
   document.getElementById("cancel-edit-tipoattivita-btn").addEventListener("click", cancelEditTipoAttivita);
   document.getElementById("new-quotacampo-form").addEventListener("submit", onCreateQuotaCampo);
   document.getElementById("new-quotacampo-disciplina").addEventListener("change", syncQuotaCampoPadelFields);
+  document.getElementById("cancel-edit-quotacampo-btn").addEventListener("click", cancelEditQuotaCampo);
   syncQuotaCampoPadelFields();
   wirePrezzoRowRemoval();
   document.getElementById("new-articolo-form").addEventListener("submit", onCreateArticolo);

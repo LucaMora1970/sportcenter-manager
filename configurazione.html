@@ -539,6 +539,7 @@
       <div id="quotecampo-list">
         <div class="empty-state"><div class="display">Caricamento…</div></div>
       </div>
+      <div class="section-title" style="margin-top:20px;"><h2 id="quotacampo-form-title">Nuova quota campo</h2></div>
       <form id="new-quotacampo-form">
         <div class="row2">
           <div class="field">
@@ -589,7 +590,8 @@
           <input type="number" id="new-quotacampo-importo" min="0" step="0.05" required placeholder="es. 12">
         </div>
         <div class="error-msg" id="new-quotacampo-error"></div>
-        <button type="submit" class="btn btn-ghost">+ Aggiungi quota campo</button>
+        <button type="submit" class="btn btn-ghost" id="create-quotacampo-btn">+ Aggiungi quota campo</button>
+        <button type="button" class="btn btn-ghost hidden" id="cancel-edit-quotacampo-btn" style="margin-top:10px;">Annulla modifica</button>
       </form>
       </div>
       </details>
