@@ -316,6 +316,17 @@ main {
   gap: 10px;
 }
 
+/* Form "Modifica iscrizione" nel dettaglio corso: contenuto impilato
+   verticalmente (etichetta, righe di campi, errore, pulsanti) — non va
+   messo dentro .entry-card, che è un layout a due colonne orizzontale
+   (stesso problema già risolto per .team-card, vedi sopra). */
+.mod-iscrizione-form {
+  background: var(--court-blue-900);
+  border: 1px solid var(--court-blue-700);
+  border-radius: var(--radius);
+  padding: 14px;
+}
+
 .entry-card .entry-main { flex: 1; min-width: 0; }
 
 .entry-card .entry-tipo {

@@ -889,7 +889,7 @@ function formModificaIscrizioneHtml(i, corso, uid) {
   `).join("");
 
   return `
-    <div class="entry-card" style="margin-top:8px;">
+    <div class="mod-iscrizione-form" style="margin-top:8px;">
       <div class="row-label" style="margin-bottom:10px;">Modifica iscrizione</div>
       <div class="row2">
         <div class="field"><label for="mod-${uid}-nome">Nome</label><input type="text" id="mod-${uid}-nome" value="${v(i.nome)}"></div>
