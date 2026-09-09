@@ -789,6 +789,8 @@ function renderIscrizioniCorso(container, corso, iscrizioni) {
     annullata: "border-color:var(--danger);color:var(--danger);"
   };
   const combinazioni = combinazioniCorso(corso);
+  const discipline = disciplineIscrizioniVisibili(currentProfile);
+  const altriCorsi = corsiCache.filter(c => c.id !== corso.id && c.approvato && (!discipline || discipline.includes(c.disciplina)));
 
   container.innerHTML = iscrizioni.map(i => {
     const disponibilitaLabel = disponibilitaBreve(i) || "—";
@@ -821,6 +823,13 @@ function renderIscrizioniCorso(container, corso, iscrizioni) {
           ${selectSlot}
           ${i.stato === "in_attesa" ? `<button class="btn btn-primary conferma-iscrizione-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}" data-corso="${corso.id}" data-nome="${escapeHtml(i.nome + " " + i.cognome)}" data-email="${escapeHtml(i.email || "")}">${corso.forfettario ? "Conferma iscrizione" : "Conferma in questo slot"}</button>` : ""}
           ${i.stato === "in_attesa" ? `<button class="btn btn-danger annulla-iscrizione-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}" data-corso="${corso.id}" data-nome="${escapeHtml(i.nome + " " + i.cognome)}" data-email="${escapeHtml(i.email || "")}">Rifiuta</button>` : ""}
+          ${i.stato !== "annullata" && altriCorsi.length > 0 ? `
+            <select class="sposta-corso-select" data-id="${i.id}" style="font-size:0.72rem;padding:6px 8px;">
+              <option value="">Sposta al corso…</option>
+              ${altriCorsi.map(c => `<option value="${c.id}">${escapeHtml(c.nome)}</option>`).join("")}
+            </select>
+            <button type="button" class="btn btn-ghost sposta-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}" data-nome="${escapeHtml(i.nome + " " + i.cognome)}">Sposta</button>
+          ` : ""}
           ${i.stato !== "annullata" ? `<button class="btn btn-ghost modifica-iscrizione-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}">Modifica</button>` : ""}
         </div>
       </div>
@@ -844,6 +853,14 @@ function renderIscrizioniCorso(container, corso, iscrizioni) {
     btn.addEventListener("click", () => {
       const i = iscrizioni.find(x => x.id === btn.dataset.id);
       if (i) toggleModificaIscrizione(i, corso, "iscrizioni");
+    });
+  });
+  container.querySelectorAll(".sposta-corso-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const select = container.querySelector(`.sposta-corso-select[data-id="${btn.dataset.id}"]`);
+      const nuovoCorsoId = select.value;
+      if (!nuovoCorsoId) { alert("Scegli il corso di destinazione."); return; }
+      spostaCorsoIscrizione(btn.dataset.id, corso.id, nuovoCorsoId, btn.dataset.nome);
     });
   });
 }
