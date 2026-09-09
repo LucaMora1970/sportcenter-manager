@@ -4314,6 +4314,53 @@ exports.eliminaTokenIscrizione = onCall(
   }
 );
 
+// Avviso all'iscritto quando lo staff sposta la sua iscrizione su un altro
+// corso (spostaCorsoIscrizione, js/corsi.js): a quel punto l'iscrizione è
+// già stata rimessa "in attesa" nel nuovo corso (nessuno slot/orario
+// assegnato), quindi il testo resta volutamente generico — i dettagli
+// arriveranno con la normale email di conferma quando lo staff assegnerà
+// il nuovo slot. Email individuale reale (non un mailto manuale), stesso
+// mittente/reply-to del resto delle comunicazioni corsi.
+exports.notificaSpostamentoCorso = onCall(
+  { secrets: MAIL_SECRETS },
+  async (request) => {
+    if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+    const { permessi, isAdmin } = await permessiUtente(request.auth.uid);
+
+    const { iscrizioneId } = request.data || {};
+    if (!iscrizioneId) throw new HttpsError("invalid-argument", "iscrizioneId mancante.");
+
+    const iscrizioneSnap = await db.collection("iscrizioniCorsi").doc(iscrizioneId).get();
+    if (!iscrizioneSnap.exists) throw new HttpsError("not-found", "Iscrizione non trovata.");
+    const iscrizione = iscrizioneSnap.data();
+
+    const corsoSnap = await db.collection("corsi").doc(iscrizione.corsoId).get();
+    const corso = corsoSnap.exists ? corsoSnap.data() : {};
+
+    const puoTutte = isAdmin || permessi.includes("iscrizioni:gestisci");
+    const puoPadel = permessi.includes("iscrizioni:gestisci_padel") && corso.disciplina === "padel";
+    if (!puoTutte && !puoPadel) throw new HttpsError("permission-denied", "Permesso mancante.");
+
+    if (!iscrizione.email) return { inviata: false, motivo: "Nessun indirizzo email sull'iscrizione." };
+
+    const centroSnap = await db.collection("impostazioni").doc("centro").get();
+    const centro = centroSnap.exists ? centroSnap.data() : {};
+
+    await inviaEmail({
+      to: iscrizione.email,
+      subject: "Iscrizione trasferita",
+      html: `<p>Gentile ${escapeHtmlBase(iscrizione.nome || "")},</p>`
+        + `<p>La tua iscrizione è stata riassegnata a un corso simile, in base ai criteri di ammissione, `
+        + `alla disponibilità dei posti e alle esigenze organizzative.</p>`
+        + `<p>Riceverai una conferma con tutti i dettagli non appena il nuovo corso sarà organizzato.</p>`
+        + `<p>—<br>${escapeHtmlBase(centro.nome || "Sport-OS")}</p>`,
+      replyTo: centro.email || undefined
+    });
+
+    return { inviata: true };
+  }
+);
+
 // Avviso "pianificazione dei gruppi in corso" agli iscritti ancora in
 // attesa di un corso: mail individuale dal mittente di sistema (MAIL_FROM),
 // reply-to all'indirizzo del centro. Testo di default composto dal client e

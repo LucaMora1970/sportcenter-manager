@@ -1365,6 +1365,8 @@ async function spostaCorsoIscrizione(iscrizioneId, corsoAttualeId, nuovoCorsoId,
     });
     await registraLog(iscrizioneId, corsoAttualeId, nome, "spostato", `Spostato al corso "${nuovoCorso.nome}", rimesso in attesa`);
     await registraLog(iscrizioneId, nuovoCorsoId, nome, "spostato", `Spostato dal corso "${corsoAttuale?.nome || "—"}", rimesso in attesa`);
+    cloudFunctions().httpsCallable("notificaSpostamentoCorso")({ iscrizioneId })
+      .catch(err => console.error("notificaSpostamentoCorso:", err));
 
     await aggiornaContatoriDopoModifica(corsoAttualeId);
     await aggiornaContatoriDopoModifica(nuovoCorsoId);

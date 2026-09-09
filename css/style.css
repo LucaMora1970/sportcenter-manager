@@ -313,6 +313,7 @@ main {
      chip invece che allineati in alto, con effetto di sovrapposizione. */
   align-items: flex-start;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 10px;
 }
 
@@ -327,7 +328,25 @@ main {
   padding: 14px;
 }
 
-.entry-card .entry-main { flex: 1; min-width: 0; }
+/* flex-basis 200px (non 0%, da cui il flex:1 di prima): con basis 0% il
+   calcolo del flex-wrap di .entry-card non "vede" mai lo spazio che
+   entry-main occupa davvero, quindi la colonna azioni non andava mai a
+   capo su schermi stretti e finiva tagliata fuori. overflow-wrap: anywhere
+   evita lo stesso problema quando il contenuto è un token lungo senza
+   spazi (es. un'email), che altrimenti non si accorcerebbe mai. */
+.entry-card .entry-main { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
+
+/* Select "Sposta al corso…" nella colonna azioni di .entry-card: la
+   regola globale "select{width:100%}" (pensata per i .field dei form) si
+   applica anche qui, ma la colonna azioni non ha una larghezza propria —
+   il browser la dimensiona sul contenuto più largo, cioè sull'opzione col
+   nome corso più lungo, schiacciando .entry-main. Va limitata esplicitamente. */
+.sposta-corso-select {
+  max-width: 160px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+}
 
 .entry-card .entry-tipo {
   font-size: 0.95rem;
