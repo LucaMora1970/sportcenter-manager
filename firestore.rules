@@ -314,31 +314,81 @@ service cloud.firestore {
     // Email validata col formato (qualcosa@qualcosa.qualcosa) — controlla
     // solo che sia scritta bene, non che esista davvero/riceva posta (per
     // quello servirebbe un invio di conferma, non ancora previsto).
+    //
+    // NOVITÀ (anagrafica allievi + iscrizione come ospite): il ramo
+    // pubblico di create è rimasto IDENTICO a prima, con l'aggiunta
+    // esplicita che NON può contenere i nuovi campi legati
+    // all'anagrafica/ospite (allievoId, allievoIdStato,
+    // allievoCandidatiIds, tipo, corsoOrigineId,
+    // quotaOspiteCorsoRiferimentoId) — altrimenti chiunque, da form
+    // pubblico non autenticato, potrebbe auto-collegarsi a un allievo o
+    // auto-dichiararsi "ospite" con una quota scelta a piacere, bypassando
+    // sia la revisione dello staff sia il calcolo del prezzo. Questi campi
+    // possono essere impostati SOLO da un secondo ramo, riservato allo
+    // staff con iscrizioni:gestisci (usato dal flusso "Aggiungi ospite" in
+    // corsi.js). Il ramo read/update/delete resta invariato: chi gestisce
+    // le iscrizioni può già aggiornare qualunque campo su un doc esistente
+    // (usato per confermare/correggere i collegamenti allievo).
     function emailValida(email) {
       return email is string && email.matches('^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$');
     }
 
-    match /iscrizioniCorsi/{id} {
-      allow create: if request.resource.data.corsoId is string
+    function campiIscrizioneMinimi() {
+      return request.resource.data.corsoId is string
         && exists(/databases/$(database)/documents/corsi/$(request.resource.data.corsoId))
         && get(/databases/$(database)/documents/corsi/$(request.resource.data.corsoId)).data.approvato == true
         && request.resource.data.nome is string && request.resource.data.nome.size() > 0
         && request.resource.data.cognome is string && request.resource.data.cognome.size() > 0
         && emailValida(request.resource.data.email)
-        // Contatto genitore obbligatorio solo per i minorenni (fino a 17
-        // anni): l'età viene calcolata lato client dalla data di nascita
-        // e inviata come campo "eta" — un valore falsato non aggira nulla
-        // di sensibile, nel peggiore dei casi lo staff nota poi dalla
-        // dataNascita reale che manca il contatto e lo richiede a parte.
-        && request.resource.data.eta is int
-        && (
-          request.resource.data.eta >= 18
-          || (
-            request.resource.data.nomeGenitore is string && request.resource.data.nomeGenitore.size() > 0
-            && request.resource.data.telefonoGenitore is string && request.resource.data.telefonoGenitore.size() > 0
-          )
-        )
         && request.resource.data.stato == "in_attesa";
+    }
+
+    function nessunCampoAllievoOspite() {
+      return !("allievoId" in request.resource.data)
+        && !("allievoIdStato" in request.resource.data)
+        && !("allievoCandidatiIds" in request.resource.data)
+        && !("tipo" in request.resource.data)
+        && !("corsoOrigineId" in request.resource.data)
+        && !("quotaOspiteCorsoRiferimentoId" in request.resource.data);
+    }
+
+    match /iscrizioniCorsi/{id} {
+      allow create: if
+        (
+          // Ramo pubblico (nessun login): stesso comportamento di sempre,
+          // con contatto genitore obbligatorio per i minorenni (età
+          // calcolata lato client dalla data di nascita — un valore
+          // falsato non aggira nulla di sensibile).
+          campiIscrizioneMinimi()
+          && request.resource.data.eta is int
+          && (
+            request.resource.data.eta >= 18
+            || (
+              request.resource.data.nomeGenitore is string && request.resource.data.nomeGenitore.size() > 0
+              && request.resource.data.telefonoGenitore is string && request.resource.data.telefonoGenitore.size() > 0
+            )
+          )
+          && nessunCampoAllievoOspite()
+        )
+        ||
+        (
+          // Ramo staff: usato anche dal flusso "Aggiungi ospite", che deve
+          // poter impostare tipo/corsoOrigineId/quotaOspiteCorsoRiferimentoId/
+          // allievoId nella stessa creazione (evita che il trigger di
+          // match automatico rilanci la sua logica su questo doc).
+          (hasPermission("iscrizioni:gestisci")
+            || (hasPermission("iscrizioni:gestisci_padel") && get(/databases/$(database)/documents/corsi/$(request.resource.data.corsoId)).data.disciplina == "padel"))
+          && campiIscrizioneMinimi()
+          && (!("tipo" in request.resource.data) || request.resource.data.tipo in ["normale", "ospite"])
+          && (
+            request.resource.data.tipo != "ospite"
+            || (
+              request.resource.data.corsoOrigineId is string && request.resource.data.corsoOrigineId.size() > 0
+              && request.resource.data.quotaOspiteCorsoRiferimentoId is string
+              && exists(/databases/$(database)/documents/corsi/$(request.resource.data.quotaOspiteCorsoRiferimentoId))
+            )
+          )
+        );
       allow read, update, delete: if hasPermission("iscrizioni:gestisci")
         || (hasPermission("iscrizioni:gestisci_padel")
             && get(/databases/$(database)/documents/corsi/$(resource.data.corsoId)).data.disciplina == "padel");
@@ -356,6 +406,30 @@ service cloud.firestore {
       allow create: if hasPermission("iscrizioni:gestisci")
         || (hasPermission("iscrizioni:gestisci_padel")
             && get(/databases/$(database)/documents/corsi/$(request.resource.data.corsoId)).data.disciplina == "padel");
+    }
+
+    // Anagrafica centrale allievi (corsi), separata dalla collection
+    // "allievi" già esistente (nomi per fatturazione lezioni private nel
+    // Diario, leggibile/creabile da chiunque loggato — tutt'altra cosa,
+    // MAI riusare quel nome per questi dati). Contiene PII (contatti,
+    // note, storico comunicazioni): mai pubblica. Lettura e creazione
+    // aperte anche a chi gestisce le iscrizioni corsi (serve al pannello
+    // Iscrizioni di corsi.js per cercare/collegare un allievo e per il
+    // flusso "Aggiungi ospite", che può anche creare un nuovo profilo al
+    // volo se nessun candidato proposto è quello giusto); la modifica
+    // dell'anagrafica vera e propria (dati personali, note) e
+    // l'eliminazione restano riservate al permesso dedicato allievi:gestisci.
+    match /allieviCorsi/{id} {
+      allow read, create: if hasPermission("allievi:gestisci")
+        || hasPermission("iscrizioni:gestisci")
+        || hasPermission("iscrizioni:gestisci_padel");
+      allow update, delete: if hasPermission("allievi:gestisci");
+
+      // Log delle comunicazioni con l'allievo (telefonate, email...): dato
+      // sensibile quanto l'anagrafica, riservato a chi la gestisce davvero.
+      match /comunicazioni/{comId} {
+        allow read, write: if hasPermission("allievi:gestisci");
+      }
     }
 
     // Scala di livello/capacità degli allievi dei corsi (1–10 con etichette

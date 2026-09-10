@@ -371,9 +371,9 @@
       </details>
 
       <details class="config-section">
-      <summary><h2>Allievi</h2></summary>
+      <summary><h2>Allievi lezioni private</h2></summary>
       <div class="config-section-body">
-      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Anagrafica nomi per la fatturazione (es. sparring). Chiunque inserisca il diario può aggiungerne di nuovi al volo; qui puoi rinominarli o disattivarli.</p>
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Anagrafica nomi per la fatturazione delle lezioni private nel Diario (es. sparring) — non è l'anagrafica allievi corsi. Chiunque inserisca il diario può aggiungerne di nuovi al volo; qui puoi rinominarli o disattivarli.</p>
       <div id="allievi-list">
         <div class="empty-state"><div class="display">Caricamento…</div></div>
       </div>
@@ -684,6 +684,15 @@
         <button type="submit" class="btn btn-ghost" id="create-livellocorso-btn">+ Aggiungi livello</button>
         <button type="button" class="btn btn-ghost hidden" id="cancel-edit-livellocorso-btn" style="margin-top:10px;">Annulla modifica</button>
       </form>
+      </div>
+      </details>
+
+      <details class="config-section hidden" id="migra-allievi-section">
+      <summary><h2>Migrazione anagrafica allievi</h2></summary>
+      <div class="config-section-body">
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Collega le iscrizioni corsi storiche (prive di anagrafica) a un profilo allievo, raggruppando per email e data di nascita. Operazione sicura da ripetere più volte: le iscrizioni già collegate vengono saltate.</p>
+      <button type="button" class="btn btn-ghost" id="migra-allievi-btn">Esegui migrazione anagrafica allievi</button>
+      <p id="migra-allievi-risultato" style="color:var(--chalk-grey);font-size:0.82rem;margin-top:10px;"></p>
       </div>
       </details>
 
@@ -1066,6 +1075,7 @@
     <a href="resoconto.html">Resoconto</a>
     <a href="cassa.html">Cassa</a>
     <a href="corsi.html">Corsi</a>
+    <a href="allievi.html">Allievi</a>
     <a href="prenotazioni.html">Prenotazioni</a>
     <a href="#" title="In arrivo">Camp</a>
     <a href="soci.html">Soci</a>

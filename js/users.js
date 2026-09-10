@@ -23,6 +23,7 @@ const KNOWN_PERMISSIONS = [
   { id: "corsi:approva", label: "Corsi: approvare" },
   { id: "iscrizioni:gestisci", label: "Iscrizioni corsi: leggere e confermare/annullare (dati sensibili)" },
   { id: "iscrizioni:gestisci_padel", label: "Iscrizioni corsi: leggere e confermare/annullare (solo Padel)" },
+  { id: "allievi:gestisci", label: "Gestire l'anagrafica allievi (dati sensibili, comunicazioni)" },
   { id: "prenotazioni:gestisci", label: "Prenotazioni padel: eliminare prenotazioni altrui" },
   { id: "prenotazioni:proprie", label: "Prenotazioni padel: creare/eliminare solo le proprie e bloccare slot (es. maestri)" },
   { id: "azienda:propria", label: "Referente aziendale: gestire dipendenti e consumi della propria azienda" }

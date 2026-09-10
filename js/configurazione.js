@@ -1486,6 +1486,30 @@ async function onCreateLivelloCorso(e) {
   }
 }
 
+// ---------- Migrazione anagrafica allievi ----------
+// Un'operazione a sé, imparentata con "Corsi/Livelli corso" ma non
+// legata a nessuna lista qui: chiama la callable che collega le
+// iscrizioni corsi storiche (prive di anagrafica) a un profilo allievo
+// in "allieviCorsi", raggruppando per email e data di nascita. Sicura
+// da ripetere: le iscrizioni già collegate vengono saltate.
+async function onMigraAllievi() {
+  const btn = document.getElementById("migra-allievi-btn");
+  const risultatoEl = document.getElementById("migra-allievi-risultato");
+  btn.disabled = true;
+  btn.textContent = "Esecuzione…";
+  risultatoEl.textContent = "";
+  try {
+    const fn = cloudFunctions().httpsCallable("migraAllieviDaIscrizioniCorsi");
+    const { data } = await fn();
+    risultatoEl.textContent = `Profili creati: ${data.allieviCreati} · Iscrizioni collegate: ${data.iscrizioniCollegate} · Già collegate in precedenza: ${data.giaCollegate}`;
+  } catch (err) {
+    risultatoEl.textContent = "Errore: " + err.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Esegui migrazione anagrafica allievi";
+  }
+}
+
 // Ripopola tutti i punti che elencano le categorie (select Tariffe campi,
 // checkbox Forfait stagionale, form giorni di anticipo) — richiamata dopo
 // ogni modifica a "Categorie socio" o "Aziende convenzionate" così restano
@@ -2446,6 +2470,10 @@ requireAuth(async (profile) => {
   document.getElementById("cancel-edit-categoriasocio-btn").addEventListener("click", cancelEditCategoriaSocio);
   document.getElementById("new-livellocorso-form").addEventListener("submit", onCreateLivelloCorso);
   document.getElementById("cancel-edit-livellocorso-btn").addEventListener("click", cancelEditLivelloCorso);
+  if (hasPermission(profile, "allievi:gestisci")) {
+    document.getElementById("migra-allievi-section").classList.remove("hidden");
+    document.getElementById("migra-allievi-btn").addEventListener("click", onMigraAllievi);
+  }
   document.getElementById("new-azienda-form").addEventListener("submit", onCreateAzienda);
   document.getElementById("cancel-edit-azienda-btn").addEventListener("click", cancelEditAzienda);
   document.getElementById("new-tariffacampo-form").addEventListener("submit", onCreateTariffaCampo);

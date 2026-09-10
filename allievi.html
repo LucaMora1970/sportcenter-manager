@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Allievi — Sport-OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script>if(localStorage.getItem("sportos-tema")==="light")document.documentElement.setAttribute("data-theme","light");</script>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d1f30">
+<style>
+  .allievi-search-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-bottom: 14px; }
+  .allievi-search-row .field { flex: 1 1 auto; margin-bottom: 0; }
+  .comunicazione-item { padding: 10px 0; border-bottom: 1px solid var(--court-blue-800); }
+  .comunicazione-item:last-child { border-bottom: none; }
+  .comunicazione-meta { font-size: 0.72rem; color: var(--chalk-grey); margin-top: 4px; }
+  .comunicazione-testo { font-size: 0.86rem; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <h1>Allievi</h1>
+    <div class="user-chip" id="user-chip">—</div>
+    <div class="topbar-actions">
+      <button type="button" class="topbar-link" id="theme-toggle-btn">Tema chiaro</button>
+      <a href="password.html" class="topbar-link">Password</a>
+    </div>
+  </div>
+
+  <main>
+
+    <div id="access-denied" class="empty-state hidden">
+      <div class="display">Accesso non consentito</div>
+      <p>Questa sezione è riservata a chi ha il permesso "Gestire allievi".</p>
+    </div>
+
+    <div id="admin-content">
+
+      <div class="section-title"><h2>Cerca allievo</h2></div>
+      <div class="allievi-search-row">
+        <div class="field">
+          <label for="allievi-search-input">Nome, cognome o email</label>
+          <input type="text" id="allievi-search-input" placeholder="es. Rossi">
+        </div>
+        <button type="button" class="btn btn-ghost" id="nuovo-allievo-btn" style="width:auto;">+ Nuovo allievo</button>
+      </div>
+      <div class="error-msg" id="allievi-search-error"></div>
+      <div id="allievi-list">
+        <div class="empty-state"><div class="display">Caricamento…</div></div>
+      </div>
+
+      <hr class="court-divider">
+
+      <div id="allievo-detail" class="hidden">
+
+        <div class="section-title" id="allievo-form-title"><h2>Modifica allievo</h2></div>
+        <button type="button" class="btn btn-ghost" id="allievo-stampa-btn" style="width:auto;margin-bottom:16px;">Stampa listato riassuntivo</button>
+
+        <form id="allievo-form">
+          <div class="row2">
+            <div class="field">
+              <label for="allievo-nome">Nome</label>
+              <input type="text" id="allievo-nome" required>
+            </div>
+            <div class="field">
+              <label for="allievo-cognome">Cognome</label>
+              <input type="text" id="allievo-cognome" required>
+            </div>
+          </div>
+          <div class="row2">
+            <div class="field">
+              <label for="allievo-datanascita">Data di nascita</label>
+              <input type="date" id="allievo-datanascita">
+            </div>
+            <div class="field">
+              <label for="allievo-email">Email</label>
+              <input type="email" id="allievo-email">
+            </div>
+          </div>
+          <div class="field">
+            <label for="allievo-nazionalita">Nazionalità</label>
+            <input type="text" id="allievo-nazionalita">
+          </div>
+          <div class="field">
+            <label for="allievo-via">Via</label>
+            <input type="text" id="allievo-via">
+          </div>
+          <div class="row2">
+            <div class="field" style="flex:0 0 110px;">
+              <label for="allievo-cap">CAP</label>
+              <input type="text" id="allievo-cap">
+            </div>
+            <div class="field">
+              <label for="allievo-localita">Località</label>
+              <input type="text" id="allievo-localita">
+            </div>
+          </div>
+          <div class="row2">
+            <div class="field">
+              <label for="allievo-nomegenitore">Nome del genitore</label>
+              <input type="text" id="allievo-nomegenitore">
+            </div>
+            <div class="field">
+              <label for="allievo-telefonogenitore">Telefono del genitore</label>
+              <input type="tel" id="allievo-telefonogenitore" placeholder="+41 79 123 45 67">
+            </div>
+          </div>
+          <div class="field">
+            <label for="allievo-scuola">Scuola frequentata</label>
+            <input type="text" id="allievo-scuola">
+          </div>
+          <div class="field">
+            <label for="allievo-altrisport">Altri sport praticati</label>
+            <input type="text" id="allievo-altrisport">
+          </div>
+          <div class="field">
+            <label for="allievo-note">Note</label>
+            <textarea id="allievo-note" rows="3"></textarea>
+          </div>
+          <div class="error-msg" id="allievo-form-error"></div>
+          <button type="submit" class="btn btn-primary" id="allievo-save-btn">Salva</button>
+          <button type="button" class="btn btn-ghost" id="allievo-cancel-btn" style="margin-top:10px;">Annulla</button>
+          <button type="button" class="btn btn-danger" id="allievo-delete-btn" style="margin-top:10px;">Elimina allievo</button>
+        </form>
+
+        <hr class="court-divider">
+
+        <div class="section-title"><h2>Storico iscrizioni</h2></div>
+        <div id="allievo-iscrizioni-list">
+          <div class="empty-state"><div class="display">—</div></div>
+        </div>
+
+        <hr class="court-divider">
+
+        <div class="section-title"><h2>Comunicazioni</h2></div>
+        <div id="allievo-comunicazioni-list">
+          <div class="empty-state"><div class="display">—</div></div>
+        </div>
+
+        <div class="field" style="margin-top:14px;">
+          <label for="comunicazione-testo">Nuova nota</label>
+          <textarea id="comunicazione-testo" rows="2" placeholder="Cosa è stato detto/concordato…"></textarea>
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label for="comunicazione-canale">Canale</label>
+            <select id="comunicazione-canale">
+              <option value="">Non specificato</option>
+              <option value="telefono">Telefono</option>
+              <option value="email">Email</option>
+              <option value="di_persona">Di persona</option>
+              <option value="altro">Altro</option>
+            </select>
+          </div>
+        </div>
+        <div class="error-msg" id="comunicazione-error"></div>
+        <button type="button" class="btn btn-ghost" id="comunicazione-add-btn" style="width:auto;">Aggiungi nota</button>
+
+      </div>
+
+    </div>
+
+  </main>
+
+  <nav class="bottom-nav">
+    <a href="diario.html">Diario</a>
+    <a href="resoconto.html">Resoconto</a>
+    <a href="cassa.html">Cassa</a>
+    <a href="corsi.html">Corsi</a>
+    <a href="allievi.html" class="active">Allievi</a>
+    <a href="prenotazioni.html">Prenotazioni</a>
+    <a href="#" title="In arrivo">Camp</a>
+    <a href="soci.html">Soci</a>
+    <a href="utenti.html">Team</a>
+    <a href="configurazione.html">Config</a>
+    <a href="#" id="logout-link">Esci</a>
+  </nav>
+
+  <script>
+    document.querySelector(".bottom-nav a.active")?.scrollIntoView({ inline: "center", block: "nearest" });
+  </script>
+
+</div>
+
+<div id="print-area"></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/allievi.js"></script>
+</body>
+</html>

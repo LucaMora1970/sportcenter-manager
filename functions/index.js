@@ -30,6 +30,7 @@ const crypto = require("crypto");
 const nodemailer = require("nodemailer");
 const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
+const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const { defineSecret } = require("firebase-functions/params");
 const { initializeApp } = require("firebase-admin/app");
@@ -4171,6 +4172,20 @@ exports.avviaTokenizzazioneCorso = onCall(
   }
 );
 
+// Prezzo da addebitare per un'iscrizione corso: normale → prezzo del
+// proprio corso; ospite → prezzo del corso di riferimento scelto dallo
+// staff (quotaOspiteCorsoRiferimentoId), letto sempre "al momento",
+// esattamente come il prezzo normale — mai copiato/congelato alla
+// creazione dell'iscrizione (così un cambio tariffa si riflette subito,
+// anche su una richiesta di ospite già in attesa di conferma).
+async function importoIscrizioneCorso(iscrizione) {
+  const corsoRifId = iscrizione.tipo === "ospite" && iscrizione.quotaOspiteCorsoRiferimentoId
+    ? iscrizione.quotaOspiteCorsoRiferimentoId
+    : iscrizione.corsoId;
+  const corsoSnap = await db.collection("corsi").doc(corsoRifId).get();
+  return corsoSnap.exists ? corsoSnap.data().prezzoRichiesto : null;
+}
+
 // Addebita l'iscritto sulla carta salvata quando lo staff conferma la sua
 // iscrizione (segno che il corso ha raggiunto la soglia minima). Se non
 // c'è un token attivo non fa nulla: l'iscritto resta "da pagare", da
@@ -4196,9 +4211,7 @@ exports.addebitaIscrizioneCorso = onCall(
       return { addebitato: false, motivo: "Nessuna carta salvata per questa iscrizione." };
     }
 
-    const corsoSnap = await db.collection("corsi").doc(iscrizione.corsoId).get();
-    const corso = corsoSnap.exists ? corsoSnap.data() : {};
-    const importo = corso.prezzoRichiesto;
+    const importo = await importoIscrizioneCorso(iscrizione);
     if (!importo || importo <= 0) {
       return { addebitato: false, motivo: "Prezzo del corso non configurato." };
     }
@@ -4214,7 +4227,7 @@ exports.addebitaIscrizioneCorso = onCall(
           token: iscrizione.tokenId,
           lineItems: [{
             uniqueId: iscrizioneId,
-            name: `Corso ${iscrizione.corsoNome || ""}`,
+            name: iscrizione.tipo === "ospite" ? `Quota ospite — ${iscrizione.corsoNome || ""}` : `Corso ${iscrizione.corsoNome || ""}`,
             quantity: 1,
             amountIncludingTax: importo,
             type: LineItemType.Product
@@ -4237,6 +4250,162 @@ exports.addebitaIscrizioneCorso = onCall(
     }
   }
 );
+
+// Collega automaticamente una nuova iscrizione (pubblica o inserita dallo
+// staff) al profilo allievo giusto in allieviCorsi, cercando per
+// email+dataNascita — l'unico modo per farlo con accesso privilegiato a
+// una collection staff-only in reazione a una scrittura pubblica non
+// autenticata (il form pubblico non può leggere/cercare allieviCorsi da
+// sé). Un trigger su creazione copre ogni via con cui nasce il documento
+// (pubblico, staff, "Aggiungi ospite") in un solo posto, senza dipendere
+// da una seconda chiamata client-side che potrebbe fallire a metà.
+//
+// - Se il doc ha già allievoId (caso "Aggiungi ospite": lo staff lo
+//   imposta nella stessa creazione) non fa nulla — non deve sovrascrivere
+//   un collegamento già scelto consapevolmente.
+// - 0 corrispondenze → crea un nuovo profilo allievo e collega subito
+//   (nulla di ambiguo da confermare).
+// - 1 corrispondenza → collega ma con allievoIdStato "da_confermare": lo
+//   staff deve confermarlo (o correggerlo) dal pannello Iscrizioni prima
+//   che sia definitivo.
+// - più corrispondenze → non collega, salva solo i candidati
+//   (allievoCandidatiIds) per la scelta manuale dello staff.
+exports.onIscrizioneCorsoCreata = onDocumentCreated(
+  { document: "iscrizioniCorsi/{iscrizioneId}", region: "europe-west6" },
+  async (event) => {
+    const snap = event.data;
+    if (!snap) return;
+    const iscrizione = snap.data();
+
+    if (iscrizione.allievoId) return;
+
+    const email = (iscrizione.email || "").trim().toLowerCase();
+    const dataNascita = iscrizione.dataNascita || null;
+    if (!email || !dataNascita) return;
+
+    const candidatiSnap = await db.collection("allieviCorsi")
+      .where("emailLower", "==", email)
+      .where("dataNascita", "==", dataNascita)
+      .get();
+
+    if (candidatiSnap.size === 1) {
+      await snap.ref.update({ allievoId: candidatiSnap.docs[0].id, allievoIdStato: "da_confermare" });
+    } else if (candidatiSnap.size === 0) {
+      const nuovoAllievo = await db.collection("allieviCorsi").add({
+        nome: iscrizione.nome || "",
+        cognome: iscrizione.cognome || "",
+        dataNascita,
+        email: iscrizione.email || "",
+        emailLower: email,
+        nazionalita: iscrizione.nazionalita || null,
+        via: iscrizione.via || null,
+        cap: iscrizione.cap || null,
+        localita: iscrizione.localita || null,
+        nomeGenitore: iscrizione.nomeGenitore || null,
+        telefonoGenitore: iscrizione.telefonoGenitore || null,
+        scuolaFrequentata: iscrizione.scuolaFrequentata || null,
+        altriSportPraticati: iscrizione.altriSportPraticati || null,
+        note: null,
+        creatoDa: "auto_match",
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp()
+      });
+      await snap.ref.update({ allievoId: nuovoAllievo.id, allievoIdStato: "confermato" });
+    } else {
+      await snap.ref.update({ allievoCandidatiIds: candidatiSnap.docs.map(d => d.id) });
+    }
+  }
+);
+
+// Migrazione una tantum (ma rieseguibile senza duplicare): collega ogni
+// iscrizione storica priva di allievoId a un profilo allieviCorsi,
+// raggruppando per email+dataNascita (fallback nome+cognome+dataNascita
+// se manca l'email). Riusa un profilo già esistente con la stessa chiave
+// (creato dal trigger live o da un run precedente di questa stessa
+// migrazione) invece di duplicarlo. Scrive a lotti da 500 (limite
+// Firestore per batch).
+exports.migraAllieviDaIscrizioniCorsi = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+  const { permessi, isAdmin } = await permessiUtente(request.auth.uid);
+  if (!isAdmin && !permessi.includes("allievi:gestisci")) {
+    throw new HttpsError("permission-denied", "Permesso mancante.");
+  }
+
+  const snap = await db.collection("iscrizioniCorsi").get();
+  const daCollegare = snap.docs.filter(d => !d.data().allievoId);
+
+  const gruppi = {};
+  daCollegare.forEach(d => {
+    const i = d.data();
+    const email = (i.email || "").trim().toLowerCase();
+    const chiave = email
+      ? `email:${email}|${i.dataNascita || ""}`
+      : `nome:${(i.nome || "").trim().toLowerCase()}|${(i.cognome || "").trim().toLowerCase()}|${i.dataNascita || ""}`;
+    (gruppi[chiave] = gruppi[chiave] || []).push({ ref: d.ref, data: i, email, dataNascita: i.dataNascita || null });
+  });
+
+  let allieviCreati = 0;
+  let iscrizioniCollegate = 0;
+  const scritture = []; // { ref, data: { allievoId, allievoIdStato } }
+
+  for (const membri of Object.values(gruppi)) {
+    const { email, dataNascita } = membri[0];
+    let allievoId = null;
+
+    if (email && dataNascita) {
+      const esistente = await db.collection("allieviCorsi")
+        .where("emailLower", "==", email).where("dataNascita", "==", dataNascita).limit(1).get();
+      if (!esistente.empty) allievoId = esistente.docs[0].id;
+    }
+
+    if (!allievoId) {
+      const piuRecente = membri.reduce((a, b) => {
+        const ta = a.data.createdAt && a.data.createdAt.toMillis ? a.data.createdAt.toMillis() : 0;
+        const tb = b.data.createdAt && b.data.createdAt.toMillis ? b.data.createdAt.toMillis() : 0;
+        return tb > ta ? b : a;
+      });
+      const d = piuRecente.data;
+      const nuovo = await db.collection("allieviCorsi").add({
+        nome: d.nome || "",
+        cognome: d.cognome || "",
+        dataNascita: d.dataNascita || null,
+        email: d.email || "",
+        emailLower: email || "",
+        nazionalita: d.nazionalita || null,
+        via: d.via || null,
+        cap: d.cap || null,
+        localita: d.localita || null,
+        nomeGenitore: d.nomeGenitore || null,
+        telefonoGenitore: d.telefonoGenitore || null,
+        scuolaFrequentata: d.scuolaFrequentata || null,
+        altriSportPraticati: d.altriSportPraticati || null,
+        note: null,
+        creatoDa: "migrazione",
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp()
+      });
+      allievoId = nuovo.id;
+      allieviCreati++;
+    }
+
+    membri.forEach(m => {
+      scritture.push({ ref: m.ref, data: { allievoId, allievoIdStato: "confermato" } });
+      iscrizioniCollegate++;
+    });
+  }
+
+  for (let i = 0; i < scritture.length; i += 500) {
+    const batch = db.batch();
+    scritture.slice(i, i + 500).forEach(s => batch.update(s.ref, s.data));
+    await batch.commit();
+  }
+
+  return {
+    allieviCreati,
+    iscrizioniCollegate,
+    giaCollegate: snap.size - daCollegare.length
+  };
+});
 
 // Genera una transazione Checkout normale (redirect, come richiediPagamentoDiario)
 // per l'importo indicato — usata sia come fallback automatico dal webhook

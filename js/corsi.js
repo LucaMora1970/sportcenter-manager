@@ -17,6 +17,12 @@ let livelliCorsoCache = []; // [{livello, nome, ...}] attivi, per il <select> li
 let gruppiCorsoCache = []; // [{id, corsoId, giorno, orario, campo, ...}] dal modulo di programmazione
 let iscrizioniConfermateCache = [];
 let iscrizioniInAttesaCache = [];
+// Anagrafica condivisa allieviCorsi, usata per il collegamento iscrizione↔
+// allievo e per la ricerca in "Aggiungi ospite" — caricata pigramente (vedi
+// ensureAllieviCorsiCache) al primo utilizzo del pannello Iscrizioni, non
+// all'avvio pagina: la collection può crescere nel tempo.
+let allieviCorsiCache = [];
+let allieviCorsiCacheCaricata = false;
 let editingCorsoId = null;
 
 async function loadLivelliCorso() {
@@ -430,10 +436,25 @@ async function toggleIscrizioniCorso(corsoId) {
   await ricaricaIscrizioniCorso(corsoId);
 }
 
+// Caricata una sola volta (persiste finché la pagina resta aperta): le
+// schede di collegamento allievo e la ricerca in "Aggiungi ospite" la
+// leggono in modo sincrono, quindi va popolata prima di renderizzare.
+async function ensureAllieviCorsiCache() {
+  if (allieviCorsiCacheCaricata) return;
+  try {
+    const snap = await db.collection("allieviCorsi").get();
+    allieviCorsiCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    allieviCorsiCacheCaricata = true;
+  } catch (err) {
+    console.warn("ensureAllieviCorsiCache:", err.message);
+  }
+}
+
 async function ricaricaIscrizioniCorso(corsoId) {
   const container = document.getElementById(`iscrizioni-${corsoId}`);
   if (!container) return;
   const corso = corsiCache.find(c => c.id === corsoId);
+  await ensureAllieviCorsiCache();
   const snap = await db.collection("iscrizioniCorsi").where("corsoId", "==", corsoId).get();
   renderIscrizioniCorso(container, corso, snap.docs.map(d => ({ id: d.id, ...d.data() })));
 }
@@ -487,6 +508,13 @@ function disponibilitaBreve(i) {
   return Object.entries(i.disponibilita || {})
     .map(([g, orari]) => `${(GIORNI_SETTIMANA.find(x => x.id === g) || {}).label || g} ${(orari || []).join("/")}`)
     .join(" · ");
+}
+
+// Stesso comparatore già usato in renderRicercaAllievi: cognome poi nome,
+// così le liste di iscritti/allievi si leggono in ordine alfabetico stabile.
+function compareCognomeNome(a, b) {
+  return (a.cognome || "").localeCompare(b.cognome || "", "it", { sensitivity: "base" })
+    || (a.nome || "").localeCompare(b.nome || "", "it", { sensitivity: "base" });
 }
 
 // Il semaforo di un candidato vale solo per lo slot per cui è stato messo
@@ -776,11 +804,350 @@ function pagamentoBadgeHtml(i) {
   return "";
 }
 
-function renderIscrizioniCorso(container, corso, iscrizioni) {
-  if (iscrizioni.length === 0) {
-    container.innerHTML = `<div class="empty-state"><div class="display">Nessuna iscrizione ricevuta</div></div>`;
+// Badge "ospite": un iscritto normale su un altro corso, aggiunto qui
+// pagando la quota di un corso di riferimento scelto dallo staff (mai un
+// prezzo libero) — vedi toggleAggiungiOspiteCorso più sotto.
+function badgeOspiteHtml(i) {
+  if (i.tipo !== "ospite") return "";
+  const corsoOrigineNome = corsiCache.find(c => c.id === i.corsoOrigineId)?.nome;
+  const corsoRiferimentoNome = corsiCache.find(c => c.id === i.quotaOspiteCorsoRiferimentoId)?.nome;
+  return `<div class="entry-meta">👤 Ospite${corsoOrigineNome ? " (da: " + escapeHtml(corsoOrigineNome) + ")" : ""} · quota = ${escapeHtml(corsoRiferimentoNome || "—")}</div>`;
+}
+
+// Stato del collegamento automatico (trigger server-side onIscrizioneCorsoCreata,
+// per email+dataNascita) tra l'iscrizione e l'anagrafica allieviCorsi, con le
+// azioni manuali dello staff nei casi ambigui o non risolti. allieviCorsiCache
+// deve essere già popolata (vedi ensureAllieviCorsiCache, richiamata da
+// ricaricaIscrizioniCorso prima del render).
+function statoCollegamentoAllievoHtml(i) {
+  if (i.allievoId && i.allievoIdStato === "confermato") {
+    return `<div class="entry-meta">🔗 Collegato all'anagrafica allievo</div>`;
+  }
+
+  if (i.allievoId && i.allievoIdStato === "da_confermare") {
+    const candidato = allieviCorsiCache.find(a => a.id === i.allievoId);
+    const label = candidato
+      ? `${escapeHtml(candidato.nome)} ${escapeHtml(candidato.cognome)}${candidato.dataNascita ? " · nato/a " + formatDataBreve(candidato.dataNascita) : ""}`
+      : "un profilo allievo esistente";
+    return `
+      <div class="entry-meta" style="border:1px solid var(--chalk-grey-dim);border-radius:6px;padding:8px;margin-top:6px;">
+        Possibile corrispondenza con ${label} — è la stessa persona?
+        <div style="display:flex;gap:6px;margin-top:6px;">
+          <button type="button" class="btn btn-primary conferma-collegamento-btn" style="width:auto;padding:6px 10px;font-size:0.68rem;" data-id="${i.id}" data-allievo="${i.allievoId}" data-nome="${escapeHtml(i.nome + " " + i.cognome)}">Conferma</button>
+          <button type="button" class="btn btn-ghost non-e-stessa-persona-btn" style="width:auto;padding:6px 10px;font-size:0.68rem;" data-id="${i.id}" data-nome="${escapeHtml(i.nome + " " + i.cognome)}">Non è la stessa persona</button>
+        </div>
+      </div>
+    `;
+  }
+
+  if (!i.allievoId && (i.allievoCandidatiIds || []).length > 0) {
+    const candidati = i.allievoCandidatiIds.map(cid => allieviCorsiCache.find(a => a.id === cid)).filter(Boolean);
+    const opzioni = candidati.map(a => `<option value="${a.id}">${escapeHtml(a.nome)} ${escapeHtml(a.cognome)}${a.dataNascita ? " · " + formatDataBreve(a.dataNascita) : ""}</option>`).join("");
+    return `
+      <div class="entry-meta" style="border:1px solid var(--chalk-grey-dim);border-radius:6px;padding:8px;margin-top:6px;">
+        Più profili allievo possibili — scegli quello corretto:
+        <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
+          <select class="candidato-allievo-select" data-id="${i.id}" style="font-size:0.72rem;padding:6px 8px;">
+            ${opzioni}
+            <option value="">Nessuno di questi — crea nuovo profilo</option>
+          </select>
+          <button type="button" class="btn btn-primary collega-candidato-btn" style="width:auto;padding:6px 10px;font-size:0.68rem;" data-id="${i.id}" data-nome="${escapeHtml(i.nome + " " + i.cognome)}">Collega</button>
+        </div>
+      </div>
+    `;
+  }
+
+  // Nessun collegamento e nessun candidato automatico (es. email/data di
+  // nascita mancanti, o dopo "Non è la stessa persona"): ricerca manuale.
+  return `
+    <div class="entry-meta" style="margin-top:6px;">
+      <input type="text" class="collega-allievo-input" data-id="${i.id}" placeholder="Collega ad allievo…" style="font-size:0.72rem;padding:6px 8px;width:100%;max-width:240px;">
+      <div class="collega-allievo-risultati" data-id="${i.id}"></div>
+    </div>
+  `;
+}
+
+// Ricerca testuale live (nome/cognome) su allieviCorsiCache, per il widget
+// "Collega ad allievo" di una singola scheda.
+function renderRicercaCollegaAllievo(input, container, iscrizione, corso) {
+  const risultatiEl = container.querySelector(`.collega-allievo-risultati[data-id="${iscrizione.id}"]`);
+  const query = input.value.trim().toLowerCase();
+  if (!query) { risultatiEl.innerHTML = ""; return; }
+
+  const risultati = allieviCorsiCache
+    .filter(a => `${a.nome} ${a.cognome}`.toLowerCase().includes(query))
+    .sort(compareCognomeNome)
+    .slice(0, 8);
+
+  risultatiEl.innerHTML = risultati.length > 0
+    ? risultati.map(a => `
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;padding:4px 0;">
+          <span style="font-size:0.74rem;">${escapeHtml(a.nome)} ${escapeHtml(a.cognome)}${a.dataNascita ? " · " + formatDataBreve(a.dataNascita) : ""}</span>
+          <button type="button" class="btn btn-ghost collega-risultato-btn" style="width:auto;padding:4px 8px;font-size:0.66rem;" data-allievo="${a.id}">Collega</button>
+        </div>
+      `).join("")
+    : `<span style="color:var(--chalk-grey);font-size:0.72rem;">Nessun risultato</span>`;
+
+  risultatiEl.querySelectorAll(".collega-risultato-btn").forEach(btn => {
+    btn.addEventListener("click", () => collegaAllievoEsistente(iscrizione.id, corso.id, btn.dataset.allievo, `${iscrizione.nome} ${iscrizione.cognome}`));
+  });
+}
+
+// Conferma un collegamento proposto automaticamente dal trigger server-side
+// (match singolo email+dataNascita, in attesa di conferma dallo staff).
+async function confermaCollegamentoAllievo(iscrizioneId, corsoId, allievoId, nome) {
+  try {
+    await db.collection("iscrizioniCorsi").doc(iscrizioneId).update({ allievoIdStato: "confermato" });
+    await registraLog(iscrizioneId, corsoId, nome, "allievo_collegato", "Collegamento automatico confermato dallo staff");
+    await ricaricaIscrizioniCorso(corsoId);
+  } catch (err) {
+    showError(document.getElementById("corsi-list-error"), "Errore: " + err.message);
+  }
+}
+
+// L'iscrizione resta scollegata: il trigger agisce solo alla creazione
+// dell'iscrizione, quindi non ci sarà un nuovo tentativo automatico.
+async function scollegaAllievo(iscrizioneId, corsoId, nome) {
+  try {
+    await db.collection("iscrizioniCorsi").doc(iscrizioneId).update({ allievoId: null, allievoIdStato: null });
+    await registraLog(iscrizioneId, corsoId, nome, "allievo_scollegato", "Collegamento automatico rifiutato dallo staff");
+    await ricaricaIscrizioniCorso(corsoId);
+  } catch (err) {
+    showError(document.getElementById("corsi-list-error"), "Errore: " + err.message);
+  }
+}
+
+// Collegamento manuale diretto (candidato scelto tra più possibili, o
+// trovato con la ricerca testuale): sempre "confermato", è una scelta
+// diretta dello staff.
+async function collegaAllievoEsistente(iscrizioneId, corsoId, allievoId, nome) {
+  try {
+    await db.collection("iscrizioniCorsi").doc(iscrizioneId).update({
+      allievoId,
+      allievoIdStato: "confermato",
+      allievoCandidatiIds: []
+    });
+    await registraLog(iscrizioneId, corsoId, nome, "allievo_collegato", "Collegato manualmente dallo staff");
+    await ricaricaIscrizioniCorso(corsoId);
+  } catch (err) {
+    showError(document.getElementById("corsi-list-error"), "Errore: " + err.message);
+  }
+}
+
+// Nessuno dei candidati proposti dal trigger corrisponde: crea un nuovo
+// profilo allievo con gli stessi dati dell'iscrizione (stessa logica del
+// trigger server-side per il caso "0 match") e lo collega subito.
+async function creaAllievoDaIscrizioneECollega(iscrizione, corso) {
+  try {
+    const nuovoAllievo = {
+      nome: iscrizione.nome,
+      cognome: iscrizione.cognome,
+      dataNascita: iscrizione.dataNascita || null,
+      email: iscrizione.email || "",
+      emailLower: (iscrizione.email || "").toLowerCase(),
+      nazionalita: iscrizione.nazionalita || "",
+      via: iscrizione.via || "",
+      cap: iscrizione.cap || "",
+      localita: iscrizione.localita || "",
+      nomeGenitore: iscrizione.nomeGenitore || "",
+      telefonoGenitore: iscrizione.telefonoGenitore || "",
+      scuolaFrequentata: iscrizione.scuolaFrequentata || "",
+      altriSportPraticati: iscrizione.altriSportPraticati || "",
+      note: "",
+      creatoDa: "staff",
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+    const ref = await db.collection("allieviCorsi").add(nuovoAllievo);
+    allieviCorsiCache.push({ id: ref.id, ...nuovoAllievo });
+    await collegaAllievoEsistente(iscrizione.id, corso.id, ref.id, `${iscrizione.nome} ${iscrizione.cognome}`);
+  } catch (err) {
+    showError(document.getElementById("corsi-list-error"), "Errore: " + err.message);
+  }
+}
+
+// ---------- Aggiungi ospite: un allievo già iscritto altrove, aggiunto a
+// questo corso pagando la quota di un corso di riferimento scelto dallo
+// staff (mai un prezzo libero) ----------
+// L'azione crea una NUOVA iscrizioniCorsi, quindi vive nell'header del
+// pannello (non su una scheda esistente): un corso può ricevere il suo
+// primo ospite anche con zero iscrizioni normali.
+
+function toggleAggiungiOspiteCorso(corso) {
+  const container = document.getElementById(`aggiungi-ospite-${corso.id}`);
+  if (!container) return;
+
+  if (!container.classList.contains("hidden")) {
+    container.classList.add("hidden");
+    container.innerHTML = "";
     return;
   }
+
+  container.classList.remove("hidden");
+  container.innerHTML = `<div class="empty-state"><div class="display">Caricamento…</div></div>`;
+  ensureAllieviCorsiCache().then(() => renderRicercaOspite(container, corso));
+}
+
+function renderRicercaOspite(container, corso) {
+  container.innerHTML = `
+    <div class="row-label" style="margin-bottom:10px;">Aggiungi ospite</div>
+    <div class="field">
+      <label for="ospite-cerca-${corso.id}">Cerca allievo (nome o cognome)</label>
+      <input type="text" id="ospite-cerca-${corso.id}" placeholder="Cerca…">
+    </div>
+    <div id="ospite-risultati-${corso.id}"></div>
+  `;
+
+  const input = container.querySelector(`#ospite-cerca-${corso.id}`);
+  const risultatiEl = container.querySelector(`#ospite-risultati-${corso.id}`);
+  input.addEventListener("input", () => {
+    const query = input.value.trim().toLowerCase();
+    if (!query) { risultatiEl.innerHTML = ""; return; }
+    const risultati = allieviCorsiCache
+      .filter(a => `${a.nome} ${a.cognome}`.toLowerCase().includes(query))
+      .sort(compareCognomeNome)
+      .slice(0, 8);
+    risultatiEl.innerHTML = risultati.length > 0
+      ? risultati.map(a => `
+          <div class="entry-card" style="padding:8px;margin-top:6px;">
+            <div class="entry-main">
+              <div class="entry-tipo" style="font-size:0.82rem;">${escapeHtml(a.nome)} ${escapeHtml(a.cognome)}${etaDa(a.dataNascita) != null ? " (" + etaDa(a.dataNascita) + " anni)" : ""}</div>
+            </div>
+            <button type="button" class="btn btn-ghost ospite-scegli-btn" style="width:auto;padding:6px 10px;font-size:0.68rem;" data-id="${a.id}">Scegli</button>
+          </div>
+        `).join("")
+      : `<div class="entry-meta">Nessun allievo trovato</div>`;
+    risultatiEl.querySelectorAll(".ospite-scegli-btn").forEach(btn => {
+      btn.addEventListener("click", () => selezionaOspite(container, corso, btn.dataset.id));
+    });
+  });
+  input.focus();
+}
+
+async function selezionaOspite(container, corso, allievoId) {
+  const allievo = allieviCorsiCache.find(a => a.id === allievoId);
+  if (!allievo) return;
+  container.innerHTML = `<div class="empty-state"><div class="display">Caricamento…</div></div>`;
+
+  // Corsi in cui questo allievo risulta attualmente iscritto (confermato o
+  // in attesa), per il select "Corso di provenienza" — se non risulta
+  // iscritto da nessuna parte (es. dati storici incompleti) si procede
+  // comunque, senza corso di provenienza.
+  let corsiOrigine = [];
+  try {
+    const snap = await db.collection("iscrizioniCorsi")
+      .where("allievoId", "==", allievoId)
+      .where("stato", "in", ["confermata", "in_attesa"])
+      .get();
+    const visti = new Set();
+    corsiOrigine = snap.docs
+      .map(d => d.data())
+      .filter(x => { if (visti.has(x.corsoId)) return false; visti.add(x.corsoId); return true; })
+      .map(x => ({ id: x.corsoId, nome: x.corsoNome }));
+  } catch (err) {
+    console.warn("ricerca corsi di provenienza:", err.message);
+  }
+
+  renderFormOspiteSelezionato(container, corso, allievo, corsiOrigine);
+}
+
+function renderFormOspiteSelezionato(container, corso, allievo, corsiOrigine) {
+  // Non ha senso "ospite con quota = prezzo dello stesso corso": escluso.
+  const corsiRiferimento = corsiCache.filter(c => c.approvato && c.id !== corso.id);
+
+  container.innerHTML = `
+    <div class="row-label" style="margin-bottom:10px;">Aggiungi ospite</div>
+    <div class="entry-meta">Allievo: <strong>${escapeHtml(allievo.nome)} ${escapeHtml(allievo.cognome)}</strong>
+      <button type="button" class="btn btn-ghost ospite-cambia-btn" style="width:auto;padding:4px 8px;font-size:0.66rem;margin-left:8px;">Cambia</button>
+    </div>
+    <div class="field">
+      <label for="ospite-origine-${corso.id}">Corso di provenienza (opzionale)</label>
+      <select id="ospite-origine-${corso.id}">
+        <option value="">—</option>
+        ${corsiOrigine.map(c => `<option value="${c.id}">${escapeHtml(c.nome || "—")}</option>`).join("")}
+      </select>
+    </div>
+    <div class="field">
+      <label for="ospite-riferimento-${corso.id}">Quota ospite = prezzo del corso</label>
+      <select id="ospite-riferimento-${corso.id}">
+        <option value="">—</option>
+        ${corsiRiferimento.map(c => `<option value="${c.id}">${escapeHtml(c.nome)} — CHF ${c.prezzoRichiesto ?? "—"}</option>`).join("")}
+      </select>
+    </div>
+    <div class="error-msg ospite-error"></div>
+    <div style="display:flex;gap:8px;margin-top:6px;">
+      <button type="button" class="btn btn-primary ospite-salva-btn" style="width:auto;padding:8px 14px;font-size:0.72rem;">Aggiungi</button>
+      <button type="button" class="btn btn-ghost ospite-annulla-btn" style="width:auto;padding:8px 14px;font-size:0.72rem;">Annulla</button>
+    </div>
+  `;
+
+  container.querySelector(".ospite-cambia-btn").addEventListener("click", () => renderRicercaOspite(container, corso));
+  container.querySelector(".ospite-annulla-btn").addEventListener("click", () => {
+    container.classList.add("hidden");
+    container.innerHTML = "";
+  });
+  container.querySelector(".ospite-salva-btn").addEventListener("click", () => salvaAggiungiOspite(container, corso, allievo));
+}
+
+async function salvaAggiungiOspite(container, corso, allievo) {
+  const errorEl = container.querySelector(".ospite-error");
+  const corsoOrigineId = container.querySelector(`#ospite-origine-${corso.id}`).value || null;
+  const corsoRiferimentoId = container.querySelector(`#ospite-riferimento-${corso.id}`).value;
+  errorEl.textContent = "";
+
+  if (!corsoRiferimentoId) { showError(errorEl, "Scegli il corso di riferimento per la quota ospite."); return; }
+  const corsoRiferimento = corsiCache.find(c => c.id === corsoRiferimentoId);
+
+  const salvaBtn = container.querySelector(".ospite-salva-btn");
+  if (salvaBtn) { salvaBtn.disabled = true; salvaBtn.textContent = "Salvataggio…"; }
+
+  try {
+    const nuovoRef = await db.collection("iscrizioniCorsi").add({
+      corsoId: corso.id,
+      corsoNome: corso.nome,
+      nome: allievo.nome,
+      cognome: allievo.cognome,
+      dataNascita: allievo.dataNascita || null,
+      eta: etaDa(allievo.dataNascita),
+      nazionalita: allievo.nazionalita || "",
+      via: allievo.via || "",
+      cap: allievo.cap || "",
+      localita: allievo.localita || "",
+      email: allievo.email || "",
+      nomeGenitore: allievo.nomeGenitore || "",
+      telefonoGenitore: allievo.telefonoGenitore || "",
+      scuolaFrequentata: allievo.scuolaFrequentata || "",
+      altriSportPraticati: allievo.altriSportPraticati || "",
+      nrOreDesiderate: null,
+      disponibilita: {},
+      stato: "in_attesa",
+      tipo: "ospite",
+      corsoOrigineId: corsoOrigineId || null,
+      quotaOspiteCorsoRiferimentoId: corsoRiferimentoId,
+      allievoId: allievo.id,
+      allievoIdStato: "confermato",
+      gestitaDaUid: currentProfile.uid,
+      gestitaDaNome: currentProfile.nome,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    await registraLog(nuovoRef.id, corso.id, `${allievo.nome} ${allievo.cognome}`, "aggiunto_ospite",
+      `Aggiunto come ospite (quota = prezzo di "${corsoRiferimento?.nome || "—"}")`);
+
+    container.classList.add("hidden");
+    container.innerHTML = "";
+    await aggiornaContatoriDopoModifica(corso.id);
+    await ricaricaIscrizioniCorso(corso.id);
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+    if (salvaBtn) { salvaBtn.disabled = false; salvaBtn.textContent = "Aggiungi"; }
+  }
+}
+
+function renderIscrizioniCorso(container, corso, iscrizioni) {
+  const headerHtml = `
+    <button type="button" class="btn btn-ghost aggiungi-ospite-toggle-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;margin-bottom:14px;" data-corso="${corso.id}">+ Aggiungi ospite</button>
+    <div class="dettaglio-giorni hidden" id="aggiungi-ospite-${corso.id}"></div>
+  `;
 
   const statoLabel = { in_attesa: "In attesa", confermata: "Confermata", annullata: "Annullata" };
   const statoStyle = {
@@ -792,50 +1159,62 @@ function renderIscrizioniCorso(container, corso, iscrizioni) {
   const discipline = disciplineIscrizioniVisibili(currentProfile);
   const altriCorsi = corsiCache.filter(c => c.id !== corso.id && c.approvato && (!discipline || discipline.includes(c.disciplina)));
 
-  container.innerHTML = iscrizioni.map(i => {
-    const disponibilitaLabel = disponibilitaBreve(i) || "—";
-    const eta = etaDa(i.dataNascita);
-    const disponibileSet = new Set(Object.entries(i.disponibilita || {}).flatMap(([g, orari]) => orari.map(o => `${g}|${o}`)));
+  const iscrizioniOrdinate = [...iscrizioni].sort(compareCognomeNome);
 
-    const piuCampi = (corso.campiNumeri || []).length > 1;
-    // Corso forfettario: niente slot da assegnare, la conferma è secca.
-    const selectSlot = (i.stato === "in_attesa" && !corso.forfettario) ? `
-      <select class="assegna-slot-select" data-id="${i.id}" style="font-size:0.72rem;padding:6px 8px;">
-        ${combinazioni.map(c => `<option value="${c.giorno}|${c.orario}">${c.giornoLabel} ${c.orario}${disponibileSet.has(`${c.giorno}|${c.orario}`) ? " ✓" : ""}</option>`).join("")}
-      </select>
-      ${piuCampi ? `<select class="assegna-campo-select" data-id="${i.id}" style="font-size:0.72rem;padding:6px 8px;margin-top:6px;">${(corso.campiNumeri || []).map(n => `<option value="${n}">Campo ${n}</option>`).join("")}</select>` : ""}
-    ` : "";
+  const bodyHtml = iscrizioniOrdinate.length === 0
+    ? `<div class="empty-state"><div class="display">Nessuna iscrizione ricevuta</div></div>`
+    : iscrizioniOrdinate.map(i => {
+      const disponibilitaLabel = disponibilitaBreve(i) || "—";
+      const eta = etaDa(i.dataNascita);
+      const disponibileSet = new Set(Object.entries(i.disponibilita || {}).flatMap(([g, orari]) => orari.map(o => `${g}|${o}`)));
 
-    return `
-      <div class="entry-card">
-        <div class="entry-main">
-          <span class="badge" style="${statoStyle[i.stato] || statoStyle.in_attesa}">${statoLabel[i.stato] || i.stato}</span>
-          <div class="entry-tipo">${escapeHtml(i.nome)} ${escapeHtml(i.cognome)}${eta != null ? " · " + eta + " anni" : ""}</div>
-          ${i.inseritaDaStaff ? `<div class="entry-meta">Inserita dallo staff (${escapeHtml(i.inseritaDaNome || "—")})</div>` : ""}
-          <div class="entry-meta">${escapeHtml(i.email)}${i.nrOreDesiderate ? " · " + i.nrOreDesiderate + "h/sett." : ""}${i.scuolaFrequentata ? " · " + escapeHtml(i.scuolaFrequentata) : ""}</div>
-          ${i.nomeGenitore || i.telefonoGenitore ? `<div class="entry-meta">Genitore: ${escapeHtml(i.nomeGenitore || "—")}${i.telefonoGenitore ? " · " + escapeHtml(i.telefonoGenitore) : ""}</div>` : ""}
-          <div class="entry-meta">Disponibilità: ${disponibilitaLabel}</div>
-          ${i.stato === "confermata" && i.giornoAssegnato ? `<div class="entry-meta">Assegnato: ${(GIORNI_SETTIMANA.find(x => x.id === i.giornoAssegnato) || {}).label || i.giornoAssegnato} ${i.orarioAssegnato}${i.campoAssegnato ? " · Campo " + escapeHtml(i.campoAssegnato) : ""}</div>` : ""}
-          ${i.stato === "annullata" && i.motivoRifiuto ? `<div class="entry-meta">Motivo: ${escapeHtml(i.motivoRifiuto)}</div>` : ""}
-          ${pagamentoBadgeHtml(i)}
+      const piuCampi = (corso.campiNumeri || []).length > 1;
+      // Corso forfettario: niente slot da assegnare, la conferma è secca.
+      const selectSlot = (i.stato === "in_attesa" && !corso.forfettario) ? `
+        <select class="assegna-slot-select" data-id="${i.id}" style="font-size:0.72rem;padding:6px 8px;">
+          ${combinazioni.map(c => `<option value="${c.giorno}|${c.orario}">${c.giornoLabel} ${c.orario}${disponibileSet.has(`${c.giorno}|${c.orario}`) ? " ✓" : ""}</option>`).join("")}
+        </select>
+        ${piuCampi ? `<select class="assegna-campo-select" data-id="${i.id}" style="font-size:0.72rem;padding:6px 8px;margin-top:6px;">${(corso.campiNumeri || []).map(n => `<option value="${n}">Campo ${n}</option>`).join("")}</select>` : ""}
+      ` : "";
+
+      return `
+        <div class="entry-card">
+          <div class="entry-main">
+            <span class="badge" style="${statoStyle[i.stato] || statoStyle.in_attesa}">${statoLabel[i.stato] || i.stato}</span>
+            <div class="entry-tipo">${escapeHtml(i.nome)} ${escapeHtml(i.cognome)}${eta != null ? " · " + eta + " anni" : ""}</div>
+            ${i.inseritaDaStaff ? `<div class="entry-meta">Inserita dallo staff (${escapeHtml(i.inseritaDaNome || "—")})</div>` : ""}
+            <div class="entry-meta">${escapeHtml(i.email)}${i.nrOreDesiderate ? " · " + i.nrOreDesiderate + "h/sett." : ""}${i.scuolaFrequentata ? " · " + escapeHtml(i.scuolaFrequentata) : ""}</div>
+            ${i.nomeGenitore || i.telefonoGenitore ? `<div class="entry-meta">Genitore: ${escapeHtml(i.nomeGenitore || "—")}${i.telefonoGenitore ? " · " + escapeHtml(i.telefonoGenitore) : ""}</div>` : ""}
+            <div class="entry-meta">Disponibilità: ${disponibilitaLabel}</div>
+            ${i.stato === "confermata" && i.giornoAssegnato ? `<div class="entry-meta">Assegnato: ${(GIORNI_SETTIMANA.find(x => x.id === i.giornoAssegnato) || {}).label || i.giornoAssegnato} ${i.orarioAssegnato}${i.campoAssegnato ? " · Campo " + escapeHtml(i.campoAssegnato) : ""}</div>` : ""}
+            ${i.stato === "annullata" && i.motivoRifiuto ? `<div class="entry-meta">Motivo: ${escapeHtml(i.motivoRifiuto)}</div>` : ""}
+            ${pagamentoBadgeHtml(i)}
+            ${badgeOspiteHtml(i)}
+            ${i.createdAt ? `<div class="entry-meta">Iscritto il ${i.createdAt.toDate().toLocaleDateString("it-CH")}</div>` : ""}
+            ${statoCollegamentoAllievoHtml(i)}
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            ${selectSlot}
+            ${i.stato === "in_attesa" ? `<button class="btn btn-primary conferma-iscrizione-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}" data-corso="${corso.id}" data-nome="${escapeHtml(i.nome + " " + i.cognome)}" data-email="${escapeHtml(i.email || "")}">${corso.forfettario ? "Conferma iscrizione" : "Conferma in questo slot"}</button>` : ""}
+            ${i.stato === "in_attesa" ? `<button class="btn btn-danger annulla-iscrizione-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}" data-corso="${corso.id}" data-nome="${escapeHtml(i.nome + " " + i.cognome)}" data-email="${escapeHtml(i.email || "")}">Rifiuta</button>` : ""}
+            ${i.stato !== "annullata" && altriCorsi.length > 0 ? `
+              <select class="sposta-corso-select" data-id="${i.id}" style="font-size:0.72rem;padding:6px 8px;">
+                <option value="">Sposta al corso…</option>
+                ${altriCorsi.map(c => `<option value="${c.id}">${escapeHtml(c.nome)}</option>`).join("")}
+              </select>
+              <button type="button" class="btn btn-ghost sposta-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}" data-nome="${escapeHtml(i.nome + " " + i.cognome)}">Sposta</button>
+            ` : ""}
+            ${i.stato !== "annullata" ? `<button class="btn btn-ghost modifica-iscrizione-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}">Modifica</button>` : ""}
+          </div>
         </div>
-        <div style="display:flex;flex-direction:column;gap:6px;">
-          ${selectSlot}
-          ${i.stato === "in_attesa" ? `<button class="btn btn-primary conferma-iscrizione-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}" data-corso="${corso.id}" data-nome="${escapeHtml(i.nome + " " + i.cognome)}" data-email="${escapeHtml(i.email || "")}">${corso.forfettario ? "Conferma iscrizione" : "Conferma in questo slot"}</button>` : ""}
-          ${i.stato === "in_attesa" ? `<button class="btn btn-danger annulla-iscrizione-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}" data-corso="${corso.id}" data-nome="${escapeHtml(i.nome + " " + i.cognome)}" data-email="${escapeHtml(i.email || "")}">Rifiuta</button>` : ""}
-          ${i.stato !== "annullata" && altriCorsi.length > 0 ? `
-            <select class="sposta-corso-select" data-id="${i.id}" style="font-size:0.72rem;padding:6px 8px;">
-              <option value="">Sposta al corso…</option>
-              ${altriCorsi.map(c => `<option value="${c.id}">${escapeHtml(c.nome)}</option>`).join("")}
-            </select>
-            <button type="button" class="btn btn-ghost sposta-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}" data-nome="${escapeHtml(i.nome + " " + i.cognome)}">Sposta</button>
-          ` : ""}
-          ${i.stato !== "annullata" ? `<button class="btn btn-ghost modifica-iscrizione-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}">Modifica</button>` : ""}
-        </div>
-      </div>
-      ${i.stato !== "annullata" ? `<div class="dettaglio-giorni hidden" id="modifica-isc-iscrizioni-${i.id}"></div>` : ""}
-    `;
-  }).join("");
+        ${i.stato !== "annullata" ? `<div class="dettaglio-giorni hidden" id="modifica-isc-iscrizioni-${i.id}"></div>` : ""}
+      `;
+    }).join("");
+
+  container.innerHTML = headerHtml + bodyHtml;
+
+  const toggleOspiteBtn = container.querySelector(".aggiungi-ospite-toggle-btn");
+  if (toggleOspiteBtn) toggleOspiteBtn.addEventListener("click", () => toggleAggiungiOspiteCorso(corso));
 
   container.querySelectorAll(".conferma-iscrizione-btn").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -851,7 +1230,7 @@ function renderIscrizioniCorso(container, corso, iscrizioni) {
   });
   container.querySelectorAll(".modifica-iscrizione-btn").forEach(btn => {
     btn.addEventListener("click", () => {
-      const i = iscrizioni.find(x => x.id === btn.dataset.id);
+      const i = iscrizioniOrdinate.find(x => x.id === btn.dataset.id);
       if (i) toggleModificaIscrizione(i, corso, "iscrizioni");
     });
   });
@@ -861,6 +1240,31 @@ function renderIscrizioniCorso(container, corso, iscrizioni) {
       const nuovoCorsoId = select.value;
       if (!nuovoCorsoId) { alert("Scegli il corso di destinazione."); return; }
       spostaCorsoIscrizione(btn.dataset.id, corso.id, nuovoCorsoId, btn.dataset.nome);
+    });
+  });
+
+  container.querySelectorAll(".conferma-collegamento-btn").forEach(btn => {
+    btn.addEventListener("click", () => confermaCollegamentoAllievo(btn.dataset.id, corso.id, btn.dataset.allievo, btn.dataset.nome));
+  });
+  container.querySelectorAll(".non-e-stessa-persona-btn").forEach(btn => {
+    btn.addEventListener("click", () => scollegaAllievo(btn.dataset.id, corso.id, btn.dataset.nome));
+  });
+  container.querySelectorAll(".collega-candidato-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const select = container.querySelector(`.candidato-allievo-select[data-id="${btn.dataset.id}"]`);
+      const allievoId = select ? select.value : "";
+      if (allievoId) {
+        collegaAllievoEsistente(btn.dataset.id, corso.id, allievoId, btn.dataset.nome);
+      } else {
+        const iscr = iscrizioniOrdinate.find(x => x.id === btn.dataset.id);
+        if (iscr) creaAllievoDaIscrizioneECollega(iscr, corso);
+      }
+    });
+  });
+  container.querySelectorAll(".collega-allievo-input").forEach(input => {
+    input.addEventListener("input", () => {
+      const iscr = iscrizioniOrdinate.find(x => x.id === input.dataset.id);
+      if (iscr) renderRicercaCollegaAllievo(input, container, iscr, corso);
     });
   });
 }

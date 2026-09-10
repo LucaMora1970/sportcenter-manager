@@ -105,6 +105,7 @@
       <a href="#aziende">Aziende convenzionate</a><span class="sep">·</span>
       <a href="#utenti">Utenti e ruoli</a><span class="sep">·</span>
       <a href="#corsi">Corsi</a><span class="sep">·</span>
+      <a href="#allievi">Allievi</a><span class="sep">·</span>
       <a href="#buoni">Buoni regalo</a><span class="sep">·</span>
       <a href="#tabellone">Tabellone generale</a><span class="sep">·</span>
       <a href="#biglietto">Biglietto</a>
@@ -555,6 +556,44 @@
         <span class="dove">Programmazione → sezione Iscritti → "Prepara avviso"</span>
         <div class="cosa">Avvisare gli iscritti che la pianificazione è in corso</div>
         <div class="come">Invia una mail <strong>dal sistema</strong> (mittente <code>MAIL_FROM</code>, risposta all'indirizzo del centro) a tutti gli iscritti ancora «in attesa» con email valida, per comunicare che il team maestri sta formando i gruppi e che la conferma arriverà a breve. Il testo è precompilato e modificabile prima dell'invio; ogni destinatario riceve una mail singola con saluto personalizzato. Non cambia lo stato delle iscrizioni. La pagina ricorda data, numero di destinatari e mittente dell'ultimo avviso; si può reinviare.</div>
+      </div>
+
+    </div>
+    </details>
+
+    <!-- ===================== Allievi ===================== -->
+    <details class="config-section" id="allievi">
+    <summary><h2>Allievi</h2></summary>
+    <div class="config-section-body">
+
+      <div class="voce">
+        <span class="dove"><code>allievi.html</code> — voce "Allievi" nel menu in basso (permesso <code>allievi:gestisci</code>)</span>
+        <div class="cosa">Anagrafica centrale degli allievi corsi</div>
+        <div class="come">Un profilo per persona, distinto dalle singole iscrizioni: raccoglie dati anagrafici, contatti, lo storico di tutte le iscrizioni corsi (passate e in corso) e permette di inviare comunicazioni mirate. Ha anche un listato stampabile. Non va confuso con "Allievi lezioni private" in Configurazione, che è solo l'elenco nomi per la fatturazione delle lezioni private nel Diario.</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove">Utenti → Ruoli → permesso <code>allievi:gestisci</code></span>
+        <div class="cosa">Chi può gestire l'anagrafica allievi</div>
+        <div class="come">Dà accesso alla pagina Allievi e ai suoi dati sensibili (contatti, storico iscrizioni, comunicazioni). Va assegnato come gli altri permessi, da Utenti → Ruoli.</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove">Automatico, a ogni nuova iscrizione corso</span>
+        <div class="cosa">Collegamento allievo ↔ iscrizione</div>
+        <div class="come">Quando arriva un'iscrizione, il sistema cerca un allievo già esistente confrontando email e data di nascita. Se non trova nessuna corrispondenza, crea automaticamente un nuovo profilo allievo. Se trova una sola corrispondenza, la propone: basta confermarla. Se trova più corrispondenze possibili, chiede di scegliere manualmente quella giusta — così non si creano doppioni né si collega l'iscrizione alla persona sbagliata.</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove">Configurazione → Migrazione anagrafica allievi (permesso <code>allievi:gestisci</code>)</span>
+        <div class="cosa">Popolare l'anagrafica dalle iscrizioni storiche</div>
+        <div class="come">Le iscrizioni corsi create prima dell'anagrafica allievi non hanno un profilo collegato: il bottone "Esegui migrazione anagrafica allievi" le raggruppa per email e data di nascita e crea/collega i profili mancanti in un colpo solo. È sicuro rieseguirlo più volte: le iscrizioni già collegate vengono semplicemente saltate, quindi si può lanciare di nuovo dopo aver importato altre iscrizioni.</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove">Corsi → pannello "Iscrizioni" di un corso → "Aggiungi ospite" (permesso <code>iscrizioni:gestisci</code> / <code>iscrizioni:gestisci_padel</code>)</span>
+        <div class="cosa">Far partecipare un allievo già iscritto altrove a un corso superiore</div>
+        <div class="come">Un allievo già iscritto a un corso può partecipare anche a un corso di livello superiore come "ospite", senza dover passare dal modulo pubblico. Lo staff sceglie l'allievo e un corso di riferimento tra quelli configurati per quel corso superiore: l'importo addebitato è sempre il prezzo attuale del corso di riferimento scelto, mai un importo libero digitato a mano.</div>
       </div>
 
     </div>
