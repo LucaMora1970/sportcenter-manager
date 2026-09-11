@@ -450,9 +450,12 @@ service cloud.firestore {
     // raggruppa gli iscritti per slot/campo. Gestita da chi gestisce le
     // iscrizioni; la disciplina è denormalizzata sul gruppo così il permesso
     // scoped Padel può verificarla sia in create (request) sia in
-    // update/delete (resource) senza un get() sul corso.
+    // update/delete (resource) senza un get() sul corso. Lettura aperta
+    // anche a chi gestisce gli allievi (allievi.html mostra il/i gruppo/i
+    // assegnato/i come chip sulla scheda), scrittura resta riservata a chi
+    // gestisce le iscrizioni.
     match /gruppiCorso/{id} {
-      allow read: if hasPermission("iscrizioni:gestisci")
+      allow read: if hasPermission("iscrizioni:gestisci") || hasPermission("allievi:gestisci")
         || (hasPermission("iscrizioni:gestisci_padel") && resource.data.disciplina == "padel");
       allow create: if hasPermission("iscrizioni:gestisci")
         || (hasPermission("iscrizioni:gestisci_padel") && request.resource.data.disciplina == "padel");

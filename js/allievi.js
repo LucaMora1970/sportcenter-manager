@@ -17,11 +17,17 @@ let allieviCache = []; // [{id, nome, cognome, email, ...}] — caricata una vol
 let allievoSelezionatoId = null;
 let iscrizioniAllievoCache = [];
 let comunicazioniAllievoCache = [];
+let corsiAllievoCache = new Map();   // corsoId -> dati corso, solo per le iscrizioni in vista
+let gruppiAllievoCache = new Map();  // gruppoId -> dati gruppo, idem
 
 function formatDataBreve(dataStr) {
   if (!dataStr) return "—";
   const [y, m, d] = dataStr.split("-");
   return `${d}.${m}.${y}`;
+}
+
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
 }
 
 function etaDa(dataNascitaStr) {
@@ -144,6 +150,18 @@ async function caricaDettaglioAllievo(id) {
     .sort((a, b) => (b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : 0) - (a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : 0));
   comunicazioniAllievoCache = comunicazioniSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
+  // Corso (per durataSessioneMinuti/al) e gruppi assegnati (per nome/slot),
+  // solo quelli citati dalle iscrizioni in vista — niente da caricare se
+  // l'allievo non ha ancora gruppi assegnati.
+  const corsoIds = [...new Set(iscrizioniAllievoCache.map(i => i.corsoId).filter(Boolean))];
+  const gruppoIds = [...new Set(iscrizioniAllievoCache.flatMap(i => i.gruppoIds || []))];
+  const [corsiDocs, gruppiDocs] = await Promise.all([
+    Promise.all(corsoIds.map(cid => db.collection("corsi").doc(cid).get())),
+    Promise.all(gruppoIds.map(gid => db.collection("gruppiCorso").doc(gid).get()))
+  ]);
+  corsiAllievoCache = new Map(corsiDocs.filter(d => d.exists).map(d => [d.id, d.data()]));
+  gruppiAllievoCache = new Map(gruppiDocs.filter(d => d.exists).map(d => [d.id, d.data()]));
+
   renderIscrizioniAllievo();
   renderComunicazioniAllievo();
 }
@@ -159,9 +177,27 @@ function giornoLabel(id) {
   return (GIORNI_SETTIMANA.find(g => g.id === id) || {}).label || id;
 }
 
-// Dashboard per allievo: un badge di stato per iscrizione, e — per quelle
-// confermate — lo slot assegnato ed eventuale conferma della convocazione
-// inviata dal gruppo (vedi inviaConvocazioneGruppo in programmazione-corso.js).
+function formatOre(n) {
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+
+// Confronta le ore/settimana richieste dall'allievo (nrOreDesiderate) con
+// quelle effettivamente coperte dai gruppi assegnati (durataSessioneMinuti
+// del corso × numero di gruppi) — solo per corsi in corso o futuri
+// (corso.al nel passato = iscrizione storica, nessuna segnalazione).
+function scostamentoOreIscrizione(i) {
+  if (!i.nrOreDesiderate || !(i.gruppoIds || []).length) return null;
+  const corso = corsiAllievoCache.get(i.corsoId);
+  if (!corso || !corso.durataSessioneMinuti) return null;
+  if (corso.al && corso.al < todayISO()) return null;
+  const oreAssegnate = (corso.durataSessioneMinuti / 60) * i.gruppoIds.length;
+  if (oreAssegnate >= i.nrOreDesiderate) return null;
+  return { richieste: i.nrOreDesiderate, assegnate: oreAssegnate, mancante: i.nrOreDesiderate - oreAssegnate };
+}
+
+// Dashboard per allievo: un badge di stato per iscrizione, un chip per
+// ogni gruppo assegnato, ed eventuale conferma della convocazione inviata
+// dal gruppo (vedi inviaConvocazioneGruppo in programmazione-corso.js).
 function renderIscrizioniAllievo() {
   const listEl = document.getElementById("allievo-iscrizioni-list");
   if (iscrizioniAllievoCache.length === 0) {
@@ -170,19 +206,24 @@ function renderIscrizioniAllievo() {
   }
   listEl.innerHTML = iscrizioniAllievoCache.map(i => {
     const data = i.createdAt && typeof i.createdAt.toDate === "function" ? i.createdAt.toDate().toLocaleDateString("it-CH") : "—";
-    const slot = i.giornoAssegnato
-      ? `${giornoLabel(i.giornoAssegnato)} ${i.orarioAssegnato || ""}${i.campoAssegnato ? " · Campo " + escapeHtml(String(i.campoAssegnato)) : ""}`
-      : null;
+    const gruppi = (i.gruppoIds || []).map(gid => gruppiAllievoCache.get(gid)).filter(Boolean);
+    const chipsGruppi = gruppi.map(g => {
+      const slot = g.giorno ? `${giornoLabel(g.giorno)} ${g.orario || ""}${g.campo ? " · Campo " + escapeHtml(String(g.campo)) : ""}` : "";
+      return `<span class="badge" title="${escapeHtml(slot)}">${escapeHtml(g.nome || slot || "Gruppo")}</span>`;
+    }).join(" ");
     const convocazione = i.convocazioneInviataAt && typeof i.convocazioneInviataAt.toDate === "function"
       ? `Convocazione inviata il ${i.convocazioneInviataAt.toDate().toLocaleDateString("it-CH")}`
       : null;
+    const scostamento = scostamentoOreIscrizione(i);
     return `
       <div class="entry-card">
         <div class="entry-main">
           <span class="badge" style="${STATO_ISCRIZIONE_COLORE[i.stato] || ""}">${STATO_ISCRIZIONE_LABEL[i.stato] || i.stato || "—"}</span>
+          ${chipsGruppi}
           <div class="entry-tipo">${escapeHtml(i.corsoNome || "—")}${i.tipo === "ospite" ? ` <span class="badge">Ospite</span>` : ""}</div>
-          <div class="entry-meta">Iscritto il ${data}${slot ? " · Assegnato: " + escapeHtml(slot) : ""}</div>
+          <div class="entry-meta">Iscritto il ${data}${i.nrOreDesiderate ? " · " + formatOre(i.nrOreDesiderate) + "h/sett. richieste" : ""}</div>
           ${convocazione ? `<div class="entry-meta">${convocazione}</div>` : ""}
+          ${scostamento ? `<div class="entry-meta" style="color:var(--danger);">⚠ Richieste ${formatOre(scostamento.richieste)}h/sett., assegnate ${formatOre(scostamento.assegnate)}h/sett. — mancante ${formatOre(scostamento.mancante)}h/sett.</div>` : ""}
         </div>
       </div>
     `;
