@@ -74,6 +74,11 @@ function renderAllieviList() {
     .sort((a, b) => (a.cognome || "").localeCompare(b.cognome || "", "it", { sensitivity: "base" })
       || (a.nome || "").localeCompare(b.nome || "", "it", { sensitivity: "base" }));
 
+  const conteggioEl = document.getElementById("allievi-conteggio");
+  conteggioEl.textContent = testo
+    ? `${risultati.length} di ${allieviCache.length} allievi in anagrafica`
+    : `${allieviCache.length} allievi in anagrafica`;
+
   if (risultati.length === 0) {
     listEl.innerHTML = `<div class="empty-state"><div class="display">Nessun allievo trovato</div></div>`;
     return;
