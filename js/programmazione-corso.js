@@ -322,7 +322,7 @@ async function setLivello(iscrizioneId, valoreRaw) {
 function nomeGruppo(g) {
   if (g.nome) return g.nome;
   const slot = g.giorno && g.orario ? `${giornoLabel(g.giorno)} ${g.orario}` : "senza slot";
-  return `${slot}${g.campo ? " · Campo " + g.campo : ""}`;
+  return `${corso.nome || "Corso"} — ${slot}`;
 }
 
 function nuovoTempId() {
@@ -582,9 +582,15 @@ function generaProposta() {
   });
 
   const proposti = contenitori.filter(g => g.membri.length);
+  // Nome di default: corso + giorno + ora, senza il campo. Con più campi
+  // nello stesso slot lo stesso nome ricorre: si distingue solo in quel
+  // caso con un contatore "(2)", "(3)"... aggiunto in coda.
+  const contatoriNome = {};
   proposti.forEach((g, idx) => {
     g.ordine = idx;
-    g.nome = `Gruppo ${String.fromCharCode(65 + idx)} — ${giornoLabel(g.giorno)} ${g.orario}${g.campo ? " · C" + g.campo : ""}`;
+    const base = `${corso.nome || "Corso"} — ${giornoLabel(g.giorno)} ${g.orario}`;
+    const n = (contatoriNome[base] = (contatoriNome[base] || 0) + 1);
+    g.nome = n > 1 ? `${base} (${n})` : base;
   });
   gruppiLavoro = [...gruppiLavoro, ...proposti];
 
