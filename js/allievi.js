@@ -74,11 +74,15 @@ function renderAllieviList() {
     const metaParts = [];
     if (eta != null) metaParts.push(eta + " anni");
     if (a.email) metaParts.push(a.email);
+    const genitoreParts = [];
+    if (a.nomeGenitore) genitoreParts.push(a.nomeGenitore);
+    if (a.telefonoGenitore) genitoreParts.push(a.telefonoGenitore);
     return `
       <div class="entry-card allievo-card" data-id="${a.id}" style="cursor:pointer;">
         <div class="entry-main">
           <div class="entry-tipo">${escapeHtml(a.cognome)} ${escapeHtml(a.nome)}</div>
           <div class="entry-meta">${escapeHtml(metaParts.join(" · "))}</div>
+          ${genitoreParts.length ? `<div class="entry-meta">Genitore: ${escapeHtml(genitoreParts.join(" · "))}</div>` : ""}
         </div>
       </div>
     `;
