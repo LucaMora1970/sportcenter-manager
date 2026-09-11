@@ -72,9 +72,9 @@
         <button type="button" class="btn btn-ghost" id="prog-nuovo-gruppo-btn" style="width:auto;padding:10px 16px;">Nuovo gruppo</button>
         <button type="button" class="btn btn-ghost" id="prog-stampa-btn" style="width:auto;padding:10px 16px;">Stampa / PDF</button>
         <button type="button" class="btn btn-primary" id="prog-salva-bozza-btn" style="width:auto;padding:10px 16px;">Salva bozza</button>
-        <button type="button" class="btn btn-primary" id="prog-conferma-btn" style="width:auto;padding:10px 16px;">Conferma definitiva</button>
+        <button type="button" class="btn btn-primary" id="prog-conferma-btn" style="width:auto;padding:10px 16px;" disabled title="Temporaneamente disattivato: la conferma (e l'addebito) va per ora fatta gruppo per gruppo con «Invia convocazione»">Conferma definitiva (disattivata)</button>
       </div>
-      <p style="color:var(--chalk-grey);font-size:0.78rem;margin:-4px 0 12px;"><strong>Salva bozza</strong>: memorizza il piano senza toccare le iscrizioni — condivisibile con altri e col supervisore. <strong>Conferma definitiva</strong>: porta gli iscritti a «confermata», assegna gli slot e avvia gli addebiti per chi ha la carta salvata.</p>
+      <p style="color:var(--chalk-grey);font-size:0.78rem;margin:-4px 0 12px;"><strong>Salva bozza</strong>: memorizza il piano senza toccare le iscrizioni — condivisibile con altri e col supervisore. <strong>Invia convocazione</strong> (sul singolo gruppo, qui sotto): manda l'email con giorno/ora/campo/costo e porta quegli iscritti a «confermata», senza addebito. <strong>Conferma definitiva</strong> è temporaneamente disattivata insieme all'addebito automatico.</p>
       <div id="prog-avvisi"></div>
       <div id="prog-gruppi-list">
         <div class="empty-state"><div class="display">Nessun gruppo — genera una proposta o creane uno a mano</div></div>

@@ -130,7 +130,19 @@ async function caricaDettaglioAllievo(id) {
 }
 
 const STATO_ISCRIZIONE_LABEL = { in_attesa: "In attesa", confermata: "Confermata", annullata: "Annullata" };
+const STATO_ISCRIZIONE_COLORE = {
+  in_attesa: "border-color:#d4b83a;color:#d4b83a;",
+  confermata: "border-color:#7f9e4a;color:#c1e08f;",
+  annullata: "border-color:var(--chalk-grey-dim);color:var(--chalk-grey);"
+};
 
+function giornoLabel(id) {
+  return (GIORNI_SETTIMANA.find(g => g.id === id) || {}).label || id;
+}
+
+// Dashboard per allievo: un badge di stato per iscrizione, e — per quelle
+// confermate — lo slot assegnato ed eventuale conferma della convocazione
+// inviata dal gruppo (vedi inviaConvocazioneGruppo in programmazione-corso.js).
 function renderIscrizioniAllievo() {
   const listEl = document.getElementById("allievo-iscrizioni-list");
   if (iscrizioniAllievoCache.length === 0) {
@@ -139,11 +151,19 @@ function renderIscrizioniAllievo() {
   }
   listEl.innerHTML = iscrizioniAllievoCache.map(i => {
     const data = i.createdAt && typeof i.createdAt.toDate === "function" ? i.createdAt.toDate().toLocaleDateString("it-CH") : "—";
+    const slot = i.giornoAssegnato
+      ? `${giornoLabel(i.giornoAssegnato)} ${i.orarioAssegnato || ""}${i.campoAssegnato ? " · Campo " + escapeHtml(String(i.campoAssegnato)) : ""}`
+      : null;
+    const convocazione = i.convocazioneInviataAt && typeof i.convocazioneInviataAt.toDate === "function"
+      ? `Convocazione inviata il ${i.convocazioneInviataAt.toDate().toLocaleDateString("it-CH")}`
+      : null;
     return `
       <div class="entry-card">
         <div class="entry-main">
+          <span class="badge" style="${STATO_ISCRIZIONE_COLORE[i.stato] || ""}">${STATO_ISCRIZIONE_LABEL[i.stato] || i.stato || "—"}</span>
           <div class="entry-tipo">${escapeHtml(i.corsoNome || "—")}${i.tipo === "ospite" ? ` <span class="badge">Ospite</span>` : ""}</div>
-          <div class="entry-meta">${STATO_ISCRIZIONE_LABEL[i.stato] || i.stato || "—"} · iscritto il ${data}</div>
+          <div class="entry-meta">Iscritto il ${data}${slot ? " · Assegnato: " + escapeHtml(slot) : ""}</div>
+          ${convocazione ? `<div class="entry-meta">${convocazione}</div>` : ""}
         </div>
       </div>
     `;

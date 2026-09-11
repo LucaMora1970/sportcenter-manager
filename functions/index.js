@@ -4617,6 +4617,136 @@ exports.avvisaIscrittiPianificazione = onCall(
   }
 );
 
+// Prima data (YYYY-MM-DD) da dataInizioStr in cui cade il giorno della
+// settimana giornoId, on/after dataInizioStr incluso. Stessa logica di
+// GIORNO_JS_DAY_ABB/generaDateAbbonamento sopra.
+function primaDataPerGiorno(dataInizioStr, giornoId) {
+  const target = GIORNO_JS_DAY_ABB[giornoId];
+  if (target == null) return null;
+  const d = new Date(dataInizioStr + "T00:00:00Z");
+  if (Number.isNaN(d.getTime())) return null;
+  const diff = (target - d.getUTCDay() + 7) % 7;
+  d.setUTCDate(d.getUTCDate() + diff);
+  return d.toISOString().slice(0, 10);
+}
+
+// Invia la mail di convocazione (giorno/ora/campo del primo incontro,
+// prezzo, contatto capo-corso) a tutti i membri di un gruppo e — a
+// differenza di "Conferma definitiva" — NON avvia alcun addebito: si
+// limita a portare le loro iscrizioni a "confermata" con lo slot di
+// questo gruppo. Pensata per essere usata gruppo per gruppo mentre
+// "Conferma definitiva"/pagamento restano temporaneamente disattivati
+// lato client.
+exports.inviaConvocazioneGruppo = onCall(
+  { secrets: MAIL_SECRETS, timeoutSeconds: 300 },
+  async (request) => {
+    if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+    const { userData, permessi, isAdmin } = await permessiUtente(request.auth.uid);
+
+    const { gruppoId } = request.data || {};
+    if (!gruppoId) throw new HttpsError("invalid-argument", "gruppoId mancante.");
+
+    const gruppoRef = db.collection("gruppiCorso").doc(gruppoId);
+    const gruppoSnap = await gruppoRef.get();
+    if (!gruppoSnap.exists) throw new HttpsError("not-found", "Gruppo non trovato.");
+    const gruppo = gruppoSnap.data();
+
+    const corsoSnap = await db.collection("corsi").doc(gruppo.corsoId).get();
+    if (!corsoSnap.exists) throw new HttpsError("not-found", "Corso non trovato.");
+    const corso = corsoSnap.data();
+
+    const puoTutte = isAdmin || permessi.includes("iscrizioni:gestisci");
+    const puoPadel = permessi.includes("iscrizioni:gestisci_padel") && corso.disciplina === "padel";
+    if (!puoTutte && !puoPadel) throw new HttpsError("permission-denied", "Permesso mancante.");
+
+    const membriIds = Array.isArray(gruppo.membriIds) ? gruppo.membriIds : [];
+    if (membriIds.length === 0) return { inviati: 0, falliti: 0, nessunDestinatario: true };
+
+    const membriSnap = await db.getAll(...membriIds.map(id => db.collection("iscrizioniCorsi").doc(id)));
+    const membri = membriSnap.filter(d => d.exists).map(d => ({ id: d.id, ...d.data() })).filter(i => i.stato !== "annullata");
+    const destinatari = membri.filter(i => i.email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(i.email));
+
+    if (destinatari.length === 0) {
+      return { inviati: 0, falliti: 0, nessunDestinatario: true };
+    }
+
+    if (!gruppo.giorno) throw new HttpsError("failed-precondition", "Il gruppo non ha un giorno/orario assegnato.");
+    if (!corso.dal) throw new HttpsError("failed-precondition", "Il corso non ha una data di inizio (campo «Dal»): impossibile calcolare la data del primo incontro.");
+    const dataPrimoIncontro = primaDataPerGiorno(corso.dal, gruppo.giorno);
+    if (!dataPrimoIncontro) throw new HttpsError("failed-precondition", "Giorno del gruppo non valido.");
+
+    const [centroSnap, discSnap] = await Promise.all([
+      db.collection("impostazioni").doc("centro").get(),
+      corso.disciplina ? db.collection("discipline").doc(corso.disciplina).get() : Promise.resolve(null)
+    ]);
+    const centro = centroSnap.exists ? centroSnap.data() : {};
+    const disciplinaNome = (discSnap && discSnap.exists ? discSnap.data().nome : null) || corso.disciplina || "";
+    const replyTo = centro.email || undefined;
+    const firma = centro.nome || "Sport-OS";
+
+    const dataLeggibile = new Date(dataPrimoIncontro + "T00:00:00")
+      .toLocaleDateString("it-CH", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+    const prezzo = corso.prezzoRichiesto != null ? Number(corso.prezzoRichiesto).toFixed(2) : null;
+    const subject = `Conferma corso ${disciplinaNome}`;
+
+    const transporter = mailTransporter();
+    const from = MAIL_FROM.value();
+    const esiti = await Promise.allSettled(destinatari.map(i => {
+      const html = `<p>Gentile ${escapeHtmlBase(i.nome || "")},</p>`
+        + `<p>Il tuo gruppo per il corso di <strong>${escapeHtmlBase(disciplinaNome)}</strong> è stato confermato.</p>`
+        + `<p>Vi aspettiamo <strong>${escapeHtmlBase(dataLeggibile)}</strong> alle <strong>${escapeHtmlBase(gruppo.orario || "")}</strong>${gruppo.campo ? `, campo <strong>${escapeHtmlBase(String(gruppo.campo))}</strong>` : ""}.</p>`
+        + (prezzo != null ? `<p>Il costo del corso è di <strong>CHF ${prezzo}</strong>. Seguirà una richiesta di pagamento via email.</p>` : "")
+        + `<p>Per qualsiasi domanda puoi contattare il nostro capo-corso Alessandro Marsan al numero <strong>078 816 52 31</strong>.</p>`
+        + `<p>—<br>${escapeHtmlBase(firma)}</p>`;
+      return transporter.sendMail({ from, to: i.email, subject, html, replyTo: replyTo || undefined });
+    }));
+
+    let inviati = 0;
+    let falliti = 0;
+    const dettaglioFalliti = [];
+    esiti.forEach((e, idx) => {
+      if (e.status === "fulfilled") { inviati++; return; }
+      falliti++;
+      dettaglioFalliti.push({ email: destinatari[idx].email, errore: e.reason && e.reason.message ? e.reason.message : String(e.reason) });
+    });
+
+    // Stesso effetto sulle iscrizioni di "Conferma definitiva" (stato,
+    // gruppoIds, slot assegnato) ma solo per i membri di QUESTO gruppo e
+    // senza toccare pagamento/addebito. Non sovrascrive lo slot primario
+    // di chi è già confermato su un altro gruppo (iscritti multi-sessione).
+    const batch = db.batch();
+    membri.forEach(i => {
+      const gruppoIds = Array.from(new Set([...(i.gruppoIds || []), gruppoId]));
+      const patch = {
+        gruppoIds,
+        stato: "confermata",
+        gestitaDaUid: request.auth.uid,
+        gestitaDaNome: (userData && userData.nome) || null,
+        convocazioneInviataAt: FieldValue.serverTimestamp()
+      };
+      if (!i.giornoAssegnato) {
+        patch.giornoAssegnato = gruppo.giorno;
+        patch.orarioAssegnato = gruppo.orario || null;
+        patch.campoAssegnato = gruppo.campo || null;
+      }
+      batch.update(db.collection("iscrizioniCorsi").doc(i.id), patch);
+    });
+    batch.update(gruppoRef, {
+      bozza: false,
+      convocazioneInviata: {
+        inviataAt: FieldValue.serverTimestamp(),
+        inviataDaUid: request.auth.uid,
+        inviataDaNome: (userData && userData.nome) || null,
+        numero: inviati,
+        dataPrimoIncontro
+      }
+    });
+    await batch.commit();
+
+    return { inviati, falliti, dettaglioFalliti, dataPrimoIncontro };
+  }
+);
+
 // ---------- Link di reset password (senza invio email di Firebase) ----------
 //
 // auth.sendPasswordResetEmail() del client SDK genera E spedisce l'email

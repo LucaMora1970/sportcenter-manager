@@ -149,6 +149,7 @@ async function loadTutto() {
       note: g.note || "",
       ordine: g.ordine != null ? g.ordine : idx,
       membri,
+      convocazioneInviata: g.convocazioneInviata || null,
       _deleted: false
     };
   });
@@ -342,6 +343,7 @@ function creaGruppoVuoto(giorno, orario, campo) {
     note: "",
     ordine: gruppiLavoro.length,
     membri: [],
+    convocazioneInviata: null,
     _deleted: false
   };
 }
@@ -395,6 +397,41 @@ function avvisiGruppo(g) {
     if (fuori.length) avvisi.push(`${fuori.length} fuori disponibilità`);
   }
   return avvisi;
+}
+
+function convocazioneHtml(g) {
+  const c = g.convocazioneInviata;
+  if (!c) {
+    return `<div class="entry-meta" style="margin-top:6px;">Convocazione non ancora inviata${!g.firestoreId || !g.membri.length ? " — salva il gruppo con almeno un iscritto per poterla inviare" : ""}.</div>`;
+  }
+  const quando = c.inviataAt && c.inviataAt.toDate ? c.inviataAt.toDate().toLocaleString("it-CH") : null;
+  return `<div class="entry-meta" style="margin-top:6px;color:#c1e08f;">Convocazione inviata${quando ? " il " + quando : ""} a ${c.numero ?? "?"} iscritti${c.inviataDaNome ? " da " + escapeHtml(c.inviataDaNome) : ""}.</div>`;
+}
+
+async function inviaConvocazioneGruppo(tempId) {
+  const g = gruppiLavoro.find(x => x.tempId === tempId);
+  if (!g || !g.firestoreId) return;
+  const membri = g.membri.map(id => iscrizioni.find(i => i.id === id)).filter(Boolean);
+  const n = membri.filter(i => i.email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(i.email)).length;
+  if (n === 0) { alert("Nessun iscritto con email valida in questo gruppo."); return; }
+  if (!confirm(`Inviare la convocazione a ${n} iscritti del gruppo "${nomeGruppo(g)}"?\n\nLa mail con giorno/ora/campo e costo parte subito. Le loro iscrizioni passano a «confermata» (nessun addebito: quello resta disattivato).`)) return;
+
+  mostraCaricamento("Invio convocazione…");
+  try {
+    const res = await cloudFunctions().httpsCallable("inviaConvocazioneGruppo")({ gruppoId: g.firestoreId });
+    const d = res.data || {};
+    nascondiCaricamento();
+    if (d.nessunDestinatario) {
+      alert("Nessun destinatario con email valida in questo gruppo.");
+    } else {
+      alert(`Convocazione inviata: ${d.inviati}${d.falliti ? ` — falliti: ${d.falliti}` : ""}.`);
+    }
+    await loadTutto();
+    renderTutto();
+  } catch (err) {
+    nascondiCaricamento();
+    showError(document.getElementById("prog-error"), "Errore nell'invio della convocazione: " + (err.message || err));
+  }
 }
 
 function selectSlotHtml(g) {
@@ -456,7 +493,9 @@ function renderGruppi() {
             : `<div class="entry-meta" style="margin-top:6px;color:#c1e08f;">confermato</div>`}
           ${avvisi.length ? `<div class="entry-meta" style="color:var(--danger);margin-top:6px;">⚠ ${avvisi.join(" · ")}</div>` : ""}
           <div style="margin-top:10px;">${righe}</div>
-          <div style="margin-top:10px;">
+          ${convocazioneHtml(g)}
+          <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+            <button type="button" class="btn btn-ghost prog-g-convoca" data-id="${g.tempId}" style="width:auto;padding:6px 12px;font-size:0.68rem;"${g.firestoreId && g.membri.length ? "" : " disabled"}>${g.convocazioneInviata ? "Invia di nuovo" : "Invia convocazione"}</button>
             <button type="button" class="btn btn-danger prog-g-elimina" data-id="${g.tempId}" style="width:auto;padding:6px 12px;font-size:0.68rem;">Elimina gruppo</button>
           </div>
         </div>
@@ -465,6 +504,7 @@ function renderGruppi() {
 
   el.querySelectorAll(".prog-g-rimuovi").forEach(b => b.addEventListener("click", () => rimuoviDaGruppo(b.dataset.i, b.dataset.g)));
   el.querySelectorAll(".prog-g-elimina").forEach(b => b.addEventListener("click", () => eliminaGruppo(b.dataset.id)));
+  el.querySelectorAll(".prog-g-convoca").forEach(b => b.addEventListener("click", () => inviaConvocazioneGruppo(b.dataset.id)));
   el.querySelectorAll(".prog-g-nome").forEach(inp => inp.addEventListener("change", () => { patchGruppo(inp.dataset.id, { nome: inp.value.trim() }); }));
   el.querySelectorAll(".prog-g-capienza").forEach(inp => inp.addEventListener("change", () => { patchGruppo(inp.dataset.id, { capienza: inp.value !== "" ? parseInt(inp.value, 10) : null }); renderGruppi(); }));
   el.querySelectorAll(".prog-g-istruttore").forEach(inp => inp.addEventListener("change", () => { patchGruppo(inp.dataset.id, { istruttoreNome: inp.value.trim() }); }));
