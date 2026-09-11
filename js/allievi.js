@@ -214,6 +214,8 @@ function renderIscrizioniAllievo() {
     const convocazione = i.convocazioneInviataAt && typeof i.convocazioneInviataAt.toDate === "function"
       ? `Convocazione inviata il ${i.convocazioneInviataAt.toDate().toLocaleDateString("it-CH")}`
       : null;
+    const disponibilita = Object.entries(i.disponibilita || {})
+      .map(([g, orari]) => `${giornoLabel(g)} ${(orari || []).join("/")}`).join(" · ");
     const scostamento = scostamentoOreIscrizione(i);
     return `
       <div class="entry-card">
@@ -222,6 +224,7 @@ function renderIscrizioniAllievo() {
           ${chipsGruppi}
           <div class="entry-tipo">${escapeHtml(i.corsoNome || "—")}${i.tipo === "ospite" ? ` <span class="badge">Ospite</span>` : ""}</div>
           <div class="entry-meta">Iscritto il ${data}${i.nrOreDesiderate ? " · " + formatOre(i.nrOreDesiderate) + "h/sett. richieste" : ""}</div>
+          ${disponibilita ? `<div class="entry-meta">Disponibilità indicata: ${escapeHtml(disponibilita)}</div>` : ""}
           ${convocazione ? `<div class="entry-meta">${convocazione}</div>` : ""}
           ${scostamento ? `<div class="entry-meta" style="color:var(--danger);">⚠ Richieste ${formatOre(scostamento.richieste)}h/sett., assegnate ${formatOre(scostamento.assegnate)}h/sett. — mancante ${formatOre(scostamento.mancante)}h/sett.</div>` : ""}
         </div>
