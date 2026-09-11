@@ -383,8 +383,13 @@ main {
   flex: 1 1 180px;
   min-width: 180px;
 }
+/* Sovrascrive il max-width:160px di .sposta-corso-select (pensato per la
+   colonna azioni senza larghezza propria del pannello Iscrizioni): qui la
+   colonna ha già la sua flex-basis dedicata (sopra), quindi il select può
+   usare tutto lo spazio disponibile invece di troncare col "…" nomi corso
+   che ci starebbero comodamente. */
 .cerca-allievo-card .cerca-allievo-azioni select,
-.cerca-allievo-card .cerca-allievo-azioni button { width: 100%; }
+.cerca-allievo-card .cerca-allievo-azioni button { width: 100%; max-width: none; }
 
 .badge {
   display: inline-block;

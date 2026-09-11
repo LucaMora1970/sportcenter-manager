@@ -258,6 +258,7 @@ function corsoCardHtml(c, { puoGestire, puoVedereIscrizioni, puoApprovare }) {
         </div>
         <div style="display:flex;flex-direction:column;gap:6px;">
           ${puoGestire ? `<button class="btn btn-ghost edit-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Modifica</button>` : ""}
+          ${puoGestire ? `<button class="btn btn-ghost duplica-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Duplica</button>` : ""}
           ${puoApprovare && !c.approvato ? `<button class="btn btn-primary approva-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Approva</button>` : ""}
           ${puoVedereIscrizioni && c.approvato ? `<button class="btn btn-primary iscrivi-allievo-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Iscrivi un allievo</button>` : ""}
           ${c.approvato ? `<button class="btn btn-ghost link-diretto-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${c.id}">Copia link diretto</button>` : ""}
@@ -341,6 +342,10 @@ function renderCorsi() {
 
   list.querySelectorAll(".edit-corso-btn").forEach(btn => {
     btn.addEventListener("click", () => startEditCorso(corsiCache.find(c => c.id === btn.dataset.id)));
+  });
+
+  list.querySelectorAll(".duplica-corso-btn").forEach(btn => {
+    btn.addEventListener("click", () => startDuplicaCorso(corsiCache.find(c => c.id === btn.dataset.id)));
   });
 
   list.querySelectorAll(".approva-corso-btn").forEach(btn => {
@@ -1202,7 +1207,7 @@ function renderIscrizioniCorso(container, corso, iscrizioni) {
                 <option value="">Sposta al corso…</option>
                 ${altriCorsi.map(c => `<option value="${c.id}">${escapeHtml(c.nome)}</option>`).join("")}
               </select>
-              <button type="button" class="btn btn-ghost sposta-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}" data-nome="${escapeHtml(i.nome + " " + i.cognome)}">Sposta</button>
+              <button type="button" class="btn btn-ghost sposta-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}" data-nome="${escapeHtml(i.nome + " " + i.cognome)}" disabled>Sposta</button>
             ` : ""}
             ${i.stato !== "annullata" ? `<button class="btn btn-ghost modifica-iscrizione-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}">Modifica</button>` : ""}
           </div>
@@ -1240,6 +1245,16 @@ function renderIscrizioniCorso(container, corso, iscrizioni) {
       const nuovoCorsoId = select.value;
       if (!nuovoCorsoId) { alert("Scegli il corso di destinazione."); return; }
       spostaCorsoIscrizione(btn.dataset.id, corso.id, nuovoCorsoId, btn.dataset.nome);
+    });
+  });
+  // Il bottone "Sposta" parte disabilitato (nessun corso ancora scelto nel
+  // select accanto): prima confondeva chi lo cliccava subito, aspettandosi
+  // un effetto immediato invece del promemoria "Scegli il corso di
+  // destinazione". Si riattiva solo dopo una scelta effettiva.
+  container.querySelectorAll(".sposta-corso-select").forEach(select => {
+    select.addEventListener("change", () => {
+      const btn = container.querySelector(`.sposta-corso-btn[data-id="${select.dataset.id}"]`);
+      if (btn) btn.disabled = !select.value;
     });
   });
 
@@ -1714,7 +1729,7 @@ function renderRicercaAllievi() {
                 <option value="">Sposta al corso…</option>
                 ${opzioniCorsi}
               </select>
-              <button type="button" class="btn btn-ghost sposta-corso-btn" style="padding:8px 12px;font-size:0.7rem;" data-id="${i.id}" data-corso-attuale="${i.corsoId}" data-nome="${escapeHtml(i.nome + " " + i.cognome)}">Sposta</button>
+              <button type="button" class="btn btn-ghost sposta-corso-btn" style="padding:8px 12px;font-size:0.7rem;" data-id="${i.id}" data-corso-attuale="${i.corsoId}" data-nome="${escapeHtml(i.nome + " " + i.cognome)}" disabled>Sposta</button>
             ` : ""}
             <button type="button" class="btn btn-ghost modifica-iscrizione-btn" style="padding:8px 12px;font-size:0.7rem;" data-id="${i.id}">Modifica</button>
           </div>
@@ -1730,6 +1745,12 @@ function renderRicercaAllievi() {
       const nuovoCorsoId = select.value;
       if (!nuovoCorsoId) { alert("Scegli il corso di destinazione."); return; }
       spostaCorsoIscrizione(btn.dataset.id, btn.dataset.corsoAttuale, nuovoCorsoId, btn.dataset.nome);
+    });
+  });
+  risultatiEl.querySelectorAll(".sposta-corso-select").forEach(select => {
+    select.addEventListener("change", () => {
+      const btn = risultatiEl.querySelector(`.sposta-corso-btn[data-id="${select.dataset.id}"]`);
+      if (btn) btn.disabled = !select.value;
     });
   });
   risultatiEl.querySelectorAll(".modifica-iscrizione-btn").forEach(btn => {
@@ -2077,6 +2098,19 @@ function startEditCorso(corso) {
   document.getElementById("corso-save-btn").textContent = "Salva modifiche";
   document.getElementById("corso-cancel-edit-btn").classList.remove("hidden");
   document.getElementById("corso-form").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+// Precompila il form con i valori di un corso esistente ma senza impostare
+// editingCorsoId: il submit crea sempre un corso nuovo (bozza non
+// approvata, zero iscrizioni), non modifica l'originale.
+function startDuplicaCorso(corso) {
+  if (!corso) return;
+  startEditCorso(corso);
+  editingCorsoId = null;
+  document.getElementById("corso-nome").value = (corso.nome || "") + " (copia)";
+  document.getElementById("corso-form-title").querySelector("h2").textContent = "Nuovo corso";
+  document.getElementById("corso-save-btn").textContent = "Crea corso";
+  document.getElementById("corso-cancel-edit-btn").classList.add("hidden");
 }
 
 function cancelEditCorso() {
