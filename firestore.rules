@@ -417,13 +417,18 @@ service cloud.firestore {
     // Iscrizioni di corsi.js per cercare/collegare un allievo e per il
     // flusso "Aggiungi ospite", che può anche creare un nuovo profilo al
     // volo se nessun candidato proposto è quello giusto); la modifica
-    // dell'anagrafica vera e propria (dati personali, note) e
-    // l'eliminazione restano riservate al permesso dedicato allievi:gestisci.
+    // dell'anagrafica vera e propria (dati personali, note) resta
+    // riservata al permesso dedicato allievi:gestisci, l'eliminazione al
+    // solo vero admin (vedi sotto).
     match /allieviCorsi/{id} {
       allow read, create: if hasPermission("allievi:gestisci")
         || hasPermission("iscrizioni:gestisci")
         || hasPermission("iscrizioni:gestisci_padel");
-      allow update, delete: if hasPermission("allievi:gestisci");
+      allow update: if hasPermission("allievi:gestisci");
+      // Eliminazione riservata al vero amministratore (isAdmin(), non solo
+      // al permesso allievi:gestisci): evita che chi ha solo quel permesso
+      // cancelli per errore profili collegati a storico iscrizioni/pagamenti.
+      allow delete: if isAdmin();
 
       // Log delle comunicazioni con l'allievo (telefonate, email...): dato
       // sensibile quanto l'anagrafica, riservato a chi la gestisce davvero.

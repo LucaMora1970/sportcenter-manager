@@ -34,6 +34,16 @@ function etaDa(dataNascitaStr) {
   return eta;
 }
 
+// "mario DE rossi" -> "Mario De Rossi", "jean-pierre" -> "Jean-Pierre".
+function capitalizzaNome(str) {
+  return (str || "").trim().replace(/\s+/g, " ")
+    .split(" ")
+    .map(parola => parola.split("-")
+      .map(seg => seg ? seg.charAt(0).toLocaleUpperCase("it") + seg.slice(1).toLocaleLowerCase("it") : seg)
+      .join("-"))
+    .join(" ");
+}
+
 // ---------- Caricamento/ricerca allievi ----------
 
 async function caricaAllievi() {
@@ -206,7 +216,10 @@ async function selectAllievo(id) {
     popolaFormAllievo(allievo);
 
     document.getElementById("allievo-form-title").querySelector("h2").textContent = `Modifica ${allievo.nome} ${allievo.cognome}`;
-    document.getElementById("allievo-delete-btn").classList.remove("hidden");
+    // Eliminazione riservata al vero admin — vedi firestore.rules, stessa
+    // regola: chi ha solo allievi:gestisci non deve nemmeno vedere il
+    // bottone, non solo essere bloccato al click.
+    document.getElementById("allievo-delete-btn").classList.toggle("hidden", !isAdmin(currentProfile));
     document.getElementById("allievo-stampa-btn").classList.remove("hidden");
     document.getElementById("allievo-detail").classList.remove("hidden");
     document.getElementById("allievo-detail").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -263,8 +276,8 @@ async function onSubmitAllievo(e) {
 
   const email = document.getElementById("allievo-email").value.trim();
   const payload = {
-    nome: document.getElementById("allievo-nome").value.trim(),
-    cognome: document.getElementById("allievo-cognome").value.trim(),
+    nome: capitalizzaNome(document.getElementById("allievo-nome").value),
+    cognome: capitalizzaNome(document.getElementById("allievo-cognome").value),
     dataNascita: document.getElementById("allievo-datanascita").value,
     email,
     emailLower: email.toLowerCase(),
@@ -438,6 +451,10 @@ requireAuth(async (profile) => {
   document.getElementById("allievo-delete-btn").addEventListener("click", onDeleteAllievo);
   document.getElementById("comunicazione-add-btn").addEventListener("click", onAggiungiComunicazione);
   document.getElementById("allievo-stampa-btn").addEventListener("click", () => stampaListatoAllievo(allievoSelezionatoId));
+  ["allievo-nome", "allievo-cognome"].forEach(id => {
+    const el = document.getElementById(id);
+    el.addEventListener("blur", () => { el.value = capitalizzaNome(el.value); });
+  });
 
   // Link diretto ?id=... (nessuna pagina lo usa ancora, ma deve funzionare
   // già da ora per link futuri).
