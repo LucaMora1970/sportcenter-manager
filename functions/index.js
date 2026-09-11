@@ -4872,9 +4872,24 @@ async function permessiCommunityPadel(uid) {
   return { permessi, isAdmin, autorizzato };
 }
 
+// Master switch (Configurazione → Community Padel), campo "attivo" su
+// impostazioni/prenotazioniCampi — stessa convenzione "!== false" di
+// discipline.attivo/campi.attivo (assente = considerato attivo). Chiamato
+// solo dalle funzioni rivolte al giocatore (registrazione, nuove
+// proposte/inviti, stato pubblico): chi gestisce sessioni già aperte
+// (annulla/modifica livello/permesso proposte) e la pulizia schedulata
+// restano utilizzabili anche a feature disattivata.
+async function assertCommunityPadelAttivo() {
+  const doc = await db.collection("impostazioni").doc("prenotazioniCampi").get();
+  if (doc.exists && doc.data().attivo === false) {
+    throw new HttpsError("failed-precondition", "La Community Padel è temporaneamente disattivata.");
+  }
+}
+
 // ---------- Registrazione + classifica ----------
 
 exports.registraGiocatorePadel = onCall({ secrets: MAIL_SECRETS }, async (request) => {
+  await assertCommunityPadelAttivo();
   const { nome, cognome, telefono, email, playtomicLivello, socioId, consenso } = request.data || {};
   if (!nome || !cognome || !email) {
     throw new HttpsError("invalid-argument", "Nome, cognome ed email sono obbligatori.");
@@ -5013,6 +5028,7 @@ exports.modificaPuoLanciareProposte = onCall(async (request) => {
 // campo nel flusso di proposta, stessa scelta già fatta da
 // prenota-padel.html per la prenotazione singola (vedi R8 nel piano).
 exports.proponiSessionePadel = onCall({ secrets: MAIL_SECRETS }, async (request) => {
+  await assertCommunityPadelAttivo();
   if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere un giocatore Padel registrato.");
 
   const giocatoreSnap = await db.collection("giocatoriPadel").doc(request.auth.uid).get();
@@ -5207,6 +5223,7 @@ exports.proponiSessionePadel = onCall({ secrets: MAIL_SECRETS }, async (request)
 // esattamente al giocatoreId a cui è stato emesso il token — nessuna
 // risposta "a nome di altri" solo perché si possiede il link inoltrato.
 exports.rispondiInvitoSessionePadel = onCall(async (request) => {
+  await assertCommunityPadelAttivo();
   const { token, risposta, ospiteNome, dispositivoToken } = request.data || {};
   if (!token || (risposta !== "si" && risposta !== "no")) {
     throw new HttpsError("invalid-argument", "Dati non validi.");
@@ -5363,6 +5380,7 @@ exports.annullaPropostaSessionePadel = onCall(async (request) => {
 // di aggiornare QUESTA entry invece di crearne una duplicata quando la
 // persona risponde (vedi lì).
 exports.aggiungiInvitatoSessionePadel = onCall(async (request) => {
+  await assertCommunityPadelAttivo();
   if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
   const { sessioneId, nome } = request.data || {};
   if (!sessioneId) throw new HttpsError("invalid-argument", "sessioneId mancante.");
@@ -5403,6 +5421,7 @@ exports.aggiungiInvitatoSessionePadel = onCall(async (request) => {
 // altrimenti "esterno"), leggibile solo qui perché "soci" non è mai
 // accessibile dal client.
 exports.statoSessionePadel = onCall(async (request) => {
+  await assertCommunityPadelAttivo();
   const { sessioneId } = request.data || {};
   if (!sessioneId) throw new HttpsError("invalid-argument", "sessioneId mancante.");
 

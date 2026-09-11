@@ -370,7 +370,7 @@ function selezionaDisciplina(disciplina) {
     ? `tennis__${state.tennisPosizione}`
     : (GRUPPI.find(g => g.disciplina === disciplina) || {}).key;
   if (!key) return;
-  document.getElementById("cta-community-padel-banner")?.classList.toggle("hidden", disciplina !== "padel");
+  document.getElementById("cta-community-padel-banner")?.classList.toggle("hidden", disciplina !== "padel" || IMPOSTAZIONI_PC.attivo === false);
   selezionaGruppo(key);
 }
 

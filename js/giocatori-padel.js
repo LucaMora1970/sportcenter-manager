@@ -182,11 +182,16 @@ const NR_GIORNI_STRIP_PROPONI = 14;
 // Community Padel), letta una volta all'avvio insieme alle chiusure —
 // riguarda solo questo form, non le prenotazioni dirette di campo.
 let ORE_MINIME_ANTICIPO_PROPOSTA = 24;
+// Master switch (Configurazione → Community Padel). Assente = attiva,
+// stessa convenzione "!== false" di discipline.attivo/campi.attivo.
+let COMMUNITY_PADEL_ATTIVA = true;
 async function caricaImpostazioniProponiPadel() {
   const doc = await db.collection("impostazioni").doc("prenotazioniCampi").get();
-  if (doc.exists && doc.data().oreMinimeAnticipoProposta != null) {
-    ORE_MINIME_ANTICIPO_PROPOSTA = doc.data().oreMinimeAnticipoProposta;
+  const dati = doc.exists ? doc.data() : {};
+  if (dati.oreMinimeAnticipoProposta != null) {
+    ORE_MINIME_ANTICIPO_PROPOSTA = dati.oreMinimeAnticipoProposta;
   }
+  COMMUNITY_PADEL_ATTIVA = dati.attivo !== false;
 }
 
 // Un giorno è escluso dalla strip se anche il suo ultimo orario possibile
@@ -340,7 +345,7 @@ async function aggiornaSlotOra() {
 }
 
 function mostraStato(id) {
-  ["stato-caricamento", "stato-verifica-email", "stato-invito", "stato-registrazione", "area-content"].forEach(s => {
+  ["stato-caricamento", "stato-disattivato", "stato-verifica-email", "stato-invito", "stato-registrazione", "area-content"].forEach(s => {
     document.getElementById(s).classList.toggle("hidden", s !== id);
   });
 }
@@ -750,6 +755,10 @@ async function mostraAreaContent() {
   await loadImpostazioni();
   await caricaChiusurePadel();
   await caricaImpostazioniProponiPadel();
+  if (!COMMUNITY_PADEL_ATTIVA) {
+    mostraStato("stato-disattivato");
+    return;
+  }
   await loadTariffeCampi();
 
   document.getElementById("registrazione-form").addEventListener("submit", onSubmitRegistrazione);

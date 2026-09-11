@@ -27,7 +27,12 @@ function todayISO() {
 async function loadCatalogs() {
   const [taSnap, cSnap, tgSnap, alSnap] = await Promise.all([
     db.collection("tipiAttivita").where("attivo", "==", true).get(),
-    db.collection("campi").where("attivo", "==", true).get(),
+    // Niente filtro "attivo" sui campi: come in resoconto.js (stesso motivo),
+    // un campo disattivato (es. discipline sospese temporaneamente) deve
+    // restare selezionabile qui, altrimenti le nuove voci diario di quella
+    // disciplina si salvano senza campoNumero e Resoconto non calcola più
+    // la quota campo in automatico.
+    db.collection("campi").get(),
     db.collection("tipiGruppoPadel").where("attivo", "==", true).get(),
     db.collection("allievi").where("attivo", "==", true).get()
   ]);

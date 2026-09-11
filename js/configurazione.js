@@ -2119,6 +2119,7 @@ async function onSavePrenotazioniCampi(e) {
 async function loadCommunityPadelForm() {
   const doc = await db.collection("impostazioni").doc("prenotazioniCampi").get();
   const dati = doc.exists ? doc.data() : {};
+  document.getElementById("cp-attivo").checked = dati.attivo !== false;
   document.getElementById("cp-hold-attivo").checked = dati.holdProvvisorioAttivo === true;
   document.getElementById("cp-hold-minuti").value = dati.holdMinutiMax ?? "";
   document.getElementById("cp-max-proposte").value = dati.maxProposteConHoldPerGiocatore ?? "";
@@ -2144,6 +2145,7 @@ async function onSaveCommunityPadel(e) {
       throw new Error("Il blocco provvisorio non può superare i 60 minuti.");
     }
     await db.collection("impostazioni").doc("prenotazioniCampi").set({
+      attivo: document.getElementById("cp-attivo").checked,
       holdProvvisorioAttivo: document.getElementById("cp-hold-attivo").checked,
       holdMinutiMax,
       maxProposteConHoldPerGiocatore: numOrNull("cp-max-proposte"),
@@ -2414,7 +2416,6 @@ requireAuth(async (profile) => {
   }
 
   initLinkCopyBox("link-app", "copia-link-app-btn", "index.html", "apri-link-app-btn");
-  initLinkCopyBox("link-prenota-padel", "copia-link-prenota-padel-btn", "prenota-padel.html", "apri-link-prenota-padel-btn");
   initLinkCopyBox("link-tabellone", "copia-link-tabellone-btn", "prenotazioni.html", "apri-link-tabellone-btn");
   initLinkCopyBox("link-iscrizione-corsi", "copia-link-iscrizione-corsi-btn", "iscrizione-corso.html", "apri-link-iscrizione-corsi-btn");
   initLinkCopyBox("link-prenota-campo-v2", "copia-link-prenota-campo-v2-btn", "tcm.html", "apri-link-prenota-campo-v2-btn");

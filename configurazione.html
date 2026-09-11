@@ -129,18 +129,6 @@
       </div>
 
       <div class="field">
-        <label>Prenotazione campo padel (pagina dedicata)</label>
-        <p style="color:var(--chalk-grey);font-size:0.78rem;margin:0 0 6px;">Pagina pubblica solo padel, nessun login richiesto — il padel è raggiungibile anche dall'ingresso unico qui sotto.</p>
-        <div class="row2" style="align-items:flex-end;">
-          <div class="field" style="margin-bottom:0;">
-            <input type="text" id="link-prenota-padel" readonly>
-          </div>
-          <button type="button" class="btn btn-ghost" id="copia-link-prenota-padel-btn" style="width:auto;padding:10px 16px;">Copia</button>
-          <a href="#" target="_blank" rel="noopener" class="btn btn-ghost" id="apri-link-prenota-padel-btn" style="width:auto;padding:10px 16px;">Apri</a>
-        </div>
-      </div>
-
-      <div class="field">
         <label>Pannello operatore prenotazioni</label>
         <p style="color:var(--chalk-grey);font-size:0.78rem;margin:0 0 6px;">Richiede login e il permesso "Prenotazioni: eliminare prenotazioni altrui" — condividilo solo con lo staff.</p>
         <div class="row2" style="align-items:flex-end;">
@@ -912,6 +900,10 @@
       <div class="config-section-body">
       <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Registrazione giocatori, classifica e proposta di sessioni di gioco (vedi Guida per il dettaglio del funzionamento). Il blocco provvisorio tiene occupato il campo mentre si attendono le conferme — se disattivato, la proposta resta solo un impegno tra giocatori senza toccare il calendario campi.</p>
       <form id="community-padel-form">
+        <div class="checkbox-row" style="margin-bottom:16px;">
+          <input type="checkbox" id="cp-attivo">
+          <label for="cp-attivo">Community Padel attiva (registrazioni, nuove proposte, inviti). Se disattivata, restano possibili solo la gestione delle sessioni già aperte e la loro chiusura automatica.</label>
+        </div>
         <div class="checkbox-row" style="margin-bottom:16px;">
           <input type="checkbox" id="cp-hold-attivo">
           <label for="cp-hold-attivo">Blocco provvisorio del campo durante una proposta di partita</label>
