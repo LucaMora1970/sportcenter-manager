@@ -4686,7 +4686,6 @@ exports.inviaConvocazioneGruppo = onCall(
 
     const dataLeggibile = new Date(dataPrimoIncontro + "T00:00:00")
       .toLocaleDateString("it-CH", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-    const prezzo = corso.prezzoRichiesto != null ? Number(corso.prezzoRichiesto).toFixed(2) : null;
     const subject = `Conferma corso ${disciplinaNome}`;
 
     const transporter = mailTransporter();
@@ -4695,7 +4694,6 @@ exports.inviaConvocazioneGruppo = onCall(
       const html = `<p>Gentile ${escapeHtmlBase(i.nome || "")},</p>`
         + `<p>Il tuo gruppo per il corso di <strong>${escapeHtmlBase(disciplinaNome)}</strong> è stato confermato.</p>`
         + `<p>Vi aspettiamo <strong>${escapeHtmlBase(dataLeggibile)}</strong> alle <strong>${escapeHtmlBase(gruppo.orario || "")}</strong>${gruppo.campo ? `, campo <strong>${escapeHtmlBase(String(gruppo.campo))}</strong>` : ""}.</p>`
-        + (prezzo != null ? `<p>Il costo del corso è di <strong>CHF ${prezzo}</strong>. Seguirà una richiesta di pagamento via email.</p>` : "")
         + `<p>Per qualsiasi domanda puoi contattare il nostro capo-corso Alessandro Marsan al numero <strong>078 816 52 31</strong>.</p>`
         + `<p>—<br>${escapeHtmlBase(firma)}</p>`;
       return transporter.sendMail({ from, to: i.email, subject, html, replyTo: replyTo || undefined });
