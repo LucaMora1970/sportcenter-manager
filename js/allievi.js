@@ -20,6 +20,13 @@ let comunicazioniAllievoCache = [];
 let corsiAllievoCache = new Map();   // corsoId -> dati corso, solo per le iscrizioni in vista
 let gruppiAllievoCache = new Map();  // gruppoId -> dati gruppo, idem
 
+// Indice per i chip/filtri in elenco (caricato una volta sola, non solo
+// per l'allievo aperto): allievoId -> iscrizioni non annullate di corsi in
+// corso o futuri, e gruppoId -> dati gruppo per etichettarle.
+let iscrizioniIndice = new Map();
+let gruppiIndice = new Map();
+let corsiListaCache = []; // [{id, nome}] per popolare il filtro "Corso"
+
 function formatDataBreve(dataStr) {
   if (!dataStr) return "—";
   const [y, m, d] = dataStr.split("-");
@@ -66,22 +73,70 @@ async function caricaAllievi() {
   }
 }
 
+// Indice corsi/gruppi per i chip e i filtri dell'elenco — caricato una
+// volta sola insieme agli allievi (non per-allievo come
+// caricaDettaglioAllievo, quello resta per lo storico completo di un
+// singolo allievo aperto). Solo iscrizioni non annullate di corsi in
+// corso o futuri: le stesse regole di scostamentoOreIscrizione, qui
+// applicate a tutti così l'elenco non si affolla di storico vecchio.
+async function caricaIndiceIscrizioni() {
+  const [iscrSnap, gruppiSnap, corsiSnap] = await Promise.all([
+    db.collection("iscrizioniCorsi").get(),
+    db.collection("gruppiCorso").get(),
+    db.collection("corsi").get()
+  ]);
+
+  const corsiMap = new Map(corsiSnap.docs.map(d => [d.id, { id: d.id, ...d.data() }]));
+  corsiListaCache = [...corsiMap.values()].sort((a, b) => (a.nome || "").localeCompare(b.nome || "", "it", { sensitivity: "base" }));
+  gruppiIndice = new Map(gruppiSnap.docs.map(d => [d.id, d.data()]));
+
+  iscrizioniIndice = new Map();
+  iscrSnap.docs.forEach(d => {
+    const i = { id: d.id, ...d.data() };
+    if (!i.allievoId || i.stato === "annullata") return;
+    const corso = corsiMap.get(i.corsoId);
+    if (corso && corso.al && corso.al < todayISO()) return;
+    if (!iscrizioniIndice.has(i.allievoId)) iscrizioniIndice.set(i.allievoId, []);
+    iscrizioniIndice.get(i.allievoId).push(i);
+  });
+}
+
+function popolaFiltroCorso() {
+  const sel = document.getElementById("allievi-filtro-corso");
+  const valorePrecedente = sel.value;
+  sel.innerHTML = `<option value="">Tutti</option>` + corsiListaCache.map(c => `<option value="${c.id}">${escapeHtml(c.nome || c.id)}</option>`).join("");
+  sel.value = valorePrecedente;
+}
+
+function badgeIscrizioneHtml(i) {
+  const gruppi = (i.gruppoIds || []).map(gid => gruppiIndice.get(gid)).filter(Boolean);
+  const gruppiTxt = gruppi.length ? " · " + gruppi.map(g => g.nome).filter(Boolean).join(", ") : "";
+  return `<span class="badge" style="${STATO_ISCRIZIONE_COLORE[i.stato] || ""}">${escapeHtml((i.corsoNome || "") + gruppiTxt)}</span>`;
+}
+
 // Ricerca client-side sulla cache già caricata (nessuna nuova lettura
 // Firestore a ogni digitazione) — stesso principio di
 // iscrizioniRicercabili()/renderRicercaAllievi() in corsi.js.
 function renderAllieviList() {
   const testo = document.getElementById("allievi-search-input").value.trim().toLowerCase();
+  const filtroCorso = document.getElementById("allievi-filtro-corso").value;
+  const filtroStato = document.getElementById("allievi-filtro-stato").value;
   const listEl = document.getElementById("allievi-list");
 
   const risultati = allieviCache
     .filter(a => !testo
       || `${a.nome || ""} ${a.cognome || ""}`.toLowerCase().includes(testo)
       || (a.email || "").toLowerCase().includes(testo))
+    .filter(a => {
+      if (!filtroCorso && !filtroStato) return true;
+      return (iscrizioniIndice.get(a.id) || []).some(i =>
+        (!filtroCorso || i.corsoId === filtroCorso) && (!filtroStato || i.stato === filtroStato));
+    })
     .sort((a, b) => (a.cognome || "").localeCompare(b.cognome || "", "it", { sensitivity: "base" })
       || (a.nome || "").localeCompare(b.nome || "", "it", { sensitivity: "base" }));
 
   const conteggioEl = document.getElementById("allievi-conteggio");
-  conteggioEl.textContent = testo
+  conteggioEl.textContent = (testo || filtroCorso || filtroStato)
     ? `${risultati.length} di ${allieviCache.length} allievi in anagrafica`
     : `${allieviCache.length} allievi in anagrafica`;
 
@@ -98,12 +153,14 @@ function renderAllieviList() {
     const genitoreParts = [];
     if (a.nomeGenitore) genitoreParts.push(a.nomeGenitore);
     if (a.telefonoGenitore) genitoreParts.push(a.telefonoGenitore);
+    const iscrChips = (iscrizioniIndice.get(a.id) || []).map(badgeIscrizioneHtml).join(" ");
     return `
       <div class="entry-card allievo-card" data-id="${a.id}" style="cursor:pointer;">
         <div class="entry-main">
           <div class="entry-tipo">${escapeHtml(a.cognome)} ${escapeHtml(a.nome)}</div>
           <div class="entry-meta">${escapeHtml(metaParts.join(" · "))}</div>
           ${genitoreParts.length ? `<div class="entry-meta">Genitore: ${escapeHtml(genitoreParts.join(" · "))}</div>` : ""}
+          ${iscrChips ? `<div style="margin-top:6px;">${iscrChips}</div>` : ""}
         </div>
       </div>
     `;
@@ -486,13 +543,17 @@ requireAuth(async (profile) => {
   }
 
   await loadDatiCentro();
-  await caricaAllievi();
+  await Promise.all([caricaAllievi(), caricaIndiceIscrizioni()]);
+  popolaFiltroCorso();
+  renderAllieviList();
 
   let ricercaTimeout = null;
   document.getElementById("allievi-search-input").addEventListener("input", () => {
     clearTimeout(ricercaTimeout);
     ricercaTimeout = setTimeout(renderAllieviList, 400);
   });
+  document.getElementById("allievi-filtro-corso").addEventListener("change", renderAllieviList);
+  document.getElementById("allievi-filtro-stato").addEventListener("change", renderAllieviList);
 
   document.getElementById("nuovo-allievo-btn").addEventListener("click", nuovoAllievo);
   document.getElementById("allievo-form").addEventListener("submit", onSubmitAllievo);

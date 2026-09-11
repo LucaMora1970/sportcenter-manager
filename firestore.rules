@@ -389,7 +389,13 @@ service cloud.firestore {
             )
           )
         );
-      allow read, update, delete: if hasPermission("iscrizioni:gestisci")
+      // Lettura aperta anche a chi gestisce gli allievi (storico iscrizioni
+      // e indice chip/filtri in allievi.html) — scrittura resta riservata
+      // a chi gestisce le iscrizioni.
+      allow read: if hasPermission("iscrizioni:gestisci") || hasPermission("allievi:gestisci")
+        || (hasPermission("iscrizioni:gestisci_padel")
+            && get(/databases/$(database)/documents/corsi/$(resource.data.corsoId)).data.disciplina == "padel");
+      allow update, delete: if hasPermission("iscrizioni:gestisci")
         || (hasPermission("iscrizioni:gestisci_padel")
             && get(/databases/$(database)/documents/corsi/$(resource.data.corsoId)).data.disciplina == "padel");
     }
