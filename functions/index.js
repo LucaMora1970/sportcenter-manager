@@ -1100,13 +1100,22 @@ exports.webhookPostFinance = onRequest(
         // fallimento l'iscritto pagherà comunque più avanti via link,
         // come chiunque non abbia salvato la carta — nessun blocco.
         const nuovoStato = successo ? "ATTIVO" : "FALLITO";
-        await db.collection("iscrizioniCorsi").doc(meta.iscrizioneId).update({ tokenStato: nuovoStato });
+        const iscrizioneTokSnap = await db.collection("iscrizioniCorsi").doc(meta.iscrizioneId).get();
+        if (iscrizioneTokSnap.exists) {
+          await iscrizioneTokSnap.ref.update({ tokenStato: nuovoStato });
+        }
         if (meta.verificaToken) {
-          await db.collection("tokenizzazioniCorsi").doc(meta.verificaToken).update({ stato: nuovoStato });
+          const verificaSnap = await db.collection("tokenizzazioniCorsi").doc(meta.verificaToken).get();
+          if (verificaSnap.exists) {
+            await verificaSnap.ref.update({ stato: nuovoStato });
+          }
         }
       } else if (meta.tipoTransazione === "pagamento_corso" && meta.iscrizioneId) {
         if (successo) {
-          await db.collection("iscrizioniCorsi").doc(meta.iscrizioneId).update({ pagamentoStato: "PAGATO" });
+          const iscrizionePagSnap = await db.collection("iscrizioniCorsi").doc(meta.iscrizioneId).get();
+          if (iscrizionePagSnap.exists) {
+            await iscrizionePagSnap.ref.update({ pagamentoStato: "PAGATO" });
+          }
         } else if (meta.viaToken === "true") {
           // Addebito automatico sulla carta salvata fallito (rifiutata,
           // scaduta, 3-D Secure...): fallback automatico, come deciso —
