@@ -4643,7 +4643,7 @@ exports.inviaConvocazioneGruppo = onCall(
     if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
     const { userData, permessi, isAdmin } = await permessiUtente(request.auth.uid);
 
-    const { gruppoId } = request.data || {};
+    const { gruppoId, forzaTutti } = request.data || {};
     if (!gruppoId) throw new HttpsError("invalid-argument", "gruppoId mancante.");
 
     const gruppoRef = db.collection("gruppiCorso").doc(gruppoId);
@@ -4664,54 +4664,69 @@ exports.inviaConvocazioneGruppo = onCall(
 
     const membriSnap = await db.getAll(...membriIds.map(id => db.collection("iscrizioniCorsi").doc(id)));
     const membri = membriSnap.filter(d => d.exists).map(d => ({ id: d.id, ...d.data() })).filter(i => i.stato !== "annullata");
-    const destinatari = membri.filter(i => i.email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(i.email));
+    const membriConEmail = membri.filter(i => i.email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(i.email));
 
-    if (destinatari.length === 0) {
+    if (membriConEmail.length === 0) {
       return { inviati: 0, falliti: 0, nessunDestinatario: true };
     }
 
-    if (!gruppo.giorno) throw new HttpsError("failed-precondition", "Il gruppo non ha un giorno/orario assegnato.");
-    if (!corso.dal) throw new HttpsError("failed-precondition", "Il corso non ha una data di inizio (campo «Dal»): impossibile calcolare la data del primo incontro.");
-    const dataPrimoIncontro = primaDataPerGiorno(corso.dal, gruppo.giorno);
-    if (!dataPrimoIncontro) throw new HttpsError("failed-precondition", "Giorno del gruppo non valido.");
-
-    const [centroSnap, discSnap] = await Promise.all([
-      db.collection("impostazioni").doc("centro").get(),
-      corso.disciplina ? db.collection("discipline").doc(corso.disciplina).get() : Promise.resolve(null)
-    ]);
-    const centro = centroSnap.exists ? centroSnap.data() : {};
-    const disciplinaNome = (discSnap && discSnap.exists ? discSnap.data().nome : null) || corso.disciplina || "";
-    const replyTo = centro.email || undefined;
-    const firma = centro.nome || "Sport-OS";
-
-    const dataLeggibile = new Date(dataPrimoIncontro + "T00:00:00")
-      .toLocaleDateString("it-CH", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-    const subject = `Conferma corso ${disciplinaNome}`;
-
-    const transporter = mailTransporter();
-    const from = MAIL_FROM.value();
-    const esiti = await Promise.allSettled(destinatari.map(i => {
-      const html = `<p>Gentile ${escapeHtmlBase(i.nome || "")},</p>`
-        + `<p>Il tuo gruppo per il corso di <strong>${escapeHtmlBase(disciplinaNome)}</strong> è stato confermato.</p>`
-        + `<p>Vi aspettiamo <strong>${escapeHtmlBase(dataLeggibile)}</strong> alle <strong>${escapeHtmlBase(gruppo.orario || "")}</strong>${gruppo.campo ? `, campo <strong>${escapeHtmlBase(String(gruppo.campo))}</strong>` : ""}.</p>`
-        + `<p>Per qualsiasi domanda puoi contattare il nostro capo-corso Alessandro Marsan al numero <strong>078 816 52 31</strong>.</p>`
-        + `<p>—<br>${escapeHtmlBase(firma)}</p>`;
-      return transporter.sendMail({ from, to: i.email, subject, html, replyTo: replyTo || undefined });
-    }));
+    // Di default manda solo a chi non ha ancora ricevuto la convocazione
+    // (aggiungere un iscritto a un gruppo già notificato non deve
+    // rispedire a chi l'ha già ricevuta). forzaTutti la rispedisce anche
+    // a chi l'aveva già avuta — utile solo se lo slot è cambiato dopo.
+    const destinatari = forzaTutti ? membriConEmail : membriConEmail.filter(i => !i.convocazioneInviataAt);
+    const giaConvocatiNonReinviati = membriConEmail.length - destinatari.length;
 
     let inviati = 0;
     let falliti = 0;
     const dettaglioFalliti = [];
-    esiti.forEach((e, idx) => {
-      if (e.status === "fulfilled") { inviati++; return; }
-      falliti++;
-      dettaglioFalliti.push({ email: destinatari[idx].email, errore: e.reason && e.reason.message ? e.reason.message : String(e.reason) });
-    });
+    let dataPrimoIncontro = null;
+    const inviatiConSuccessoIds = new Set();
+
+    if (destinatari.length > 0) {
+      if (!gruppo.giorno) throw new HttpsError("failed-precondition", "Il gruppo non ha un giorno/orario assegnato.");
+      if (!corso.dal) throw new HttpsError("failed-precondition", "Il corso non ha una data di inizio (campo «Dal»): impossibile calcolare la data del primo incontro.");
+      dataPrimoIncontro = primaDataPerGiorno(corso.dal, gruppo.giorno);
+      if (!dataPrimoIncontro) throw new HttpsError("failed-precondition", "Giorno del gruppo non valido.");
+
+      const [centroSnap, discSnap] = await Promise.all([
+        db.collection("impostazioni").doc("centro").get(),
+        corso.disciplina ? db.collection("discipline").doc(corso.disciplina).get() : Promise.resolve(null)
+      ]);
+      const centro = centroSnap.exists ? centroSnap.data() : {};
+      const disciplinaNome = (discSnap && discSnap.exists ? discSnap.data().nome : null) || corso.disciplina || "";
+      const replyTo = centro.email || undefined;
+      const firma = centro.nome || "Sport-OS";
+
+      const dataLeggibile = new Date(dataPrimoIncontro + "T00:00:00")
+        .toLocaleDateString("it-CH", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+      const subject = `Conferma corso ${disciplinaNome}`;
+
+      const transporter = mailTransporter();
+      const from = MAIL_FROM.value();
+      const esiti = await Promise.allSettled(destinatari.map(i => {
+        const html = `<p>Gentile ${escapeHtmlBase(i.nome || "")},</p>`
+          + `<p>Il tuo gruppo per il corso di <strong>${escapeHtmlBase(disciplinaNome)}</strong> è stato confermato.</p>`
+          + `<p>Vi aspettiamo <strong>${escapeHtmlBase(dataLeggibile)}</strong> alle <strong>${escapeHtmlBase(gruppo.orario || "")}</strong>${gruppo.campo ? `, campo <strong>${escapeHtmlBase(String(gruppo.campo))}</strong>` : ""}.</p>`
+          + `<p>Per qualsiasi domanda puoi contattare il nostro capo-corso Alessandro Marsan al numero <strong>078 816 52 31</strong>.</p>`
+          + `<p>—<br>${escapeHtmlBase(firma)}</p>`;
+        return transporter.sendMail({ from, to: i.email, subject, html, replyTo: replyTo || undefined });
+      }));
+
+      esiti.forEach((e, idx) => {
+        if (e.status === "fulfilled") { inviati++; inviatiConSuccessoIds.add(destinatari[idx].id); return; }
+        falliti++;
+        dettaglioFalliti.push({ email: destinatari[idx].email, errore: e.reason && e.reason.message ? e.reason.message : String(e.reason) });
+      });
+    }
 
     // Stesso effetto sulle iscrizioni di "Conferma definitiva" (stato,
     // gruppoIds, slot assegnato) ma solo per i membri di QUESTO gruppo e
     // senza toccare pagamento/addebito. Non sovrascrive lo slot primario
     // di chi è già confermato su un altro gruppo (iscritti multi-sessione).
+    // convocazioneInviataAt si tocca solo per chi ha ricevuto la mail ORA:
+    // chi l'aveva già ricevuta e non è stato ri-contattato mantiene la
+    // propria data originale.
     const batch = db.batch();
     membri.forEach(i => {
       const gruppoIds = Array.from(new Set([...(i.gruppoIds || []), gruppoId]));
@@ -4719,9 +4734,9 @@ exports.inviaConvocazioneGruppo = onCall(
         gruppoIds,
         stato: "confermata",
         gestitaDaUid: request.auth.uid,
-        gestitaDaNome: (userData && userData.nome) || null,
-        convocazioneInviataAt: FieldValue.serverTimestamp()
+        gestitaDaNome: (userData && userData.nome) || null
       };
+      if (inviatiConSuccessoIds.has(i.id)) patch.convocazioneInviataAt = FieldValue.serverTimestamp();
       if (!i.giornoAssegnato) {
         patch.giornoAssegnato = gruppo.giorno;
         patch.orarioAssegnato = gruppo.orario || null;
@@ -4729,19 +4744,20 @@ exports.inviaConvocazioneGruppo = onCall(
       }
       batch.update(db.collection("iscrizioniCorsi").doc(i.id), patch);
     });
-    batch.update(gruppoRef, {
-      bozza: false,
-      convocazioneInviata: {
+    const patchGruppo = { bozza: false };
+    if (inviati > 0) {
+      patchGruppo.convocazioneInviata = {
         inviataAt: FieldValue.serverTimestamp(),
         inviataDaUid: request.auth.uid,
         inviataDaNome: (userData && userData.nome) || null,
         numero: inviati,
         dataPrimoIncontro
-      }
-    });
+      };
+    }
+    batch.update(gruppoRef, patchGruppo);
     await batch.commit();
 
-    return { inviati, falliti, dettaglioFalliti, dataPrimoIncontro };
+    return { inviati, falliti, dettaglioFalliti, dataPrimoIncontro, giaConvocatiNonReinviati };
   }
 );
 

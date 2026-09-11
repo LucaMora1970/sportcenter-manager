@@ -399,26 +399,46 @@ function avvisiGruppo(g) {
   return avvisi;
 }
 
+// Chi del gruppo ha email valida, e di questi chi non ha ancora ricevuto
+// la convocazione — serve sia per il testo dei bottoni sia per il
+// messaggio di conferma prima dell'invio.
+function statoConvocazioneGruppo(g) {
+  const conEmail = g.membri
+    .map(id => iscrizioni.find(i => i.id === id))
+    .filter(Boolean)
+    .filter(i => i.email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(i.email));
+  const nuovi = conEmail.filter(i => !i.convocazioneInviataAt);
+  return { conEmail: conEmail.length, nuovi: nuovi.length, giaConvocati: conEmail.length - nuovi.length };
+}
+
 function convocazioneHtml(g) {
   const c = g.convocazioneInviata;
   if (!c) {
     return `<div class="entry-meta" style="margin-top:6px;">Convocazione non ancora inviata${!g.firestoreId || !g.membri.length ? " — salva il gruppo con almeno un iscritto per poterla inviare" : ""}.</div>`;
   }
   const quando = c.inviataAt && c.inviataAt.toDate ? c.inviataAt.toDate().toLocaleString("it-CH") : null;
-  return `<div class="entry-meta" style="margin-top:6px;color:#c1e08f;">Convocazione inviata${quando ? " il " + quando : ""} a ${c.numero ?? "?"} iscritti${c.inviataDaNome ? " da " + escapeHtml(c.inviataDaNome) : ""}.</div>`;
+  const stato = statoConvocazioneGruppo(g);
+  const nuoviInfo = stato.nuovi > 0 ? ` · ${stato.nuovi} nuovi iscritti non ancora convocati` : "";
+  return `<div class="entry-meta" style="margin-top:6px;color:#c1e08f;">Convocazione inviata${quando ? " il " + quando : ""} a ${c.numero ?? "?"} iscritti${c.inviataDaNome ? " da " + escapeHtml(c.inviataDaNome) : ""}.${nuoviInfo}</div>`;
 }
 
-async function inviaConvocazioneGruppo(tempId) {
+async function inviaConvocazioneGruppo(tempId, forzaTutti) {
   const g = gruppiLavoro.find(x => x.tempId === tempId);
   if (!g || !g.firestoreId) return;
-  const membri = g.membri.map(id => iscrizioni.find(i => i.id === id)).filter(Boolean);
-  const n = membri.filter(i => i.email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(i.email)).length;
-  if (n === 0) { alert("Nessun iscritto con email valida in questo gruppo."); return; }
-  if (!confirm(`Inviare la convocazione a ${n} iscritti del gruppo "${nomeGruppo(g)}"?\n\nLa mail con giorno/ora/campo e costo parte subito. Le loro iscrizioni passano a «confermata» (nessun addebito: quello resta disattivato).`)) return;
+  const stato = statoConvocazioneGruppo(g);
+  if (stato.conEmail === 0) { alert("Nessun iscritto con email valida in questo gruppo."); return; }
+
+  const n = forzaTutti ? stato.conEmail : stato.nuovi;
+  if (n === 0) { alert("Tutti gli iscritti con email valida hanno già ricevuto la convocazione."); return; }
+
+  const messaggio = forzaTutti
+    ? `Rimandare la convocazione a TUTTI e ${n} gli iscritti del gruppo "${nomeGruppo(g)}", compresi i ${stato.giaConvocati} che l'avevano già ricevuta?\n\nUsalo solo se giorno/ora/campo sono cambiati dopo l'invio precedente.`
+    : `Inviare la convocazione a ${n} iscritt${n === 1 ? "o" : "i"} del gruppo "${nomeGruppo(g)}"${stato.giaConvocati ? ` (i ${stato.giaConvocati} già convocati in precedenza non vengono ricontattati)` : ""}?\n\nLa mail con giorno/ora/campo parte subito. Le loro iscrizioni passano a «confermata» (nessun addebito: quello resta disattivato).`;
+  if (!confirm(messaggio)) return;
 
   mostraCaricamento("Invio convocazione…");
   try {
-    const res = await cloudFunctions().httpsCallable("inviaConvocazioneGruppo")({ gruppoId: g.firestoreId });
+    const res = await cloudFunctions().httpsCallable("inviaConvocazioneGruppo")({ gruppoId: g.firestoreId, forzaTutti: !!forzaTutti });
     const d = res.data || {};
     nascondiCaricamento();
     if (d.nessunDestinatario) {
@@ -471,10 +491,11 @@ function renderGruppi() {
       const capOltre = g.capienza && membri.length > g.capienza;
       const righe = membri.map(i => `
         <div class="candidato-row">
-          <span class="candidato-nome">${escapeHtml(i.cognome)} ${escapeHtml(i.nome)}${etaDa(i.dataNascita) != null ? " · " + etaDa(i.dataNascita) : ""}${i.livello != null ? " · L" + i.livello : ""}</span>
+          <span class="candidato-nome">${escapeHtml(i.cognome)} ${escapeHtml(i.nome)}${etaDa(i.dataNascita) != null ? " · " + etaDa(i.dataNascita) : ""}${i.livello != null ? " · L" + i.livello : ""}${i.convocazioneInviataAt ? ` <span style="color:#c1e08f;">✓ convocato</span>` : ""}</span>
           <button type="button" class="btn btn-ghost prog-g-rimuovi" data-g="${g.tempId}" data-i="${i.id}" style="width:auto;padding:4px 8px;font-size:0.66rem;">Togli</button>
         </div>
       `).join("") || `<div class="entry-meta">Nessun iscritto</div>`;
+      const statoConv = statoConvocazioneGruppo(g);
 
       return `
         <div class="entry-card" style="display:block;">
@@ -495,7 +516,8 @@ function renderGruppi() {
           <div style="margin-top:10px;">${righe}</div>
           ${convocazioneHtml(g)}
           <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
-            <button type="button" class="btn btn-ghost prog-g-convoca" data-id="${g.tempId}" style="width:auto;padding:6px 12px;font-size:0.68rem;"${g.firestoreId && g.membri.length ? "" : " disabled"}>${g.convocazioneInviata ? "Invia di nuovo" : "Invia convocazione"}</button>
+            <button type="button" class="btn btn-ghost prog-g-convoca" data-id="${g.tempId}" style="width:auto;padding:6px 12px;font-size:0.68rem;"${g.firestoreId && statoConv.nuovi > 0 ? "" : " disabled"}>${statoConv.giaConvocati === 0 ? "Invia convocazione" : statoConv.nuovi > 0 ? `Invia ai nuovi (${statoConv.nuovi})` : "Tutti già convocati"}</button>
+            ${statoConv.giaConvocati > 0 ? `<button type="button" class="btn btn-ghost prog-g-convoca-tutti" data-id="${g.tempId}" style="width:auto;padding:6px 12px;font-size:0.68rem;">Rimanda a tutti (${statoConv.conEmail})</button>` : ""}
             <button type="button" class="btn btn-danger prog-g-elimina" data-id="${g.tempId}" style="width:auto;padding:6px 12px;font-size:0.68rem;">Elimina gruppo</button>
           </div>
         </div>
@@ -504,7 +526,8 @@ function renderGruppi() {
 
   el.querySelectorAll(".prog-g-rimuovi").forEach(b => b.addEventListener("click", () => rimuoviDaGruppo(b.dataset.i, b.dataset.g)));
   el.querySelectorAll(".prog-g-elimina").forEach(b => b.addEventListener("click", () => eliminaGruppo(b.dataset.id)));
-  el.querySelectorAll(".prog-g-convoca").forEach(b => b.addEventListener("click", () => inviaConvocazioneGruppo(b.dataset.id)));
+  el.querySelectorAll(".prog-g-convoca").forEach(b => b.addEventListener("click", () => inviaConvocazioneGruppo(b.dataset.id, false)));
+  el.querySelectorAll(".prog-g-convoca-tutti").forEach(b => b.addEventListener("click", () => inviaConvocazioneGruppo(b.dataset.id, true)));
   el.querySelectorAll(".prog-g-nome").forEach(inp => inp.addEventListener("change", () => { patchGruppo(inp.dataset.id, { nome: inp.value.trim() }); }));
   el.querySelectorAll(".prog-g-capienza").forEach(inp => inp.addEventListener("change", () => { patchGruppo(inp.dataset.id, { capienza: inp.value !== "" ? parseInt(inp.value, 10) : null }); renderGruppi(); }));
   el.querySelectorAll(".prog-g-istruttore").forEach(inp => inp.addEventListener("change", () => { patchGruppo(inp.dataset.id, { istruttoreNome: inp.value.trim() }); }));
@@ -640,8 +663,15 @@ function miglioreContenitore(compatibili, iscritto, slotUsati) {
 //   E sincronizza le iscrizioni (stato "confermata", gruppoIds, slot
 //   assegnato) avviando gli addebiti per chi ha la carta salvata.
 
-// Scrive create/update/delete dei gruppiCorso nel batch. definitivo=false
-// lascia i gruppi in bozza. Ritorna i gruppi non eliminati con id Firestore.
+// Scrive create/update/delete dei gruppiCorso nel batch. Ritorna i gruppi
+// non eliminati con id Firestore.
+//
+// bozza: definitivo=true forza bozza:false su tutti (Conferma definitiva,
+// oggi disattivata). definitivo=false ("Salva bozza") inizializza
+// bozza:true solo sui gruppi nuovi mai salvati — su un gruppo già
+// esistente NON tocca il campo, quindi non retrocede a bozza un gruppo già
+// reso definitivo da "Invia convocazione" solo perché lo si corregge e si
+// salva di nuovo.
 function scriviGruppiInBatch(batch, definitivo) {
   gruppiLavoro.forEach(g => {
     if (g._deleted) return;
@@ -661,7 +691,6 @@ function scriviGruppiInBatch(batch, definitivo) {
     const dati = {
       corsoId,
       disciplina: corso.disciplina,
-      bozza: !definitivo,
       nome: g.nome || nomeGruppo(g),
       giorno: g.giorno || null,
       orario: g.orario || null,
@@ -676,6 +705,9 @@ function scriviGruppiInBatch(batch, definitivo) {
       aggiornatoDaNome: currentProfile.nome,
       aggiornatoAt: firebase.firestore.FieldValue.serverTimestamp()
     };
+    if (definitivo) dati.bozza = false;
+    else if (g._isNew) dati.bozza = true;
+
     const ref = db.collection("gruppiCorso").doc(g.firestoreId);
     if (g._isNew) {
       batch.set(ref, { ...dati, creatoDaUid: currentProfile.uid, creatoDaNome: currentProfile.nome, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
