@@ -25,6 +25,7 @@ let gruppiAllievoCache = new Map();  // gruppoId -> dati gruppo, idem
 // corso o futuri, e gruppoId -> dati gruppo per etichettarle.
 let iscrizioniIndice = new Map();
 let gruppiIndice = new Map();
+let corsiIndiceMap = new Map(); // corsoId -> dati corso, per lo scostamento ore in elenco
 let corsiListaCache = []; // [{id, nome}] per popolare il filtro "Corso"
 
 function formatDataBreve(dataStr) {
@@ -77,8 +78,8 @@ async function caricaAllievi() {
 // volta sola insieme agli allievi (non per-allievo come
 // caricaDettaglioAllievo, quello resta per lo storico completo di un
 // singolo allievo aperto). Solo iscrizioni non annullate di corsi in
-// corso o futuri: le stesse regole di scostamentoOreIscrizione, qui
-// applicate a tutti così l'elenco non si affolla di storico vecchio.
+// corso o futuri: le stesse regole di scostamentoOre, qui applicate a
+// tutti così l'elenco non si affolla di storico vecchio.
 async function caricaIndiceIscrizioni() {
   const [iscrSnap, gruppiSnap, corsiSnap] = await Promise.all([
     db.collection("iscrizioniCorsi").get(),
@@ -86,15 +87,15 @@ async function caricaIndiceIscrizioni() {
     db.collection("corsi").get()
   ]);
 
-  const corsiMap = new Map(corsiSnap.docs.map(d => [d.id, { id: d.id, ...d.data() }]));
-  corsiListaCache = [...corsiMap.values()].sort((a, b) => (a.nome || "").localeCompare(b.nome || "", "it", { sensitivity: "base" }));
+  corsiIndiceMap = new Map(corsiSnap.docs.map(d => [d.id, { id: d.id, ...d.data() }]));
+  corsiListaCache = [...corsiIndiceMap.values()].sort((a, b) => (a.nome || "").localeCompare(b.nome || "", "it", { sensitivity: "base" }));
   gruppiIndice = new Map(gruppiSnap.docs.map(d => [d.id, d.data()]));
 
   iscrizioniIndice = new Map();
   iscrSnap.docs.forEach(d => {
     const i = { id: d.id, ...d.data() };
     if (!i.allievoId || i.stato === "annullata") return;
-    const corso = corsiMap.get(i.corsoId);
+    const corso = corsiIndiceMap.get(i.corsoId);
     if (corso && corso.al && corso.al < todayISO()) return;
     if (!iscrizioniIndice.has(i.allievoId)) iscrizioniIndice.set(i.allievoId, []);
     iscrizioniIndice.get(i.allievoId).push(i);
@@ -108,10 +109,21 @@ function popolaFiltroCorso() {
   sel.value = valorePrecedente;
 }
 
+// Un chip principale (corso + gruppo/i + ore/sett. richieste, colorato per
+// stato) più, se le ore assegnate non bastano, un secondo chip rosso con
+// la differenza — stessa logica di scostamentoOre usata nella scheda
+// allievo, qui condensata per stare nella card dell'elenco.
 function badgeIscrizioneHtml(i) {
   const gruppi = (i.gruppoIds || []).map(gid => gruppiIndice.get(gid)).filter(Boolean);
   const gruppiTxt = gruppi.length ? " · " + gruppi.map(g => g.nome).filter(Boolean).join(", ") : "";
-  return `<span class="badge" style="${STATO_ISCRIZIONE_COLORE[i.stato] || ""}">${escapeHtml((i.corsoNome || "") + gruppiTxt)}</span>`;
+  const oreTxt = i.nrOreDesiderate ? ` · ${formatOre(i.nrOreDesiderate)}h/sett.` : "";
+  const classeStato = STATO_ISCRIZIONE_CLASSE[i.stato] || "";
+  let html = `<span class="badge ${classeStato}">${escapeHtml((i.corsoNome || "") + gruppiTxt + oreTxt)}</span>`;
+  const scostamento = scostamentoOre(i, corsiIndiceMap.get(i.corsoId));
+  if (scostamento) {
+    html += `<span class="badge" style="border-color:var(--danger);color:var(--danger);">⚠ manca ${formatOre(scostamento.mancante)}h/sett.</span>`;
+  }
+  return html;
 }
 
 // Ricerca client-side sulla cache già caricata (nessuna nuova lettura
@@ -153,14 +165,14 @@ function renderAllieviList() {
     const genitoreParts = [];
     if (a.nomeGenitore) genitoreParts.push(a.nomeGenitore);
     if (a.telefonoGenitore) genitoreParts.push(a.telefonoGenitore);
-    const iscrChips = (iscrizioniIndice.get(a.id) || []).map(badgeIscrizioneHtml).join(" ");
+    const iscrChips = (iscrizioniIndice.get(a.id) || []).map(badgeIscrizioneHtml).join("");
     return `
       <div class="entry-card allievo-card" data-id="${a.id}" style="cursor:pointer;">
         <div class="entry-main">
           <div class="entry-tipo">${escapeHtml(a.cognome)} ${escapeHtml(a.nome)}</div>
           <div class="entry-meta">${escapeHtml(metaParts.join(" · "))}</div>
           ${genitoreParts.length ? `<div class="entry-meta">Genitore: ${escapeHtml(genitoreParts.join(" · "))}</div>` : ""}
-          ${iscrChips ? `<div style="margin-top:6px;">${iscrChips}</div>` : ""}
+          ${iscrChips ? `<div class="chip-row" style="margin-top:6px;">${iscrChips}</div>` : ""}
         </div>
       </div>
     `;
@@ -224,11 +236,10 @@ async function caricaDettaglioAllievo(id) {
 }
 
 const STATO_ISCRIZIONE_LABEL = { in_attesa: "In attesa", confermata: "Confermata", annullata: "Annullata" };
-const STATO_ISCRIZIONE_COLORE = {
-  in_attesa: "border-color:#d4b83a;color:#d4b83a;",
-  confermata: "border-color:#7f9e4a;color:#c1e08f;",
-  annullata: "border-color:var(--chalk-grey-dim);color:var(--chalk-grey);"
-};
+// Classi CSS (css/style.css) invece di colori inline: solo così il verde
+// "confermata" resta leggibile anche in tema chiaro (vedi
+// :root[data-theme="light"] .badge-confermata).
+const STATO_ISCRIZIONE_CLASSE = { in_attesa: "badge-in-attesa", confermata: "badge-confermata", annullata: "badge-annullata" };
 
 function giornoLabel(id) {
   return (GIORNI_SETTIMANA.find(g => g.id === id) || {}).label || id;
@@ -242,9 +253,11 @@ function formatOre(n) {
 // quelle effettivamente coperte dai gruppi assegnati (durataSessioneMinuti
 // del corso × numero di gruppi) — solo per corsi in corso o futuri
 // (corso.al nel passato = iscrizione storica, nessuna segnalazione).
-function scostamentoOreIscrizione(i) {
+// Usata sia dalla scheda allievo (corsiAllievoCache) sia dall'elenco
+// (corsiIndiceMap) — riceve il corso già risolto per non doversi legare
+// a una cache specifica.
+function scostamentoOre(i, corso) {
   if (!i.nrOreDesiderate || !(i.gruppoIds || []).length) return null;
-  const corso = corsiAllievoCache.get(i.corsoId);
   if (!corso || !corso.durataSessioneMinuti) return null;
   if (corso.al && corso.al < todayISO()) return null;
   const oreAssegnate = (corso.durataSessioneMinuti / 60) * i.gruppoIds.length;
@@ -267,18 +280,20 @@ function renderIscrizioniAllievo() {
     const chipsGruppi = gruppi.map(g => {
       const slot = g.giorno ? `${giornoLabel(g.giorno)} ${g.orario || ""}${g.campo ? " · Campo " + escapeHtml(String(g.campo)) : ""}` : "";
       return `<span class="badge" title="${escapeHtml(slot)}">${escapeHtml(g.nome || slot || "Gruppo")}</span>`;
-    }).join(" ");
+    }).join("");
     const convocazione = i.convocazioneInviataAt && typeof i.convocazioneInviataAt.toDate === "function"
       ? `Convocazione inviata il ${i.convocazioneInviataAt.toDate().toLocaleDateString("it-CH")}`
       : null;
     const disponibilita = Object.entries(i.disponibilita || {})
       .map(([g, orari]) => `${giornoLabel(g)} ${(orari || []).join("/")}`).join(" · ");
-    const scostamento = scostamentoOreIscrizione(i);
+    const scostamento = scostamentoOre(i, corsiAllievoCache.get(i.corsoId));
     return `
       <div class="entry-card">
         <div class="entry-main">
-          <span class="badge" style="${STATO_ISCRIZIONE_COLORE[i.stato] || ""}">${STATO_ISCRIZIONE_LABEL[i.stato] || i.stato || "—"}</span>
-          ${chipsGruppi}
+          <div class="chip-row">
+            <span class="badge ${STATO_ISCRIZIONE_CLASSE[i.stato] || ""}">${STATO_ISCRIZIONE_LABEL[i.stato] || i.stato || "—"}</span>
+            ${chipsGruppi}
+          </div>
           <div class="entry-tipo">${escapeHtml(i.corsoNome || "—")}${i.tipo === "ospite" ? ` <span class="badge">Ospite</span>` : ""}</div>
           <div class="entry-meta">Iscritto il ${data}${i.nrOreDesiderate ? " · " + formatOre(i.nrOreDesiderate) + "h/sett. richieste" : ""}</div>
           ${disponibilita ? `<div class="entry-meta">Disponibilità indicata: ${escapeHtml(disponibilita)}</div>` : ""}

@@ -406,6 +406,21 @@ main {
 .badge.padel  { border-color: #7f9e4a; color: #c1e08f; }
 .badge.squash { border-color: #9e4a7f; color: #e08fc1; }
 
+/* Stato iscrizione (Allievi): verde/giallo pastello tarati per lo sfondo
+   scuro — su sfondo chiaro il verde in particolare è quasi illeggibile,
+   stesso problema già risolto per .chip-audit.approvato più sotto. */
+.badge-confermata { border-color: #7f9e4a; color: #c1e08f; }
+.badge-in-attesa { border-color: #d4b83a; color: #d4b83a; }
+.badge-annullata { border-color: var(--chalk-grey-dim); color: var(--chalk-grey); }
+:root[data-theme="light"] .badge-confermata { border-color: var(--ball-dim); color: var(--ball-dim); }
+:root[data-theme="light"] .badge-in-attesa { border-color: #8a6d00; color: #8a6d00; }
+
+/* Riga di chip che può andare a capo (gruppi/iscrizioni assegnati): gap
+   invece del solo margin-right del badge, altrimenti tra una riga e
+   l'altra dopo un a-capo i chip restano attaccati verticalmente. */
+.chip-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.chip-row .badge { margin-right: 0; }
+
 /* Chip di verifica temporale (chi ha inserito/approvato una voce e
    quando) — pillola arrotondata invece del badge rettangolare, per
    distinguerla a colpo d'occhio da stato/disciplina; monospace perché
