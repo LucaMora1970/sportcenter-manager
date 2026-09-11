@@ -324,8 +324,12 @@ function costruisciGruppi() {
   GRUPPI = [...map.values()];
   // Il padel ha oggi un solo campo, non modellato nella collection "campi"
   // (courtId fisso "1", come in prenota-padel.js/functions/index.js) —
-  // voce sintetica per includerlo nello stesso ingresso unico.
-  GRUPPI.push({ key: "padel__", disciplina: "padel", posizione: null, label: "Padel", campi: [{ id: "1", numero: PADEL_NUMERO, disciplina: "padel" }] });
+  // voce sintetica per includerlo nello stesso ingresso unico. Rispetta
+  // comunque il tabellone della disciplina (Configurazione → Tabelloni
+  // prenotazione), come i gruppi tennis/squash sopra.
+  if ((DISCIPLINE.find(d => d.id === "padel") || {}).prenotazioniAttive !== false) {
+    GRUPPI.push({ key: "padel__", disciplina: "padel", posizione: null, label: "Padel", campi: [{ id: "1", numero: PADEL_NUMERO, disciplina: "padel" }] });
+  }
   GRUPPI.sort((a, b) => rangoGruppo(a) - rangoGruppo(b));
 }
 
@@ -1163,6 +1167,7 @@ async function caricaProfiliDispositivo() {
 (async function init() {
   await loadDatiCentro();
   await loadImpostazioni();
+  await loadDiscipline();
   await loadFotoDiscipline();
   caricaSponsorBanner();
   document.getElementById("centro-kicker").textContent = DATI_CENTRO.nome;
@@ -1182,7 +1187,12 @@ async function caricaProfiliDispositivo() {
   ]);
 
   const campiTutti = campiSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-  CAMPI = campiTutti.filter(c => c.disciplina === "tennis" || c.disciplina === "squash");
+  // In più del campo attivo, il tabellone di una disciplina va rispettato
+  // (Configurazione → Tabelloni prenotazione — indipendente da
+  // discipline.attivo, sospende solo le prenotazioni online, non la
+  // disciplina nel resto dell'app).
+  const prenotabile = (disciplina) => (DISCIPLINE.find(d => d.id === disciplina) || {}).prenotazioniAttive !== false;
+  CAMPI = campiTutti.filter(c => (c.disciplina === "tennis" || c.disciplina === "squash") && prenotabile(c.disciplina));
   const padelCampoReale = campiTutti.find(c => c.disciplina === "padel");
   if (padelCampoReale && padelCampoReale.numero) PADEL_NUMERO = padelCampoReale.numero;
   CHIUSURE_CENTRO = chiusureSnap.docs.map(d => ({ id: d.id, ...d.data() }));

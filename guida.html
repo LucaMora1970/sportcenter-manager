@@ -174,6 +174,12 @@
         <div class="come">Due valori indipendenti per disciplina (tennis/padel/squash possono averne di diversi, e anche il tariffa-piena può differire dal forfait della stessa disciplina). Fino a quel numero di ore prima dell'inizio, chi ha prenotato può annullare da solo dal biglietto: nel periodo a tariffa piena riceve subito un credito automatico, nel periodo forfait si libera solo lo slot (non ha pagato nulla, vedi <a href="#forfait">Forfait stagionale</a>). Campo vuoto = default 24 ore per entrambi. Passata la soglia, l'annullo self-service dal biglietto non è più possibile: serve contattare il centro. Vedi anche <a href="#biglietto">Biglietto</a>.</div>
       </div>
 
+      <div class="voce">
+        <span class="dove">Configurazione → Tabelloni prenotazione</span>
+        <div class="cosa">Sospendere le prenotazioni online di una disciplina (tennis, padel o squash)</div>
+        <div class="come">Una checkbox per disciplina attiva (<code>discipline.prenotazioniAttive</code>, assente = attiva). Se spenta, la disciplina sparisce dalle tab prenotabili su <code>tcm.html</code> ("ingresso unico") e sulla pagina legacy <code>prenota-campo.html</code>, e il tentativo di prenotarla via API viene comunque rifiutato server-side (non solo nascosto lato client). <strong>Indipendente</strong> dal flag "Attivo" della disciplina stessa (quello, se spento, la toglie ovunque: Corsi, Diario, Resoconto, Chi-in-campo) — con questo toggle la disciplina resta invece del tutto normale in tutto il resto dell'app, si sospende solo la possibilità di prenotarla online. Pensato per pause temporanee (es. lavori su un campo) senza dover disattivare i singoli campi.</div>
+      </div>
+
     </div>
     </details>
 

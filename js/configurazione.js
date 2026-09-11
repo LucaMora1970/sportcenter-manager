@@ -336,6 +336,43 @@ function sortByOrdine(items) {
   });
 }
 
+// ---------- Tabelloni prenotazione (per disciplina, indipendente da
+// discipline.attivo — vedi p sopra) ----------
+
+async function loadTabelloniPrenotazione() {
+  const list = document.getElementById("tabelloni-prenotazione-list");
+  list.innerHTML = `<div class="empty-state"><div class="display">Caricamento…</div></div>`;
+
+  const snap = await db.collection("discipline").get();
+  const discipline = sortByOrdine(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(d => d.attivo !== false));
+
+  if (discipline.length === 0) {
+    list.innerHTML = `<div class="empty-state"><div class="display">Nessuna disciplina attiva</div></div>`;
+    return;
+  }
+
+  list.innerHTML = discipline.map(d => `
+    <div class="checkbox-row" style="margin-bottom:10px;">
+      <input type="checkbox" class="tabellone-toggle" id="tab-${d.id}" data-id="${d.id}" ${d.prenotazioniAttive !== false ? "checked" : ""}>
+      <label for="tab-${d.id}">${escapeHtml(d.nome)}</label>
+    </div>
+  `).join("");
+
+  list.querySelectorAll(".tabellone-toggle").forEach(cb => {
+    cb.addEventListener("change", async () => {
+      cb.disabled = true;
+      try {
+        await db.collection("discipline").doc(cb.dataset.id).update({ prenotazioniAttive: cb.checked });
+      } catch (err) {
+        showError(document.getElementById("tabelloni-prenotazione-error"), "Errore: " + err.message);
+        cb.checked = !cb.checked;
+      } finally {
+        cb.disabled = false;
+      }
+    });
+  });
+}
+
 async function loadDisciplineList() {
   const list = document.getElementById("discipline-list");
   list.innerHTML = `<div class="empty-state"><div class="display">Caricamento…</div></div>`;
@@ -361,6 +398,9 @@ async function loadDisciplineList() {
     loadDisciplineList,
     startEditDisciplina
   );
+  // Stessa fonte dati (discipline attive/ordine): tenerla allineata quando
+  // se ne aggiunge/disattiva/elimina una da qui.
+  await loadTabelloniPrenotazione();
 }
 
 function refreshDisciplinaSelects() {

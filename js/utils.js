@@ -88,7 +88,7 @@ async function loadDiscipline() {
   try {
     const snap = await db.collection("discipline").get();
     DISCIPLINE = snap.docs
-      .map(d => ({ id: d.id, label: d.data().nome, attivo: d.data().attivo, ordine: d.data().ordine, oreAnnullamento: d.data().oreAnnullamento, trasversale: d.data().trasversale === true }))
+      .map(d => ({ id: d.id, label: d.data().nome, attivo: d.data().attivo, ordine: d.data().ordine, oreAnnullamento: d.data().oreAnnullamento, trasversale: d.data().trasversale === true, prenotazioniAttive: d.data().prenotazioniAttive !== false }))
       .filter(d => d.attivo !== false)
       .sort((a, b) => {
         const ao = a.ordine != null ? a.ordine : 99;

@@ -605,6 +605,13 @@ exports.creaPrenotazionePubblica = onCall(
       throw new HttpsError("failed-precondition", "Il campo è chiuso in questa data.");
     }
 
+    // Tabelloni prenotazione (Configurazione), indipendente da
+    // discipline.attivo — sospende solo le prenotazioni online del padel.
+    const disciplinaPadelSnap = await db.collection("discipline").doc("padel").get();
+    if (disciplinaPadelSnap.exists && disciplinaPadelSnap.data().prenotazioniAttive === false) {
+      throw new HttpsError("failed-precondition", "Le prenotazioni per questa disciplina sono temporaneamente sospese.");
+    }
+
     // Giorni festivi (impostazioni/generale.festivi): contano come domenica
     // ai fini della tariffa e accorciano l'orario di chiusura come sabato/
     // domenica — un solo fetch, riusato per entrambi qui sotto.
@@ -3812,6 +3819,12 @@ exports.creaPrenotazioneCampo = onCall(
     const campoLabel = `Campo ${numero}${posizione ? ` (${posizione})` : ""}`;
     if (disciplina !== "tennis" && disciplina !== "squash") {
       throw new HttpsError("invalid-argument", "Disciplina non gestita da questa funzione.");
+    }
+    // Tabelloni prenotazione (Configurazione), indipendente da campo.attivo
+    // e discipline.attivo — sospende solo le prenotazioni online.
+    const disciplinaSnap = await db.collection("discipline").doc(disciplina).get();
+    if (disciplinaSnap.exists && disciplinaSnap.data().prenotazioniAttive === false) {
+      throw new HttpsError("failed-precondition", "Le prenotazioni per questa disciplina sono temporaneamente sospese.");
     }
 
     const { festivi, chiusuraWeekendMin } = festiviEChiusuraWeekend(generaleSnap);

@@ -309,8 +309,11 @@ function costruisciGruppi() {
   GRUPPI = [...map.values()];
   // Il padel ha oggi un solo campo, non modellato nella collection "campi"
   // (courtId fisso "1", come in prenota-padel.js/functions/index.js) —
-  // voce sintetica per includerlo nello stesso ingresso unico.
-  GRUPPI.push({ key: "padel__", disciplina: "padel", posizione: null, label: "Padel", campi: [{ id: "1", numero: PADEL_NUMERO, disciplina: "padel" }] });
+  // voce sintetica per includerlo nello stesso ingresso unico. Rispetta
+  // comunque il tabellone della disciplina, come i gruppi sopra.
+  if ((DISCIPLINE.find(d => d.id === "padel") || {}).prenotazioniAttive !== false) {
+    GRUPPI.push({ key: "padel__", disciplina: "padel", posizione: null, label: "Padel", campi: [{ id: "1", numero: PADEL_NUMERO, disciplina: "padel" }] });
+  }
   GRUPPI.sort((a, b) => rangoGruppo(a) - rangoGruppo(b));
 }
 
@@ -781,6 +784,7 @@ async function caricaProfiliDispositivo() {
 (async function init() {
   await loadDatiCentro();
   await loadImpostazioni();
+  await loadDiscipline();
   document.getElementById("centro-kicker").textContent = DATI_CENTRO.nome;
 
   const esitoPagamento = new URLSearchParams(location.search).get("pagamento");
@@ -798,7 +802,9 @@ async function caricaProfiliDispositivo() {
   ]);
 
   const campiTutti = campiSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-  CAMPI = campiTutti.filter(c => c.disciplina === "tennis" || c.disciplina === "squash");
+  // Tabelloni prenotazione (Configurazione), indipendente da discipline.attivo.
+  const prenotabile = (disciplina) => (DISCIPLINE.find(d => d.id === disciplina) || {}).prenotazioniAttive !== false;
+  CAMPI = campiTutti.filter(c => (c.disciplina === "tennis" || c.disciplina === "squash") && prenotabile(c.disciplina));
   const padelCampoReale = campiTutti.find(c => c.disciplina === "padel");
   if (padelCampoReale && padelCampoReale.numero) PADEL_NUMERO = padelCampoReale.numero;
   CHIUSURE_CENTRO = chiusureSnap.docs.map(d => ({ id: d.id, ...d.data() }));
