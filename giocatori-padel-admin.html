@@ -13,9 +13,15 @@
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0d1f30">
+<style>
+  @media (min-width: 900px) {
+    #giocatori-padel-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+    #giocatori-padel-list .entry-card { margin-bottom: 0; }
+  }
+</style>
 </head>
 <body>
-<div class="app">
+<div class="app app--wide">
 
   <div class="topbar">
     <h1>Giocatori Padel</h1>

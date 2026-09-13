@@ -13,9 +13,17 @@
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0d1f30">
+<style>
+  /* Su desktop "Nuova vendita" (form) e "Vendite di oggi" (elenco) si
+     affiancano — si guarda l'elenco mentre si registra una vendita. */
+  @media (min-width: 900px) {
+    .cassa-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
+    .cassa-mobile-divider { display: none; }
+  }
+</style>
 </head>
 <body>
-<div class="app">
+<div class="app app--wide">
 
   <div class="topbar">
     <h1>Cassa</h1>
@@ -42,6 +50,9 @@
           <div class="value" id="oggi-totale">0.00<small>CHF</small></div>
         </div>
       </div>
+
+      <div class="cassa-layout">
+      <div>
 
       <!-- Nuova vendita -->
       <div class="section-title"><h2>Nuova vendita</h2></div>
@@ -71,11 +82,17 @@
         <button type="submit" class="btn btn-primary" id="vendita-btn">Registra vendita</button>
       </form>
 
-      <hr class="court-divider">
+      </div>
 
+      <hr class="court-divider cassa-mobile-divider">
+
+      <div>
       <div class="section-title"><h2>Vendite di oggi</h2></div>
       <div id="vendite-oggi-list">
         <div class="empty-state"><div class="display">Caricamento…</div></div>
+      </div>
+      </div>
+
       </div>
 
       <hr class="court-divider">

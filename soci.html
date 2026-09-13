@@ -21,10 +21,21 @@
   .soci-badge.attivato { background: color-mix(in srgb, var(--ball) 16%, transparent); color: var(--ball); }
   :root[data-theme="light"] .soci-badge.attivato { color: var(--ball-dim); }
   .soci-badge.inattivo { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger); }
+
+  #socio-detail-placeholder { display: none; }
+
+  /* Stesso pattern di allievi.html: su desktop ricerca+elenco e scheda
+     socio si affiancano invece di restare impilate, con un placeholder
+     quando nessun socio è selezionato. */
+  @media (min-width: 900px) {
+    .soci-layout { display: grid; grid-template-columns: 360px 1fr; gap: 24px; align-items: start; }
+    .soci-mobile-divider { display: none; }
+    .soci-col-detail:has(#socio-form-wrap.hidden) #socio-detail-placeholder { display: block; }
+  }
 </style>
 </head>
 <body>
-<div class="app">
+<div class="app app--wide">
 
   <div class="topbar">
     <h1>Soci</h1>
@@ -50,6 +61,9 @@
 
       <hr class="court-divider">
 
+      <div class="soci-layout">
+      <div class="soci-col-list">
+
       <div class="section-title"><h2>Cerca socio</h2></div>
       <div class="soci-search-row">
         <div class="field">
@@ -66,7 +80,16 @@
         <div class="empty-state"><div class="display">Cerca un nome per iniziare</div></div>
       </div>
 
-      <hr class="court-divider">
+      </div>
+
+      <hr class="court-divider soci-mobile-divider">
+
+      <div class="soci-col-detail">
+
+      <div id="socio-detail-placeholder" class="empty-state">
+        <div class="display">Nessun socio selezionato</div>
+        <p>Seleziona un socio dall'elenco a sinistra.</p>
+      </div>
 
       <div class="section-title" id="socio-form-title"><h2>Modifica socio</h2></div>
       <div id="socio-form-wrap" class="hidden">
@@ -137,6 +160,9 @@
           <button type="button" class="btn btn-ghost" id="socio-cancel-edit-btn" style="margin-top:10px;">Annulla</button>
           <button type="button" class="btn btn-danger" id="socio-delete-btn" style="margin-top:10px;">Elimina socio</button>
         </form>
+      </div>
+
+      </div>
       </div>
 
       <div id="richieste-iscrizione-list"></div>

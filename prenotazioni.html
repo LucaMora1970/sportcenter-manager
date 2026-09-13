@@ -13,9 +13,18 @@
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0d1f30">
+<style>
+  /* Su desktop "Giorno" (day-strip + elenco prenotazioni) e "Blocca uno
+     slot/prenota per un maestro" (durata + timeline) si affiancano —
+     stesso giorno selezionato, workflow strettamente collegati. */
+  @media (min-width: 900px) {
+    .prenot-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
+    .prenot-mobile-divider { display: none; }
+  }
+</style>
 </head>
 <body>
-<div class="app">
+<div class="app app--wide">
 
   <div class="topbar">
     <h1>Prenotazioni padel</h1>
@@ -55,6 +64,9 @@
 
       </div>
 
+      <div class="prenot-layout">
+      <div>
+
       <!-- Tabellone del giorno -->
       <div class="section-title"><h2>Giorno</h2></div>
       <div class="day-strip" id="dayStrip" role="tablist" aria-label="Giorno"></div>
@@ -66,7 +78,11 @@
 
       <button type="button" class="btn btn-ghost solo-gestisci" id="stampa-lista-btn" style="margin-top:14px;">Stampa lista giornaliera</button>
 
-      <hr class="court-divider">
+      </div>
+
+      <hr class="court-divider prenot-mobile-divider">
+
+      <div>
 
       <!-- Blocco slot / prenotazione esente maestro -->
       <div class="section-title"><h2>Blocca uno slot o prenota per un maestro</h2></div>
@@ -80,6 +96,11 @@
 
       <div class="error-msg" id="picker-error" style="margin-top:10px;"></div>
       <div class="timeline" id="timeline" style="margin-top:10px;"></div>
+
+      </div>
+      </div>
+
+      <hr class="court-divider">
 
       <div class="solo-gestisci">
 
@@ -198,7 +219,7 @@
     <a href="corsi.html">Corsi</a>
     <a href="allievi.html">Allievi</a>
     <a href="prenotazioni.html" class="active">Prenotazioni</a>
-    <a href="#" title="In arrivo">Camp</a>
+    <a href="piano-occupazione.html">Camp</a>
     <a href="soci.html">Soci</a>
     <a href="utenti.html">Team</a>
     <a href="configurazione.html">Config</a>

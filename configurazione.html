@@ -42,10 +42,20 @@
   details.config-section > .config-section-body {
     padding: 0 2px 22px;
   }
+
+  /* Le 24 sezioni sono indipendenti (nessuna esclusione reciproca, il
+     toggle è nativo del browser): su desktop si dispongono su due colonne
+     "a giornale" invece di restare in un'unica colonna lunghissima.
+     break-inside:avoid evita che una sezione aperta venga tagliata a metà
+     tra le due colonne. */
+  @media (min-width: 900px) {
+    #admin-content { column-count: 2; column-gap: 32px; }
+    details.config-section { break-inside: avoid; }
+  }
 </style>
 </head>
 <body>
-<div class="app">
+<div class="app app--wide">
 
   <div class="topbar">
     <h1>Configurazione</h1>

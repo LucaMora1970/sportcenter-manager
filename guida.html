@@ -63,10 +63,28 @@
     font-family: 'Space Mono', monospace; font-size: 0.82em; background: var(--court-blue-800);
     padding: 1px 5px; border-radius: 3px;
   }
+
+  /* Su desktop l'indice resta fisso a sinistra durante lo scroll del
+     contenuto invece di scorrere via in cima alla pagina — il testo delle
+     sezioni beneficia comunque di restare in una colonna di larghezza
+     limitata (leggibilità), non di essere allargato. */
+  @media (min-width: 900px) {
+    .guida-layout { display: grid; grid-template-columns: 220px 1fr; gap: 32px; align-items: start; }
+    .sommario {
+      flex-direction: column;
+      flex-wrap: nowrap;
+      position: sticky;
+      top: 20px;
+      max-height: calc(100vh - 40px);
+      overflow-y: auto;
+      margin-bottom: 0;
+    }
+    .sommario .sep { display: none; }
+  }
 </style>
 </head>
 <body>
-<div class="app">
+<div class="app app--wide">
 
   <div class="topbar">
     <h1>Guida amministratore</h1>
@@ -89,6 +107,7 @@
 
     <p class="guida-intro">Dove trovare e come impostare ogni parametro dell'app — aggiornata mano a mano che si aggiungono funzionalità. Ogni voce dice <strong>dove</strong> si trova il campo e <strong>cosa</strong> succede quando lo si cambia.</p>
 
+    <div class="guida-layout">
     <div class="sommario">
       <a href="#centro">Dati del centro</a><span class="sep">·</span>
       <a href="#generali">Impostazioni generali</a><span class="sep">·</span>
@@ -110,6 +129,8 @@
       <a href="#tabellone">Tabellone generale</a><span class="sep">·</span>
       <a href="#biglietto">Biglietto</a>
     </div>
+
+    <div class="guida-sections">
 
     <!-- ===================== Dati del centro ===================== -->
     <details class="config-section" id="centro" open>
@@ -664,6 +685,9 @@
 
     </div>
     </details>
+
+    </div>
+    </div>
 
     </div>
 
