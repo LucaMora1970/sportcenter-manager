@@ -446,6 +446,52 @@ function initThemeToggle(btnId) {
 }
 initThemeToggle();
 
+// ---------- Zoom testo (dimensione caratteri, pagine staff) ----------
+// 4 livelli: 0 = default (16px, css/style.css) fino a 22px — stessa
+// filosofia del tema sopra (data-attribute su <html>, scelta salvata sul
+// dispositivo). No-op se i due bottoni non esistono sulla pagina, come
+// initMenuUtente() sotto: sicuro da chiamare sempre qui.
+const TESTO_ZOOM_STORAGE_KEY = "sportos-zoom-testo";
+const TESTO_ZOOM_MAX = 3;
+
+function livelloZoomTestoAttuale() {
+  const n = parseInt(document.documentElement.getAttribute("data-text-size") || "0", 10);
+  return Number.isNaN(n) ? 0 : n;
+}
+
+function applyLivelloZoomTesto(livello) {
+  if (livello > 0) document.documentElement.setAttribute("data-text-size", String(livello));
+  else document.documentElement.removeAttribute("data-text-size");
+}
+
+function initTestoZoom() {
+  const menoBtn = document.getElementById("testo-zoom-meno-btn");
+  const piuBtn = document.getElementById("testo-zoom-piu-btn");
+  if (!menoBtn || !piuBtn) return;
+
+  const sync = () => {
+    const livello = livelloZoomTestoAttuale();
+    menoBtn.disabled = livello === 0;
+    piuBtn.disabled = livello === TESTO_ZOOM_MAX;
+  };
+
+  menoBtn.addEventListener("click", () => {
+    const nuovo = Math.max(0, livelloZoomTestoAttuale() - 1);
+    applyLivelloZoomTesto(nuovo);
+    localStorage.setItem(TESTO_ZOOM_STORAGE_KEY, String(nuovo));
+    sync();
+  });
+  piuBtn.addEventListener("click", () => {
+    const nuovo = Math.min(TESTO_ZOOM_MAX, livelloZoomTestoAttuale() + 1);
+    applyLivelloZoomTesto(nuovo);
+    localStorage.setItem(TESTO_ZOOM_STORAGE_KEY, String(nuovo));
+    sync();
+  });
+
+  sync();
+}
+initTestoZoom();
+
 // Menu ☰ dei link utente sulle pagine pubbliche (Prenota campo, La mia
 // area, Diventa socio, ecc.) — no-op se la pagina non ha il markup
 // (#menu-utente-btn/#menu-utente-dropdown, vedi css/style.css), quindi

@@ -6,7 +6,7 @@
 <title>Guida amministratore — Sport-OS</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
-<script>if(localStorage.getItem("sportos-tema")==="light")document.documentElement.setAttribute("data-theme","light");</script>
+<script>if(localStorage.getItem("sportos-tema")==="light")document.documentElement.setAttribute("data-theme","light");var z=localStorage.getItem("sportos-zoom-testo");if(z&&z!=="0")document.documentElement.setAttribute("data-text-size",z);</script>
 <link rel="stylesheet" href="css/style.css">
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
@@ -90,6 +90,8 @@
     <h1>Guida amministratore</h1>
     <div class="user-chip" id="user-chip">—</div>
     <div class="topbar-actions">
+      <button type="button" class="topbar-link" id="testo-zoom-meno-btn" title="Rimpicciolisci testo" aria-label="Rimpicciolisci testo">A−</button>
+      <button type="button" class="topbar-link" id="testo-zoom-piu-btn" title="Ingrandisci testo" aria-label="Ingrandisci testo">A+</button>
       <button type="button" class="topbar-link" id="theme-toggle-btn">Tema chiaro</button>
       <a href="password.html" class="topbar-link">Password</a>
       <a href="configurazione.html" class="topbar-link">Configurazione</a>

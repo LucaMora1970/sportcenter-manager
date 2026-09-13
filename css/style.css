@@ -38,6 +38,17 @@
   --danger: #c23b2e;
 }
 
+/* Zoom testo, opzionale (attivato via data-text-size="1|2|3" su <html>,
+   scelta salvata sul dispositivo — vedi initTestoZoom in utils.js). 4
+   livelli, 0 = default (16px sopra, invariato per chi non lo tocca).
+   Quasi tutta la tipografia dell'app è in rem: cambiare solo font-size
+   qui scala il testo ovunque senza toccare nessun'altra regola — i
+   padding/gap strutturali sono in px fissi, quindi il layout a corredo
+   non si gonfia insieme al testo. */
+:root[data-text-size="1"] { font-size: 18px; }
+:root[data-text-size="2"] { font-size: 20px; }
+:root[data-text-size="3"] { font-size: 22px; }
+
 * { box-sizing: border-box; }
 
 html, body {
@@ -140,7 +151,11 @@ button.topbar-link {
   cursor: pointer;
 }
 
-.topbar-actions { display: flex; gap: 8px; align-items: center; }
+.topbar-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; align-items: center; }
+
+/* Zoom testo: A−/A+ nella topbar (pagine staff) */
+#testo-zoom-meno-btn, #testo-zoom-piu-btn { font-weight: 700; }
+#testo-zoom-meno-btn:disabled, #testo-zoom-piu-btn:disabled { opacity: 0.35; cursor: default; }
 
 /* Menu ☰ dei link utente (Prenota campo, La mia area, ecc.) sulle
    pagine pubbliche — stesso markup duplicato su ogni pagina (nessun
