@@ -20,10 +20,19 @@
      importi lunghi (es. "CHF 1234.56"): più piccolo così le cifre
      restano leggibili invece di sembrare appiccicate al bordo/tra loro. */
   .scoreboard .value { font-size: 1.4rem; }
+
+  /* Su desktop i 4 totali complessivi di fine pagina (oggi impilati uno
+     sotto l'altro con un divisore ciascuno) si affiancano in una griglia
+     2x2 invece di restare in colonna — ogni riquadro (più l'eventuale
+     avviso sotto) resta un blocco unico nella griglia. */
+  @media (min-width: 900px) {
+    .resoconto-totali-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+    .resoconto-totali-grid .court-divider { display: none; }
+  }
 </style>
 </head>
 <body>
-<div class="app">
+<div class="app app--wide">
 
   <div class="topbar">
     <h1>Resoconto</h1>
@@ -110,6 +119,9 @@
       </div>
       <div id="tariffe-warning" class="error-msg" style="color:var(--chalk-grey);"></div>
 
+      <div class="resoconto-totali-grid">
+
+      <div class="resoconto-totale-item">
       <hr class="court-divider">
       <div class="scoreboard">
         <div>
@@ -121,7 +133,9 @@
           <div class="value" id="totale-complessivo-costo">CHF 0.00</div>
         </div>
       </div>
+      </div>
 
+      <div class="resoconto-totale-item">
       <hr class="court-divider">
       <div class="scoreboard">
         <div>
@@ -130,7 +144,9 @@
         </div>
       </div>
       <div id="quotacampo-warning" class="error-msg" style="color:var(--chalk-grey);"></div>
+      </div>
 
+      <div class="resoconto-totale-item">
       <hr class="court-divider">
       <div class="scoreboard">
         <div>
@@ -139,13 +155,18 @@
         </div>
       </div>
       <div id="compenso-warning" class="error-msg" style="color:var(--chalk-grey);"></div>
+      </div>
 
+      <div class="resoconto-totale-item">
       <hr class="court-divider">
       <div class="scoreboard">
         <div>
           <div class="label">Pagato online dai clienti (lezioni)</div>
           <div class="value" id="totale-pagato-online">CHF 0.00</div>
         </div>
+      </div>
+      </div>
+
       </div>
     </div>
 

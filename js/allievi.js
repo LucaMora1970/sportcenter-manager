@@ -342,12 +342,11 @@ function mostraAllievo(allievo) {
   document.getElementById("allievo-delete-btn").classList.toggle("hidden", !isAdmin(currentProfile));
   document.getElementById("allievo-stampa-btn").classList.remove("hidden");
   document.getElementById("allievo-detail").classList.remove("hidden");
-  // Su desktop (≥900px) il pannello è già visibile a fianco della lista
-  // (vedi .allievi-layout in allievi.html): lo scroll ha senso solo in
-  // mobile, dove il dettaglio compare più sotto nella stessa colonna.
-  if (window.innerWidth < 900) {
-    document.getElementById("allievo-detail").scrollIntoView({ behavior: "smooth", block: "start" });
-  }
+  // Anche su desktop (≥900px, pannello a fianco della lista in
+  // .allievi-layout) serve: se si è scorso in basso per trovare un allievo
+  // più giù nell'elenco, la colonna dettaglio parte dalla stessa altezza
+  // della lista e resterebbe fuori dalla vista senza questo scroll.
+  document.getElementById("allievo-detail").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 async function selectAllievo(id) {
@@ -397,9 +396,7 @@ function nuovoAllievo() {
   document.getElementById("comunicazione-canale").value = "";
 
   document.getElementById("allievo-detail").classList.remove("hidden");
-  if (window.innerWidth < 900) {
-    document.getElementById("allievo-detail").scrollIntoView({ behavior: "smooth", block: "start" });
-  }
+  document.getElementById("allievo-detail").scrollIntoView({ behavior: "smooth", block: "start" });
 
   const url = new URL(location.href);
   url.searchParams.delete("id");
