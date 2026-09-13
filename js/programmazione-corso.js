@@ -397,6 +397,12 @@ function avvisiGruppo(g) {
   return avvisi;
 }
 
+// Stessa regex usata lato server (functions/index.js, inviaConvocazioneGruppo):
+// solo un controllo di forma, non di recapitabilità reale.
+function emailValida(email) {
+  return !!email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
+}
+
 // Chi del gruppo ha email valida, e di questi chi non ha ancora ricevuto
 // la convocazione — serve sia per il testo dei bottoni sia per il
 // messaggio di conferma prima dell'invio.
@@ -404,7 +410,7 @@ function statoConvocazioneGruppo(g) {
   const conEmail = g.membri
     .map(id => iscrizioni.find(i => i.id === id))
     .filter(Boolean)
-    .filter(i => i.email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(i.email));
+    .filter(i => emailValida(i.email));
   const nuovi = conEmail.filter(i => !i.convocazioneInviataAt);
   return { conEmail: conEmail.length, nuovi: nuovi.length, giaConvocati: conEmail.length - nuovi.length };
 }
@@ -452,6 +458,38 @@ async function inviaConvocazioneGruppo(tempId, forzaTutti) {
   }
 }
 
+// Rinvia la convocazione a UN SOLO iscritto già convocato in precedenza
+// (es. non l'ha ricevuta, email corretta nel frattempo) — a differenza di
+// inviaConvocazioneGruppo sopra, ignora il filtro "già convocato": è un
+// rinvio esplicito voluto dallo staff.
+async function rinviaConvocazioneSingola(tempId, iscrizioneId) {
+  const g = gruppiLavoro.find(x => x.tempId === tempId);
+  if (!g || !g.firestoreId) return;
+  const i = iscrizioni.find(x => x.id === iscrizioneId);
+  if (!i) return;
+
+  if (!confirm(`Rinviare la convocazione a ${i.nome} ${i.cognome} (${i.email})?`)) return;
+
+  mostraCaricamento("Invio convocazione…");
+  try {
+    const res = await cloudFunctions().httpsCallable("inviaConvocazioneGruppo")({ gruppoId: g.firestoreId, iscrizioneId });
+    const d = res.data || {};
+    nascondiCaricamento();
+    if (d.nessunDestinatario) {
+      alert("Impossibile inviare: email mancante o non valida per questo iscritto — correggila in Corsi › Iscrizioni.");
+    } else if (d.falliti) {
+      alert("Invio non riuscito: " + ((d.dettaglioFalliti && d.dettaglioFalliti[0] && d.dettaglioFalliti[0].errore) || "errore sconosciuto"));
+    } else {
+      alert("Convocazione rinviata.");
+    }
+    await loadTutto();
+    renderTutto();
+  } catch (err) {
+    nascondiCaricamento();
+    showError(document.getElementById("prog-error"), "Errore nel rinvio della convocazione: " + (err.message || err));
+  }
+}
+
 function selectSlotHtml(g) {
   const comb = combinazioniCorso();
   const opts = comb.map(c => `<option value="${c.giorno}|${c.orario}"${g.giorno === c.giorno && g.orario === c.orario ? " selected" : ""}>${giornoLabel(c.giorno)} ${c.orario}</option>`).join("");
@@ -487,12 +525,23 @@ function renderGruppi() {
       const avvisi = avvisiGruppo(g);
       const cap = g.capienza ? `${membri.length} / ${g.capienza}` : `${membri.length}`;
       const capOltre = g.capienza && membri.length > g.capienza;
-      const righe = membri.map(i => `
+      const righe = membri.map(i => {
+        // "Rinvia" solo per chi ha già ricevuto una convocazione — è per il
+        // caso "inviata ma non ricevuta", non un invio iniziale (quello
+        // resta ai bottoni "Invia convocazione"/"Rimanda a tutti" del gruppo).
+        const bottoneRinvia = i.convocazioneInviataAt
+          ? `<button type="button" class="btn btn-ghost prog-g-rinvia" data-g="${g.tempId}" data-i="${i.id}" style="width:auto;padding:4px 8px;font-size:0.66rem;"${emailValida(i.email) ? "" : " disabled"} title="${emailValida(i.email) ? "Rinvia la convocazione a questa persona" : "Email mancante o non valida — correggila in Corsi › Iscrizioni prima di rinviare"}">↻ Rinvia</button>`
+          : "";
+        return `
         <div class="candidato-row">
           <span class="candidato-nome">${escapeHtml(i.cognome)} ${escapeHtml(i.nome)}${etaDa(i.dataNascita) != null ? " · " + etaDa(i.dataNascita) : ""}${i.livello != null ? " · L" + i.livello : ""}${i.convocazioneInviataAt ? ` <span style="color:#c1e08f;">✓ convocato</span>` : ""}</span>
-          <button type="button" class="btn btn-ghost prog-g-rimuovi" data-g="${g.tempId}" data-i="${i.id}" style="width:auto;padding:4px 8px;font-size:0.66rem;">Togli</button>
+          <span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
+            ${bottoneRinvia}
+            <button type="button" class="btn btn-ghost prog-g-rimuovi" data-g="${g.tempId}" data-i="${i.id}" style="width:auto;padding:4px 8px;font-size:0.66rem;">Togli</button>
+          </span>
         </div>
-      `).join("") || `<div class="entry-meta">Nessun iscritto</div>`;
+      `;
+      }).join("") || `<div class="entry-meta">Nessun iscritto</div>`;
       const statoConv = statoConvocazioneGruppo(g);
 
       return `
@@ -523,6 +572,7 @@ function renderGruppi() {
     }).join("");
 
   el.querySelectorAll(".prog-g-rimuovi").forEach(b => b.addEventListener("click", () => rimuoviDaGruppo(b.dataset.i, b.dataset.g)));
+  el.querySelectorAll(".prog-g-rinvia").forEach(b => b.addEventListener("click", () => rinviaConvocazioneSingola(b.dataset.g, b.dataset.i)));
   el.querySelectorAll(".prog-g-elimina").forEach(b => b.addEventListener("click", () => eliminaGruppo(b.dataset.id)));
   el.querySelectorAll(".prog-g-convoca").forEach(b => b.addEventListener("click", () => inviaConvocazioneGruppo(b.dataset.id, false)));
   el.querySelectorAll(".prog-g-convoca-tutti").forEach(b => b.addEventListener("click", () => inviaConvocazioneGruppo(b.dataset.id, true)));

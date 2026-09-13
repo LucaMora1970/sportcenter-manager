@@ -4656,7 +4656,7 @@ exports.inviaConvocazioneGruppo = onCall(
     if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
     const { userData, permessi, isAdmin } = await permessiUtente(request.auth.uid);
 
-    const { gruppoId, forzaTutti } = request.data || {};
+    const { gruppoId, forzaTutti, iscrizioneId } = request.data || {};
     if (!gruppoId) throw new HttpsError("invalid-argument", "gruppoId mancante.");
 
     const gruppoRef = db.collection("gruppiCorso").doc(gruppoId);
@@ -4687,8 +4687,17 @@ exports.inviaConvocazioneGruppo = onCall(
     // (aggiungere un iscritto a un gruppo già notificato non deve
     // rispedire a chi l'ha già ricevuta). forzaTutti la rispedisce anche
     // a chi l'aveva già avuta — utile solo se lo slot è cambiato dopo.
-    const destinatari = forzaTutti ? membriConEmail : membriConEmail.filter(i => !i.convocazioneInviataAt);
-    const giaConvocatiNonReinviati = membriConEmail.length - destinatari.length;
+    // iscrizioneId (rinvio a una sola persona, es. email corretta dopo un
+    // primo invio non ricevuto) bypassa questo filtro: è un rinvio
+    // esplicito, non importa se l'aveva già ricevuta.
+    const destinatari = iscrizioneId
+      ? membriConEmail.filter(i => i.id === iscrizioneId)
+      : (forzaTutti ? membriConEmail : membriConEmail.filter(i => !i.convocazioneInviataAt));
+
+    if (destinatari.length === 0) {
+      return { inviati: 0, falliti: 0, nessunDestinatario: true };
+    }
+    const giaConvocatiNonReinviati = iscrizioneId ? 0 : membriConEmail.length - destinatari.length;
 
     let inviati = 0;
     let falliti = 0;
