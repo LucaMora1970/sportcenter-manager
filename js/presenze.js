@@ -129,30 +129,68 @@ function presenzaDi(gruppoId, iscrizioneId, data) {
 // Salvataggio immediato al tap (nessun bottone "Salva" collettivo). Id
 // deterministico: un secondo tap corregge lo stesso documento, non lo
 // duplica — comodo anche per cambiare idea durante l'appello.
+//
+// Tracciabilità (importante: chi ha inserito/modificato una presenza, e
+// quando): il documento distingue inseritoDa* (scritto una sola volta,
+// mai più toccato) da modificatoDa* (aggiornato a ogni correzione
+// successiva) — rilegge lo stato attuale da Firestore, non dalla cache
+// locale, per decidere quale dei due si applica. In più, ogni cambio
+// aggiunge una riga a presenzeLog (registro immutabile, mai aggiornato
+// né cancellato — stesso principio di iscrizioniLog altrove in
+// quest'app): il documento sopra mostra solo l'ultimo stato, il log
+// conserva la sequenza completa di ogni correzione in caso di
+// contestazione (es. un genitore che dice "mio figlio c'era").
 async function segnaPresenza(g, iscrizione, presente) {
   const dataIso = statoGiorno.data;
   const id = presenzaKey(g.id, iscrizione.id, dataIso);
-  const payload = {
-    gruppoId: g.id,
-    iscrizioneId: iscrizione.id,
-    allievoId: iscrizione.allievoId || null,
-    corsoId: g.corso.id,
-    data: dataIso,
-    giorno: g.giorno,
-    orario: g.orario,
-    campo: g.campo || null,
-    corsoNome: g.corso.nome,
-    disciplina: g.corso.disciplina,
-    presente: !!presente,
-    registratoDaUid: currentProfile.uid,
-    registratoDaNome: currentProfile.nome,
-    aggiornatoAt: firebase.firestore.FieldValue.serverTimestamp()
-  };
+  const ref = db.collection("presenze").doc(id);
   try {
-    await db.collection("presenze").doc(id).set(payload, { merge: true });
+    const snap = await ref.get();
+    const esistente = snap.exists ? snap.data() : null;
+    const adesso = firebase.firestore.FieldValue.serverTimestamp();
+
+    const payload = {
+      gruppoId: g.id,
+      iscrizioneId: iscrizione.id,
+      allievoId: iscrizione.allievoId || null,
+      corsoId: g.corso.id,
+      data: dataIso,
+      giorno: g.giorno,
+      orario: g.orario,
+      campo: g.campo || null,
+      corsoNome: g.corso.nome,
+      disciplina: g.corso.disciplina,
+      presente: !!presente
+    };
+    if (!esistente) {
+      payload.inseritoDaUid = currentProfile.uid;
+      payload.inseritoDaNome = currentProfile.nome;
+      payload.inseritoAt = adesso;
+    } else {
+      payload.modificatoDaUid = currentProfile.uid;
+      payload.modificatoDaNome = currentProfile.nome;
+      payload.modificatoAt = adesso;
+    }
+
+    await ref.set(payload, { merge: true });
+    await db.collection("presenzeLog").add({
+      presenzaId: id,
+      gruppoId: g.id,
+      iscrizioneId: iscrizione.id,
+      allievoId: iscrizione.allievoId || null,
+      corsoId: g.corso.id,
+      data: dataIso,
+      valorePrecedente: esistente ? !!esistente.presente : null,
+      valoreNuovo: !!presente,
+      registratoDaUid: currentProfile.uid,
+      registratoDaNome: currentProfile.nome,
+      registratoAt: adesso
+    });
+
     const idx = presenzeCache.findIndex(p => p.id === id);
-    if (idx === -1) presenzeCache.push({ id, ...payload });
-    else presenzeCache[idx] = { ...presenzeCache[idx], ...payload };
+    const merged = { id, ...(esistente || {}), ...payload };
+    if (idx === -1) presenzeCache.push(merged);
+    else presenzeCache[idx] = merged;
     renderGiorno();
   } catch (err) {
     alert("Errore nel salvataggio della presenza: " + err.message);

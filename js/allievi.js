@@ -256,12 +256,20 @@ function renderPresenzeAllievo() {
   }
   el.innerHTML = presenzeAllievoCache.map(p => {
     const data = p.data ? new Date(p.data + "T00:00:00").toLocaleDateString("it-CH") : "—";
+    const inserito = p.inseritoAt && p.inseritoAt.toDate
+      ? `Registrato da ${escapeHtml(p.inseritoDaNome || "—")} il ${p.inseritoAt.toDate().toLocaleString("it-CH")}`
+      : "";
+    const modificato = p.modificatoAt && p.modificatoAt.toDate
+      ? `Modificato da ${escapeHtml(p.modificatoDaNome || "—")} il ${p.modificatoAt.toDate().toLocaleString("it-CH")}`
+      : "";
     return `
       <div class="entry-card">
         <div class="entry-main">
           <span class="badge ${p.presente ? "badge-presente" : "badge-assente"}">${p.presente ? "Presente" : "Assente"}</span>
           <div class="entry-tipo">${escapeHtml(p.corsoNome || "—")}</div>
           <div class="entry-meta">${data}${p.orario ? " · " + escapeHtml(p.orario) : ""}${p.campo ? " · Campo " + escapeHtml(String(p.campo)) : ""}</div>
+          ${inserito ? `<div class="entry-meta">${inserito}</div>` : ""}
+          ${modificato ? `<div class="entry-meta">${modificato}</div>` : ""}
         </div>
       </div>
     `;

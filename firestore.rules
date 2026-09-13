@@ -429,6 +429,15 @@ service cloud.firestore {
         || hasPermission("iscrizioni:gestisci") || hasPermission("corsi:gestisci");
     }
 
+    // Registro immutabile di ogni cambio di presenza (chi, quando, valore
+    // precedente → nuovo) — stesso principio di iscrizioniLog sopra:
+    // niente update né delete, altrimenti non sarebbe più uno storico
+    // affidabile per eventuali contestazioni.
+    match /presenzeLog/{id} {
+      allow read, create: if hasPermission("corsi:presenze")
+        || hasPermission("iscrizioni:gestisci") || hasPermission("corsi:gestisci");
+    }
+
     // Anagrafica centrale allievi (corsi), separata dalla collection
     // "allievi" già esistente (nomi per fatturazione lezioni private nel
     // Diario, leggibile/creabile da chiunque loggato — tutt'altra cosa,
