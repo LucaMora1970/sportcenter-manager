@@ -529,13 +529,17 @@ function renderGruppi() {
         // "Rinvia" solo per chi ha già ricevuto una convocazione — è per il
         // caso "inviata ma non ricevuta", non un invio iniziale (quello
         // resta ai bottoni "Invia convocazione"/"Rimanda a tutti" del gruppo).
+        const rinviaTitle = emailValida(i.email) ? "Rinvia la convocazione a questa persona" : "Email mancante o non valida — correggila in Corsi › Iscrizioni prima di rinviare";
+        // Solo icona (non "↻ Rinvia" per esteso): su mobile il testo mandava
+        // a capo la riga insieme a "Togli" — stesso principio già usato per
+        // il tema (💡) e lo zoom testo (A−/A+), bottoni corti non etichette.
         const bottoneRinvia = i.convocazioneInviataAt
-          ? `<button type="button" class="btn btn-ghost prog-g-rinvia" data-g="${g.tempId}" data-i="${i.id}" style="width:auto;padding:4px 8px;font-size:0.66rem;"${emailValida(i.email) ? "" : " disabled"} title="${emailValida(i.email) ? "Rinvia la convocazione a questa persona" : "Email mancante o non valida — correggila in Corsi › Iscrizioni prima di rinviare"}">↻ Rinvia</button>`
+          ? `<button type="button" class="btn btn-ghost prog-g-rinvia" data-g="${g.tempId}" data-i="${i.id}" style="width:auto;padding:4px 8px;font-size:0.9rem;line-height:1;"${emailValida(i.email) ? "" : " disabled"} title="${rinviaTitle}" aria-label="${rinviaTitle}">↻</button>`
           : "";
         return `
         <div class="candidato-row">
           <span class="candidato-nome">${escapeHtml(i.cognome)} ${escapeHtml(i.nome)}${etaDa(i.dataNascita) != null ? " · " + etaDa(i.dataNascita) : ""}${i.livello != null ? " · L" + i.livello : ""}${i.convocazioneInviataAt ? ` <span style="color:#c1e08f;">✓ convocato</span>` : ""}</span>
-          <span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
+          <span style="display:flex;gap:6px;flex-shrink:0;">
             ${bottoneRinvia}
             <button type="button" class="btn btn-ghost prog-g-rimuovi" data-g="${g.tempId}" data-i="${i.id}" style="width:auto;padding:4px 8px;font-size:0.66rem;">Togli</button>
           </span>
