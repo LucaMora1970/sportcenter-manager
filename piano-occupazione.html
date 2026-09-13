@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Piano occupazione — Sport-OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script>if(localStorage.getItem("sportos-tema")==="light")document.documentElement.setAttribute("data-theme","light");</script>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d1f30">
+<style>
+  .piano-week-nav {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+    margin-bottom: 6px;
+  }
+  .piano-week-nav .btn { width: auto; }
+  .piano-week-range {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.95rem;
+    flex: 1 1 auto;
+    text-align: center;
+  }
+  .piano-grid-wrap { overflow-x: auto; margin-top: 10px; }
+  .piano-grid {
+    display: grid;
+    grid-template-columns: 130px repeat(7, minmax(120px, 1fr));
+    min-width: 780px;
+    border: 1px solid var(--court-blue-700);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .piano-cell {
+    padding: 8px;
+    border-bottom: 1px solid var(--court-blue-700);
+    border-right: 1px solid var(--court-blue-700);
+  }
+  .piano-grid .piano-cell:nth-child(8n) { border-right: none; }
+  .piano-head {
+    background: var(--court-blue-800);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--chalk-grey);
+    text-align: center;
+  }
+  .piano-head .giorno-num { color: var(--line-white); font-size: 0.85rem; display: block; margin-top: 2px; }
+  .piano-head.oggi { color: var(--ball); }
+  .piano-head.oggi .giorno-num { color: var(--ball); }
+  .piano-disc-label {
+    grid-column: 1 / -1;
+    background: var(--court-blue-950);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--chalk-grey);
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--court-blue-700);
+  }
+  .piano-campo-label {
+    background: var(--court-blue-900);
+    font-size: 0.82rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+  }
+  .piano-day-cell { background: var(--court-blue-900); vertical-align: top; }
+  .piano-day-cell.empty { color: var(--chalk-grey); font-size: 0.8rem; }
+  .piano-chip {
+    background: var(--court-blue-800);
+    border: 1px solid var(--court-blue-700);
+    border-radius: 6px;
+    padding: 5px 6px;
+    margin-bottom: 5px;
+    font-size: 0.72rem;
+    line-height: 1.35;
+  }
+  .piano-chip:last-child { margin-bottom: 0; }
+  .piano-chip .ora { font-family: 'Space Mono', monospace; color: var(--ball); font-weight: 700; }
+  .piano-chip .corso-nome { color: var(--line-white); }
+  .piano-chip .iscritti { color: var(--chalk-grey); }
+  .piano-non-assegnato .piano-campo-label { color: var(--chalk-grey); font-style: italic; font-weight: 400; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <h1>Piano occupazione</h1>
+    <div class="user-chip" id="user-chip">—</div>
+    <div class="topbar-actions">
+      <button type="button" class="topbar-link" id="theme-toggle-btn">Tema chiaro</button>
+      <a href="password.html" class="topbar-link">Password</a>
+    </div>
+  </div>
+
+  <main>
+
+    <div id="access-denied" class="empty-state hidden">
+      <div class="display">Accesso non consentito</div>
+      <p>Questa sezione è riservata a chi ha il permesso "Gestire iscrizioni corsi".</p>
+    </div>
+
+    <div id="piano-content" class="hidden">
+
+      <div class="section-title"><h2>Piano occupazione campi — gruppi corso confermati</h2></div>
+
+      <div class="piano-week-nav">
+        <button type="button" class="btn btn-ghost" id="settimana-prev-btn">‹ Settimana prec.</button>
+        <div class="piano-week-range" id="piano-week-range">—</div>
+        <button type="button" class="btn btn-ghost" id="settimana-next-btn">Settimana succ. ›</button>
+      </div>
+      <div class="piano-week-nav">
+        <button type="button" class="btn btn-ghost" id="settimana-oggi-btn">Settimana corrente</button>
+        <input type="date" id="piano-data-input" style="width:auto;">
+      </div>
+
+      <div class="piano-grid-wrap">
+        <div id="piano-grid" class="piano-grid"></div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <nav class="bottom-nav">
+    <a href="diario.html">Diario</a>
+    <a href="resoconto.html">Resoconto</a>
+    <a href="cassa.html">Cassa</a>
+    <a href="corsi.html">Corsi</a>
+    <a href="allievi.html">Allievi</a>
+    <a href="prenotazioni.html">Prenotazioni</a>
+    <a href="piano-occupazione.html" class="active">Camp</a>
+    <a href="soci.html">Soci</a>
+    <a href="utenti.html">Team</a>
+    <a href="configurazione.html">Config</a>
+    <a href="#" id="logout-link">Esci</a>
+  </nav>
+
+  <script>
+    document.querySelector(".bottom-nav a.active")?.scrollIntoView({ inline: "center", block: "nearest" });
+  </script>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/piano-occupazione.js"></script>
+</body>
+</html>
