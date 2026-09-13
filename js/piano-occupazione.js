@@ -147,13 +147,21 @@ function perDisciplina() {
     .map(id => ({ disciplina: id, campi: gruppi[id] }));
 }
 
+// L'elenco nominale (.iscritti-nomi) viene sempre generato: è il CSS a
+// nasconderlo sotto i 900px per non affollare i chip in mobile, dove resta
+// visibile solo il conteggio — stesso principio già usato altrove nel
+// progetto (es. .tg-seg.occ span in tabellone-generale.html).
 function chipHtml(g, mostraCampo) {
   const nomeGruppo = g.nome ? ` (${escapeHtml(g.nome)})` : "";
   const campoTxt = mostraCampo && g.campo ? `${escapeHtml(g.campo)} · ` : "";
+  const nomiIscritti = g.iscritti
+    .map(i => escapeHtml(`${i.nome} ${i.cognome}`))
+    .join(", ");
   return `
     <div class="piano-chip">
       <span class="ora">${g.orario}</span> · ${campoTxt}<span class="corso-nome">${escapeHtml(g.corso.nome)}</span>${nomeGruppo}<br>
       <span class="iscritti">${g.iscritti.length} iscritt${g.iscritti.length === 1 ? "o" : "i"}</span>
+      <div class="iscritti-nomi">${nomiIscritti}</div>
     </div>
   `;
 }

@@ -83,6 +83,15 @@ a { color: var(--ball); }
   position: relative;
 }
 
+/* Pagine di lavoro (non board a parete — quella è il caso a parte di
+   tabellone-generale.html, con la sua regola dedicata più larga) che
+   possono sfruttare lo spazio su desktop invece di restare compresse in
+   480px: Piano occupazione, Corsi, Allievi. 1100px basta per una griglia
+   a 2-3 colonne o un layout lista+dettaglio senza margini vuoti eccessivi. */
+@media (min-width: 900px) {
+  .app.app--wide { max-width: 1100px; }
+}
+
 .topbar {
   padding: 20px var(--gap) 14px;
   display: grid;

@@ -86,10 +86,19 @@
   .piano-chip .corso-nome { color: var(--line-white); }
   .piano-chip .iscritti { color: var(--chalk-grey); }
   .piano-non-assegnato .piano-campo-label { color: var(--chalk-grey); font-style: italic; font-weight: 400; }
+  .piano-chip .iscritti-nomi { display: none; }
+
+  /* Su desktop la griglia ha spazio per colonne più larghe (elimina lo
+     scroll orizzontale nella maggior parte dei casi) e i chip possono
+     mostrare anche l'elenco nominale degli iscritti, non solo il numero. */
+  @media (min-width: 900px) {
+    .piano-grid { grid-template-columns: 160px repeat(7, minmax(140px, 1fr)); }
+    .piano-chip .iscritti-nomi { display: block; margin-top: 2px; }
+  }
 </style>
 </head>
 <body>
-<div class="app">
+<div class="app app--wide">
 
   <div class="topbar">
     <h1>Piano occupazione</h1>

@@ -343,7 +343,12 @@ async function selectAllievo(id) {
     document.getElementById("allievo-delete-btn").classList.toggle("hidden", !isAdmin(currentProfile));
     document.getElementById("allievo-stampa-btn").classList.remove("hidden");
     document.getElementById("allievo-detail").classList.remove("hidden");
-    document.getElementById("allievo-detail").scrollIntoView({ behavior: "smooth", block: "start" });
+    // Su desktop (≥900px) il pannello è già visibile a fianco della lista
+    // (vedi .allievi-layout in allievi.html): lo scroll ha senso solo in
+    // mobile, dove il dettaglio compare più sotto nella stessa colonna.
+    if (window.innerWidth < 900) {
+      document.getElementById("allievo-detail").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
 
     // Riflette l'id nell'URL, così il link a questo allievo è condivisibile
     // (nessun'altra pagina lo usa ancora, ma un link diretto deve funzionare).
@@ -372,7 +377,9 @@ function nuovoAllievo() {
   document.getElementById("comunicazione-canale").value = "";
 
   document.getElementById("allievo-detail").classList.remove("hidden");
-  document.getElementById("allievo-detail").scrollIntoView({ behavior: "smooth", block: "start" });
+  if (window.innerWidth < 900) {
+    document.getElementById("allievo-detail").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 
   const url = new URL(location.href);
   url.searchParams.delete("id");

@@ -20,10 +20,23 @@
   .comunicazione-item:last-child { border-bottom: none; }
   .comunicazione-meta { font-size: 0.72rem; color: var(--chalk-grey); margin-top: 4px; }
   .comunicazione-testo { font-size: 0.86rem; white-space: pre-wrap; }
+
+  #allievo-detail-placeholder { display: none; }
+
+  /* Su desktop lista e dettaglio stanno fianco a fianco invece che
+     impilati — il pannello dettaglio (mostrato/nascosto con la classe
+     "hidden" già esistente in js/allievi.js) resta a destra sempre nello
+     stesso posto, con un placeholder quando nessun allievo è selezionato,
+     invece di lasciare la colonna vuota. */
+  @media (min-width: 900px) {
+    .allievi-layout { display: grid; grid-template-columns: 360px 1fr; gap: 24px; align-items: start; }
+    .allievi-mobile-divider { display: none; }
+    .allievi-col-detail:has(#allievo-detail.hidden) #allievo-detail-placeholder { display: block; }
+  }
 </style>
 </head>
 <body>
-<div class="app">
+<div class="app app--wide">
 
   <div class="topbar">
     <h1>Allievi</h1>
@@ -42,6 +55,9 @@
     </div>
 
     <div id="admin-content">
+
+      <div class="allievi-layout">
+      <div class="allievi-col-list">
 
       <div class="section-title"><h2>Cerca allievo</h2></div>
       <p id="allievi-conteggio" style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 10px;"></p>
@@ -71,7 +87,16 @@
         <div class="empty-state"><div class="display">Caricamento…</div></div>
       </div>
 
-      <hr class="court-divider">
+      </div>
+
+      <hr class="court-divider allievi-mobile-divider">
+
+      <div class="allievi-col-detail">
+
+      <div id="allievo-detail-placeholder" class="empty-state">
+        <div class="display">Nessun allievo selezionato</div>
+        <p>Seleziona un allievo dall'elenco a sinistra, oppure crea un nuovo allievo.</p>
+      </div>
 
       <div id="allievo-detail" class="hidden">
 
@@ -178,6 +203,9 @@
         <div class="error-msg" id="comunicazione-error"></div>
         <button type="button" class="btn btn-ghost" id="comunicazione-add-btn" style="width:auto;">Aggiungi nota</button>
 
+      </div>
+
+      </div>
       </div>
 
     </div>

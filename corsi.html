@@ -13,9 +13,22 @@
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0d1f30">
+<style>
+  /* Su desktop l'elenco corsi diventa una griglia invece della colonna
+     singola mobile — ogni .corso-card (entry-card + i div dettaglio
+     iscrizioni/panoramica/storico, già uniti nello stesso blocco in
+     corsoCardHtml) è un elemento della griglia, senza toccare la logica
+     di toggle in js/corsi.js. Quando un dettaglio è aperto, la card
+     occupa tutta la riga invece di restare schiacciata in una colonna. */
+  @media (min-width: 900px) {
+    #corsi-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px; align-items: start; }
+    #corsi-list .corso-card { margin-bottom: 0; }
+    #corsi-list .corso-card:has(> .dettaglio-giorni:not(.hidden)) { grid-column: 1 / -1; }
+  }
+</style>
 </head>
 <body>
-<div class="app">
+<div class="app app--wide">
 
   <div class="topbar">
     <h1>Corsi</h1>
