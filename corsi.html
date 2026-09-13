@@ -66,6 +66,15 @@
 
       <hr class="court-divider">
 
+      <!-- Richieste ultime 24 ore, qualunque stato (in attesa/confermata/
+           annullata/ospite) — nascosta (divisore incluso) se non ce ne
+           sono di recenti, per non lasciare un doppio divisore vuoto. -->
+      <div id="richieste-recenti-sezione" class="hidden">
+        <div class="section-title"><h2>Richieste ultime 24 ore</h2><span class="count" id="richieste-recenti-count"></span></div>
+        <div id="richieste-recenti-list"></div>
+        <hr class="court-divider">
+      </div>
+
       <!-- Cerca allievo (su tutti i corsi) -->
       <div id="cerca-allievo-sezione" class="hidden">
         <div class="section-title"><h2>Cerca allievo</h2></div>

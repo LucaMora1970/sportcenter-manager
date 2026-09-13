@@ -239,12 +239,6 @@ async function caricaDettaglioAllievo(id) {
   renderComunicazioniAllievo();
 }
 
-const STATO_ISCRIZIONE_LABEL = { in_attesa: "In attesa", confermata: "Confermata", annullata: "Annullata" };
-// Classi CSS (css/style.css) invece di colori inline: solo così il verde
-// "confermata" resta leggibile anche in tema chiaro (vedi
-// :root[data-theme="light"] .badge-confermata).
-const STATO_ISCRIZIONE_CLASSE = { in_attesa: "badge-in-attesa", confermata: "badge-confermata", annullata: "badge-annullata" };
-
 function giornoLabel(id) {
   return (GIORNI_SETTIMANA.find(g => g.id === id) || {}).label || id;
 }

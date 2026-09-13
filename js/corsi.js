@@ -17,6 +17,7 @@ let livelliCorsoCache = []; // [{livello, nome, ...}] attivi, per il <select> li
 let gruppiCorsoCache = []; // [{id, corsoId, giorno, orario, campo, ...}] dal modulo di programmazione
 let iscrizioniConfermateCache = [];
 let iscrizioniInAttesaCache = [];
+let richiesteRecentiCache = []; // iscrizioniCorsi con createdAt nelle ultime 24h, qualunque stato
 // Anagrafica condivisa allieviCorsi, usata per il collegamento iscrizione↔
 // allievo e per la ricerca in "Aggiungi ospite" — caricata pigramente (vedi
 // ensureAllieviCorsiCache) al primo utilizzo del pannello Iscrizioni, non
@@ -1592,6 +1593,84 @@ async function loadIscrizioniInAttesa() {
   iscrizioniInAttesaCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
+// Tutte le iscrizioni create nelle ultime 24h, qualunque sia il loro stato
+// attuale (in_attesa/confermata/annullata/ospite) — a differenza delle due
+// cache sopra, filtrate ciascuna su un solo stato. Serve al riepilogo
+// "Richieste ultime 24 ore" per rintracciare in fretta cosa è arrivato di
+// recente, indipendentemente da come è stato poi gestito.
+async function loadRichiesteRecenti() {
+  const soglia = firebase.firestore.Timestamp.fromMillis(Date.now() - 24 * 60 * 60 * 1000);
+  const snap = await db.collection("iscrizioniCorsi").where("createdAt", ">=", soglia).get();
+  richiesteRecentiCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+// Richieste recenti di un corso, filtrate per il permesso del ruolo (chi
+// ha solo iscrizioni:gestisci_padel non vede corsi di altre discipline —
+// stesso controllo di corsoVisibile in gruppiConfermatiPerData) e
+// ordinate alfabeticamente.
+function richiesteRecentiPerCorso(corso) {
+  const discipline = disciplineIscrizioniVisibili(currentProfile);
+  if (discipline && !discipline.includes(corso.disciplina)) return [];
+  return richiesteRecentiCache
+    .filter(i => i.corsoId === corso.id)
+    .sort(compareCognomeNome);
+}
+
+function richiestaRecenteRowHtml(i, corso) {
+  const orario = i.createdAt ? i.createdAt.toDate().toLocaleString("it-CH") : "—";
+  const badgeStato = `<span class="badge ${STATO_ISCRIZIONE_CLASSE[i.stato] || ""}">${STATO_ISCRIZIONE_LABEL[i.stato] || i.stato || "—"}</span>`;
+  const badgeOspite = i.tipo === "ospite" ? `<span class="badge">Ospite</span>` : "";
+  return `
+    <div class="candidato-row">
+      <span class="candidato-nome">
+        <strong style="color:var(--line-white);">${escapeHtml(i.cognome)} ${escapeHtml(i.nome)}</strong>
+        ${badgeStato}${badgeOspite}<br>
+        <span class="entry-meta">${orario}</span>
+      </span>
+      <button type="button" class="btn btn-ghost richieste-recenti-vedi-btn" data-corso="${corso.id}" style="width:auto;padding:4px 8px;font-size:0.66rem;">Vedi</button>
+    </div>
+  `;
+}
+
+// Riepilogo "in cima" di tutto ciò che è arrivato nelle ultime 24 ore,
+// qualunque sia lo stato attuale — per rintracciare in fretta una
+// richiesta senza dover aprire ogni corso uno per uno. Nascosta del tutto
+// se non c'è nulla di recente (niente titolo vuoto in cima alla pagina).
+function renderRichiesteRecenti() {
+  const sezione = document.getElementById("richieste-recenti-sezione");
+  let totale = 0;
+
+  const html = corsiCache.map(corso => {
+    const righe = richiesteRecentiPerCorso(corso);
+    if (righe.length === 0) return "";
+    totale += righe.length;
+    return `
+      <div class="row-label" style="margin:14px 0 6px;">${escapeHtml(corso.nome)}</div>
+      ${righe.map(i => richiestaRecenteRowHtml(i, corso)).join("")}
+    `;
+  }).join("");
+
+  if (totale === 0) {
+    sezione.classList.add("hidden");
+    return;
+  }
+
+  document.getElementById("richieste-recenti-count").textContent = `(${totale})`;
+  const listEl = document.getElementById("richieste-recenti-list");
+  listEl.innerHTML = html;
+  listEl.querySelectorAll(".richieste-recenti-vedi-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const corsoId = btn.dataset.corso;
+      const container = document.getElementById(`iscrizioni-${corsoId}`);
+      if (container && container.classList.contains("hidden")) {
+        await toggleIscrizioniCorso(corsoId);
+      }
+      document.querySelector(`.corso-card[data-id="${corsoId}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  });
+  sezione.classList.remove("hidden");
+}
+
 // Gruppi persistenti creati nel modulo di programmazione (programmazione-corso.html).
 // Collection piccola: si legge tutta e si filtra lato client come il resto del modulo.
 async function loadGruppiCorso() {
@@ -2234,6 +2313,7 @@ requireAuth(async (profile) => {
     await loadIscrizioniConfermate();
     await loadIscrizioniInAttesa();
     await loadGruppiCorso();
+    await loadRichiesteRecenti();
 
     document.getElementById("cerca-allievo-sezione").classList.remove("hidden");
     document.getElementById("cerca-allievo-input").addEventListener("input", renderRicercaAllievi);
@@ -2243,6 +2323,7 @@ requireAuth(async (profile) => {
 
   if (puoVedereIscrizioniAlmenoPadel) {
     aggiornaRiepiloghi();
+    renderRichiesteRecenti();
   }
 });
 

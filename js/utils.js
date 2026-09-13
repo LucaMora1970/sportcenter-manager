@@ -299,6 +299,14 @@ function compareCognomeNome(a, b) {
     || (a.nome || "").localeCompare(b.nome || "", "it", { sensitivity: "base" });
 }
 
+// Etichetta e classe badge per lo stato di un'iscrizione corso — prima
+// viveva solo in allievi.js, ora serve anche a corsi.js. Classi CSS
+// (css/style.css) invece di colori inline: solo così il verde
+// "confermata" resta leggibile anche in tema chiaro (vedi
+// :root[data-theme="light"] .badge-confermata).
+const STATO_ISCRIZIONE_LABEL = { in_attesa: "In attesa", confermata: "Confermata", annullata: "Annullata" };
+const STATO_ISCRIZIONE_CLASSE = { in_attesa: "badge-in-attesa", confermata: "badge-confermata", annullata: "badge-annullata" };
+
 function escapeHtml(str) {
   return String(str).replace(/[&<>"']/g, (c) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
