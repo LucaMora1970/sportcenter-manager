@@ -231,6 +231,10 @@ async function caricaDettaglioAllievo(id) {
   corsiAllievoCache = new Map(corsiDocs.filter(d => d.exists).map(d => [d.id, d.data()]));
   gruppiAllievoCache = new Map(gruppiDocs.filter(d => d.exists).map(d => [d.id, d.data()]));
 
+  // Se nel frattempo si è già cliccato un altro allievo (switch rapido tra
+  // schede), queste letture arrivate in ritardo non devono sovrascrivere
+  // il pannello con i dati dell'allievo sbagliato.
+  if (allievoSelezionatoId !== id) return;
   renderIscrizioniAllievo();
   renderComunicazioniAllievo();
 }
@@ -325,36 +329,52 @@ function renderComunicazioniAllievo() {
   }).join("");
 }
 
+// Popola scheda/titolo/bottoni e mostra il pannello — separata da
+// selectAllievo perché va eseguita sia subito (dati già in cache, per uno
+// switch percepito istantaneo anche passando da un allievo già aperto)
+// sia dopo la rilettura da Firestore (dati certamente aggiornati).
+function mostraAllievo(allievo) {
+  popolaFormAllievo(allievo);
+  document.getElementById("allievo-form-title").querySelector("h2").textContent = `Modifica ${allievo.nome} ${allievo.cognome}`;
+  // Eliminazione riservata al vero admin — vedi firestore.rules, stessa
+  // regola: chi ha solo allievi:gestisci non deve nemmeno vedere il
+  // bottone, non solo essere bloccato al click.
+  document.getElementById("allievo-delete-btn").classList.toggle("hidden", !isAdmin(currentProfile));
+  document.getElementById("allievo-stampa-btn").classList.remove("hidden");
+  document.getElementById("allievo-detail").classList.remove("hidden");
+  // Su desktop (≥900px) il pannello è già visibile a fianco della lista
+  // (vedi .allievi-layout in allievi.html): lo scroll ha senso solo in
+  // mobile, dove il dettaglio compare più sotto nella stessa colonna.
+  if (window.innerWidth < 900) {
+    document.getElementById("allievo-detail").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+}
+
 async function selectAllievo(id) {
   try {
-    const doc = await db.collection("allieviCorsi").doc(id).get();
-    if (!doc.exists) {
-      alert("Questo allievo non esiste più (potrebbe essere stato eliminato).");
-      return;
-    }
     allievoSelezionatoId = id;
-    const allievo = { id: doc.id, ...doc.data() };
-    popolaFormAllievo(allievo);
 
-    document.getElementById("allievo-form-title").querySelector("h2").textContent = `Modifica ${allievo.nome} ${allievo.cognome}`;
-    // Eliminazione riservata al vero admin — vedi firestore.rules, stessa
-    // regola: chi ha solo allievi:gestisci non deve nemmeno vedere il
-    // bottone, non solo essere bloccato al click.
-    document.getElementById("allievo-delete-btn").classList.toggle("hidden", !isAdmin(currentProfile));
-    document.getElementById("allievo-stampa-btn").classList.remove("hidden");
-    document.getElementById("allievo-detail").classList.remove("hidden");
-    // Su desktop (≥900px) il pannello è già visibile a fianco della lista
-    // (vedi .allievi-layout in allievi.html): lo scroll ha senso solo in
-    // mobile, dove il dettaglio compare più sotto nella stessa colonna.
-    if (window.innerWidth < 900) {
-      document.getElementById("allievo-detail").scrollIntoView({ behavior: "smooth", block: "start" });
-    }
+    // Mostra subito la scheda con i dati già in allieviCache (stessa
+    // collection/documenti usati per l'elenco): anche passando da un
+    // allievo già aperto a un altro, lo switch è istantaneo invece di
+    // aspettare la rilettura da Firestore sotto — che resta comunque, per
+    // intercettare un allievo eliminato nel frattempo o modificato altrove.
+    const daCache = allieviCache.find(a => a.id === id);
+    if (daCache) mostraAllievo(daCache);
 
     // Riflette l'id nell'URL, così il link a questo allievo è condivisibile
     // (nessun'altra pagina lo usa ancora, ma un link diretto deve funzionare).
     const url = new URL(location.href);
     url.searchParams.set("id", id);
     history.replaceState(null, "", url);
+
+    const doc = await db.collection("allieviCorsi").doc(id).get();
+    if (!doc.exists) {
+      alert("Questo allievo non esiste più (potrebbe essere stato eliminato).");
+      return;
+    }
+    if (allievoSelezionatoId !== id) return; // nel frattempo si è cliccato un altro allievo
+    mostraAllievo({ id: doc.id, ...doc.data() });
 
     await caricaDettaglioAllievo(id);
   } catch (err) {
