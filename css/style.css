@@ -440,6 +440,12 @@ main {
 :root[data-theme="light"] .badge-confermata { border-color: var(--ball-dim); color: var(--ball-dim); }
 :root[data-theme="light"] .badge-in-attesa { border-color: #8a6d00; color: #8a6d00; }
 
+/* Storico presenze (scheda allievo): stesso verde di "confermata", --danger
+   già temizzata per chiaro/scuro (vedi :root sopra). */
+.badge-presente { border-color: #7f9e4a; color: #c1e08f; }
+.badge-assente { border-color: var(--danger); color: var(--danger); }
+:root[data-theme="light"] .badge-presente { border-color: var(--ball-dim); color: var(--ball-dim); }
+
 /* Riga di chip che può andare a capo (gruppi/iscrizioni assegnati): gap
    invece del solo margin-right del badge, altrimenti tra una riga e
    l'altra dopo un a-capo i chip restano attaccati verticalmente. */

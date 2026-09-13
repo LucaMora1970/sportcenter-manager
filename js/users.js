@@ -21,6 +21,7 @@ const KNOWN_PERMISSIONS = [
   { id: "corsi:gestisci", label: "Corsi: creare e modificare" },
   { id: "corsi:gestisci_padel", label: "Corsi: creare e modificare (solo Padel)" },
   { id: "corsi:approva", label: "Corsi: approvare" },
+  { id: "corsi:presenze", label: "Corsi: registrare le presenze (maestri/capo corso)" },
   { id: "iscrizioni:gestisci", label: "Iscrizioni corsi: leggere e confermare/annullare (dati sensibili)" },
   { id: "iscrizioni:gestisci_padel", label: "Iscrizioni corsi: leggere e confermare/annullare (solo Padel)" },
   { id: "allievi:gestisci", label: "Gestire l'anagrafica allievi (dati sensibili, comunicazioni)" },

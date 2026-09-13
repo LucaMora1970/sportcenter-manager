@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Cambia password — Sport-OS</title>
+<title>Presenze — Sport-OS</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <script>if(localStorage.getItem("sportos-tema")==="light")document.documentElement.setAttribute("data-theme","light");var z=localStorage.getItem("sportos-zoom-testo");if(z&&z!=="0")document.documentElement.setAttribute("data-text-size",z);</script>
@@ -13,12 +13,26 @@
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0d1f30">
+<style>
+  .presenze-giorno-nav {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+    margin-bottom: 6px;
+  }
+  .presenze-giorno-nav .btn { width: auto; }
+  .presenze-giorno-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.9rem;
+    flex: 1 1 auto;
+    text-align: center;
+    text-transform: capitalize;
+  }
+</style>
 </head>
 <body>
-<div class="app">
+<div class="app app--wide">
 
   <div class="topbar">
-    <h1>Password</h1>
+    <h1>Presenze</h1>
     <div class="user-chip" id="user-chip">—</div>
     <div class="topbar-actions">
       <button type="button" class="topbar-link" id="testo-zoom-meno-btn" title="Rimpicciolisci testo" aria-label="Rimpicciolisci testo">A−</button>
@@ -30,26 +44,30 @@
 
   <main>
 
-    <div class="section-title"><h2>Cambia password</h2></div>
-    <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Per motivi di sicurezza devi confermare la password attuale.</p>
+    <div id="access-denied" class="empty-state hidden">
+      <div class="display">Accesso non consentito</div>
+      <p>Questa sezione è riservata a chi registra le presenze ai corsi.</p>
+    </div>
 
-    <form id="change-password-form">
-      <div class="field">
-        <label for="current-password">Password attuale</label>
-        <input type="password" id="current-password" required autocomplete="current-password">
+    <div id="presenze-content" class="hidden">
+
+      <div class="section-title"><h2>Presenze — gruppi confermati</h2></div>
+
+      <div class="presenze-giorno-nav">
+        <button type="button" class="btn btn-ghost" id="giorno-prev-btn">‹</button>
+        <div class="presenze-giorno-label" id="presenze-data-label">—</div>
+        <button type="button" class="btn btn-ghost" id="giorno-next-btn">›</button>
       </div>
-      <div class="field">
-        <label for="new-password">Nuova password</label>
-        <input type="password" id="new-password" required minlength="6" autocomplete="new-password" placeholder="almeno 6 caratteri">
+      <div class="presenze-giorno-nav">
+        <button type="button" class="btn btn-ghost" id="giorno-oggi-btn">Oggi</button>
+        <input type="date" id="presenze-data-input" style="width:auto;">
       </div>
-      <div class="field">
-        <label for="confirm-password">Conferma nuova password</label>
-        <input type="password" id="confirm-password" required minlength="6" autocomplete="new-password">
+
+      <div id="presenze-list">
+        <div class="empty-state"><div class="display">Caricamento…</div></div>
       </div>
-      <div class="error-msg" id="password-error"></div>
-      <div id="password-success" class="hidden" style="color:var(--ball);font-size:0.85rem;margin:-6px 0 14px;">Password aggiornata con successo.</div>
-      <button type="submit" class="btn btn-primary" id="change-password-btn">Aggiorna password</button>
-    </form>
+
+    </div>
 
   </main>
 
@@ -58,7 +76,8 @@
     <a href="resoconto.html">Resoconto</a>
     <a href="cassa.html">Cassa</a>
     <a href="corsi.html">Corsi</a>
-    <a href="presenze.html">Presenze</a>
+    <a href="presenze.html" class="active">Presenze</a>
+    <a href="allievi.html">Allievi</a>
     <a href="prenotazioni.html">Prenotazioni</a>
     <a href="piano-occupazione.html">Camp</a>
     <a href="soci.html">Soci</a>
@@ -76,9 +95,10 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
 <script src="js/firebase-config.js"></script>
 <script src="js/utils.js"></script>
 <script src="js/auth.js"></script>
-<script src="js/password.js"></script>
+<script src="js/presenze.js"></script>
 </body>
 </html>

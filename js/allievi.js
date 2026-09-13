@@ -17,6 +17,7 @@ let allieviCache = []; // [{id, nome, cognome, email, ...}] — caricata una vol
 let allievoSelezionatoId = null;
 let iscrizioniAllievoCache = [];
 let comunicazioniAllievoCache = [];
+let presenzeAllievoCache = [];
 let corsiAllievoCache = new Map();   // corsoId -> dati corso, solo per le iscrizioni in vista
 let gruppiAllievoCache = new Map();  // gruppoId -> dati gruppo, idem
 
@@ -207,17 +208,24 @@ function popolaFormAllievo(a) {
 async function caricaDettaglioAllievo(id) {
   const iscrizioniListEl = document.getElementById("allievo-iscrizioni-list");
   const comunicazioniListEl = document.getElementById("allievo-comunicazioni-list");
+  const presenzeListEl = document.getElementById("allievo-presenze-list");
   iscrizioniListEl.innerHTML = `<div class="empty-state"><div class="display">Caricamento…</div></div>`;
   comunicazioniListEl.innerHTML = `<div class="empty-state"><div class="display">Caricamento…</div></div>`;
+  presenzeListEl.innerHTML = `<div class="empty-state"><div class="display">Caricamento…</div></div>`;
 
-  const [iscrizioniSnap, comunicazioniSnap] = await Promise.all([
+  const [iscrizioniSnap, comunicazioniSnap, presenzeSnap] = await Promise.all([
     db.collection("iscrizioniCorsi").where("allievoId", "==", id).get(),
-    db.collection("allieviCorsi").doc(id).collection("comunicazioni").orderBy("createdAt", "desc").get()
+    db.collection("allieviCorsi").doc(id).collection("comunicazioni").orderBy("createdAt", "desc").get(),
+    db.collection("presenze").where("allievoId", "==", id).get()
   ]);
 
   iscrizioniAllievoCache = iscrizioniSnap.docs.map(d => ({ id: d.id, ...d.data() }))
     .sort((a, b) => (b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : 0) - (a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : 0));
   comunicazioniAllievoCache = comunicazioniSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  // Ordinata client-side (non orderBy di Firestore): stesso motivo di
+  // iscrizioniAllievoCache sopra, evita di dover creare un indice composito.
+  presenzeAllievoCache = presenzeSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (b.data || "").localeCompare(a.data || ""));
 
   // Corso (per durataSessioneMinuti/al) e gruppi assegnati (per nome/slot),
   // solo quelli citati dalle iscrizioni in vista — niente da caricare se
@@ -236,7 +244,28 @@ async function caricaDettaglioAllievo(id) {
   // il pannello con i dati dell'allievo sbagliato.
   if (allievoSelezionatoId !== id) return;
   renderIscrizioniAllievo();
+  renderPresenzeAllievo();
   renderComunicazioniAllievo();
+}
+
+function renderPresenzeAllievo() {
+  const el = document.getElementById("allievo-presenze-list");
+  if (presenzeAllievoCache.length === 0) {
+    el.innerHTML = `<div class="empty-state"><div class="display">—</div></div>`;
+    return;
+  }
+  el.innerHTML = presenzeAllievoCache.map(p => {
+    const data = p.data ? new Date(p.data + "T00:00:00").toLocaleDateString("it-CH") : "—";
+    return `
+      <div class="entry-card">
+        <div class="entry-main">
+          <span class="badge ${p.presente ? "badge-presente" : "badge-assente"}">${p.presente ? "Presente" : "Assente"}</span>
+          <div class="entry-tipo">${escapeHtml(p.corsoNome || "—")}</div>
+          <div class="entry-meta">${data}${p.orario ? " · " + escapeHtml(p.orario) : ""}${p.campo ? " · Campo " + escapeHtml(String(p.campo)) : ""}</div>
+        </div>
+      </div>
+    `;
+  }).join("");
 }
 
 function giornoLabel(id) {
@@ -379,12 +408,14 @@ function nuovoAllievo() {
   allievoSelezionatoId = null;
   iscrizioniAllievoCache = [];
   comunicazioniAllievoCache = [];
+  presenzeAllievoCache = [];
   document.getElementById("allievo-form").reset();
   document.getElementById("allievo-form-error").textContent = "";
   document.getElementById("allievo-form-title").querySelector("h2").textContent = "Nuovo allievo";
   document.getElementById("allievo-delete-btn").classList.add("hidden");
   document.getElementById("allievo-stampa-btn").classList.add("hidden");
   document.getElementById("allievo-iscrizioni-list").innerHTML = `<div class="empty-state"><div class="display">Disponibile dopo il salvataggio</div></div>`;
+  document.getElementById("allievo-presenze-list").innerHTML = `<div class="empty-state"><div class="display">Disponibile dopo il salvataggio</div></div>`;
   document.getElementById("allievo-comunicazioni-list").innerHTML = `<div class="empty-state"><div class="display">Disponibile dopo il salvataggio</div></div>`;
   document.getElementById("comunicazione-testo").value = "";
   document.getElementById("comunicazione-canale").value = "";

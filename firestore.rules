@@ -390,9 +390,12 @@ service cloud.firestore {
           )
         );
       // Lettura aperta anche a chi gestisce gli allievi (storico iscrizioni
-      // e indice chip/filtri in allievi.html) — scrittura resta riservata
-      // a chi gestisce le iscrizioni.
+      // e indice chip/filtri in allievi.html) e a chi registra le presenze
+      // (presenze.html, nomi degli iscritti al gruppo — non scoped per
+      // disciplina, un maestro/capo corso può insegnare qualunque corso) —
+      // scrittura resta riservata a chi gestisce le iscrizioni.
       allow read: if hasPermission("iscrizioni:gestisci") || hasPermission("allievi:gestisci")
+        || hasPermission("corsi:presenze")
         || (hasPermission("iscrizioni:gestisci_padel")
             && get(/databases/$(database)/documents/corsi/$(resource.data.corsoId)).data.disciplina == "padel");
       allow update, delete: if hasPermission("iscrizioni:gestisci")
@@ -412,6 +415,18 @@ service cloud.firestore {
       allow create: if hasPermission("iscrizioni:gestisci")
         || (hasPermission("iscrizioni:gestisci_padel")
             && get(/databases/$(database)/documents/corsi/$(request.resource.data.corsoId)).data.disciplina == "padel");
+    }
+
+    // Presenze ai corsi (presenze.html): un documento per gruppo+iscrizione
+    // +data, id deterministico lato client — "update" serve a correggere la
+    // stessa presenza (es. segnata Assente per errore), niente "delete": è
+    // un registro, si corregge non si cancella. corsi:presenze è il
+    // permesso dedicato a maestri/capo corso, pensato apposta per non dare
+    // loro iscrizioni:gestisci (dati sensibili); chi ha già iscrizioni:
+    // gestisci o corsi:gestisci non ha bisogno del permesso aggiuntivo.
+    match /presenze/{id} {
+      allow read, create, update: if hasPermission("corsi:presenze")
+        || hasPermission("iscrizioni:gestisci") || hasPermission("corsi:gestisci");
     }
 
     // Anagrafica centrale allievi (corsi), separata dalla collection
@@ -461,7 +476,11 @@ service cloud.firestore {
     // assegnato/i come chip sulla scheda), scrittura resta riservata a chi
     // gestisce le iscrizioni.
     match /gruppiCorso/{id} {
+      // Lettura aperta anche a chi registra le presenze (presenze.html,
+      // giorno/orario/campo/membri del gruppo — non scoped per disciplina,
+      // stesso motivo di iscrizioniCorsi sopra).
       allow read: if hasPermission("iscrizioni:gestisci") || hasPermission("allievi:gestisci")
+        || hasPermission("corsi:presenze")
         || (hasPermission("iscrizioni:gestisci_padel") && resource.data.disciplina == "padel");
       allow create: if hasPermission("iscrizioni:gestisci")
         || (hasPermission("iscrizioni:gestisci_padel") && request.resource.data.disciplina == "padel");
