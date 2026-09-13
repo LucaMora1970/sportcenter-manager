@@ -291,6 +291,14 @@ function tipoAttivitaLabelFor(entry) {
   return LEGACY_TIPI_ATTIVITA_LABELS[entry.tipoAttivita] || entry.tipoAttivita || "—";
 }
 
+// Comparatore standard per ordinare alfabeticamente liste di allievi/iscritti
+// in tutta l'app: cognome poi nome, locale "it", case/accenti insensibili.
+// Prima viveva solo in corsi.js (usato lì e in programmazione-corso.js).
+function compareCognomeNome(a, b) {
+  return (a.cognome || "").localeCompare(b.cognome || "", "it", { sensitivity: "base" })
+    || (a.nome || "").localeCompare(b.nome || "", "it", { sensitivity: "base" });
+}
+
 function escapeHtml(str) {
   return String(str).replace(/[&<>"']/g, (c) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"

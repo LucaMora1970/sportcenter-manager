@@ -515,13 +515,6 @@ function disponibilitaBreve(i) {
     .join(" · ");
 }
 
-// Stesso comparatore già usato in renderRicercaAllievi: cognome poi nome,
-// così le liste di iscritti/allievi si leggono in ordine alfabetico stabile.
-function compareCognomeNome(a, b) {
-  return (a.cognome || "").localeCompare(b.cognome || "", "it", { sensitivity: "base" })
-    || (a.nome || "").localeCompare(b.nome || "", "it", { sensitivity: "base" });
-}
-
 // Il semaforo di un candidato vale solo per lo slot per cui è stato messo
 // (semaforoGiorno/semaforoOrario): la stessa persona può comparire come
 // candidata in più slot se ha flaggato più disponibilità, e qui vogliamo

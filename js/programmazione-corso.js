@@ -243,9 +243,7 @@ function renderIscritti() {
   const statoLabel = { in_attesa: "In attesa", confermata: "Confermata", annullata: "Annullata" };
   const lista = iscrizioniProgrammabili()
     .filter(passaFiltri)
-    .sort((a, b) => (a.livello ?? 99) - (b.livello ?? 99)
-      || (etaDa(a.dataNascita) ?? 999) - (etaDa(b.dataNascita) ?? 999)
-      || (a.cognome || "").localeCompare(b.cognome || ""));
+    .sort(compareCognomeNome);
 
   if (lista.length === 0) {
     el.innerHTML = `<div class="empty-state"><div class="display">Nessun iscritto con questi filtri</div></div>`;
@@ -485,7 +483,7 @@ function renderGruppi() {
       const membri = g.membri
         .map(id => iscrizioni.find(i => i.id === id))
         .filter(Boolean)
-        .sort((a, b) => (a.livello ?? 99) - (b.livello ?? 99) || (etaDa(a.dataNascita) ?? 999) - (etaDa(b.dataNascita) ?? 999));
+        .sort(compareCognomeNome);
       const avvisi = avvisiGruppo(g);
       const cap = g.capienza ? `${membri.length} / ${g.capienza}` : `${membri.length}`;
       const capOltre = g.capienza && membri.length > g.capienza;
@@ -585,6 +583,9 @@ function generaProposta() {
     return;
   }
 
+  // Ordine per livello+età qui è l'algoritmo di proposta (decide chi viene
+  // assegnato per primo agli slot migliori) — diverso dall'ordine alfabetico
+  // usato nelle liste mostrate a schermo, non va confuso con quello.
   const candidati = iscrizioniProgrammabili()
     .filter(i => !etaFuoriRange(i))
     .slice()
@@ -836,7 +837,7 @@ function stampaProgrammazione() {
   let righe = "";
   attivi.forEach(g => {
     const membri = g.membri.map(id => iscrizioni.find(i => i.id === id)).filter(Boolean)
-      .sort((a, b) => (a.livello ?? 99) - (b.livello ?? 99) || (etaDa(a.dataNascita) ?? 999) - (etaDa(b.dataNascita) ?? 999));
+      .sort(compareCognomeNome);
     if (membri.length === 0) return;
     membri.forEach((i, idx) => {
       righe += `<tr>
