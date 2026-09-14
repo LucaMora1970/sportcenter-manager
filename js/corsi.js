@@ -17,6 +17,7 @@ let livelliCorsoCache = []; // [{livello, nome, ...}] attivi, per il <select> li
 let gruppiCorsoCache = []; // [{id, corsoId, giorno, orario, campo, ...}] dal modulo di programmazione
 let iscrizioniConfermateCache = [];
 let iscrizioniInAttesaCache = [];
+let iscrizioniListaAttesaCache = [];
 let richiesteRecentiCache = []; // iscrizioniCorsi con createdAt nelle ultime 24h, qualunque stato
 // Anagrafica condivisa allieviCorsi, usata per il collegamento iscrizione↔
 // allievo e per la ricerca in "Aggiungi ospite" — caricata pigramente (vedi
@@ -169,6 +170,7 @@ function leggiFormCorso() {
     minIscrittiConferma: num("corso-min-iscritti"),
     tokenizzazioneAttiva: document.getElementById("corso-tokenizzazione").checked,
     terminIscrizione: document.getElementById("corso-termine-iscrizione").value || null,
+    listaAttesaAttiva: document.getElementById("corso-lista-attesa").checked,
     ordine: num("corso-ordine"),
     condizioniGenerali: document.getElementById("corso-condizioni").value.trim(),
     livelloIstruttori,
@@ -250,6 +252,7 @@ function corsoCardHtml(c, { puoGestire, puoVedereIscrizioni, puoApprovare }) {
           <div class="entry-tipo">${escapeHtml(c.nome)}</div>
           ${puoVedereIscrizioni && c.approvato ? contatoreIscrittiHtml(c) : ""}
           ${terminIscrizioneHtml(c)}
+          ${c.listaAttesaAttiva ? `<span class="badge badge-lista-attesa">Lista d'attesa attiva</span>` : ""}
           ${c.forfettario
             ? `<div class="entry-meta">${formatDataBreve(c.dal)}${c.al ? " – " + formatDataBreve(c.al) : ""} · Forfait · CHF ${(c.prezzoRichiesto || 0).toFixed(2)}</div>`
             : `<div class="entry-meta">${formatDataBreve(c.dal)}${c.al ? " – " + formatDataBreve(c.al) : ""} · ${c.nrSessioni || "—"} sessioni da ${c.durataSessioneMinuti || "—"}' · campi: ${campiLabel}</div>
@@ -507,6 +510,12 @@ function nomeEta(i) {
   if (eta != null) dettagli.push(eta);
   if (i.nrOreDesiderate) dettagli.push(i.nrOreDesiderate + "h");
   return `${escapeHtml(i.nome)} ${escapeHtml(i.cognome)}${dettagli.length ? " (" + dettagli.join(" · ") + ")" : ""}`;
+}
+
+function livelloLabel(livello) {
+  if (livello == null) return null;
+  const l = livelliCorsoCache.find(x => String(x.livello) === String(livello));
+  return l ? `${l.livello} · ${l.nome}` : String(livello);
 }
 
 // Disponibilità dichiarata dall'iscritto, compatta: "Lun 08:00/09:00 · Mer 17:00".
@@ -1148,11 +1157,12 @@ function renderIscrizioniCorso(container, corso, iscrizioni) {
     <div class="dettaglio-giorni hidden" id="aggiungi-ospite-${corso.id}"></div>
   `;
 
-  const statoLabel = { in_attesa: "In attesa", confermata: "Confermata", annullata: "Annullata" };
+  const statoLabel = { in_attesa: "In attesa", confermata: "Confermata", annullata: "Annullata", lista_attesa: "In lista d'attesa" };
   const statoStyle = {
     in_attesa: "border-color:var(--chalk-grey-dim);color:var(--chalk-grey);",
     confermata: "border-color:#7f9e4a;color:#c1e08f;",
-    annullata: "border-color:var(--danger);color:var(--danger);"
+    annullata: "border-color:var(--danger);color:var(--danger);",
+    lista_attesa: "border-color:#7a8fd4;color:#a9b8ea;"
   };
   const combinazioni = combinazioniCorso(corso);
   const discipline = disciplineIscrizioniVisibili(currentProfile);
@@ -1164,7 +1174,7 @@ function renderIscrizioniCorso(container, corso, iscrizioni) {
     ? `<div class="empty-state"><div class="display">Nessuna iscrizione ricevuta</div></div>`
     : iscrizioniOrdinate.map(i => {
       const disponibilitaLabel = disponibilitaBreve(i) || "—";
-      const eta = etaDa(i.dataNascita);
+      const eta = etaDa(i.dataNascita) ?? i.eta;
       const disponibileSet = new Set(Object.entries(i.disponibilita || {}).flatMap(([g, orari]) => orari.map(o => `${g}|${o}`)));
 
       const piuCampi = (corso.campiNumeri || []).length > 1;
@@ -1182,8 +1192,9 @@ function renderIscrizioniCorso(container, corso, iscrizioni) {
             <span class="badge" style="${statoStyle[i.stato] || statoStyle.in_attesa}">${statoLabel[i.stato] || i.stato}</span>
             <div class="entry-tipo">${escapeHtml(i.nome)} ${escapeHtml(i.cognome)}${eta != null ? " · " + eta + " anni" : ""}</div>
             ${i.inseritaDaStaff ? `<div class="entry-meta">Inserita dallo staff (${escapeHtml(i.inseritaDaNome || "—")})</div>` : ""}
-            <div class="entry-meta">${escapeHtml(i.email)}${i.nrOreDesiderate ? " · " + i.nrOreDesiderate + "h/sett." : ""}${i.scuolaFrequentata ? " · " + escapeHtml(i.scuolaFrequentata) : ""}</div>
+            <div class="entry-meta">${escapeHtml(i.email)}${i.telefono ? " · " + escapeHtml(i.telefono) : ""}${i.nrOreDesiderate ? " · " + i.nrOreDesiderate + "h/sett." : ""}${i.scuolaFrequentata ? " · " + escapeHtml(i.scuolaFrequentata) : ""}</div>
             ${i.nomeGenitore || i.telefonoGenitore ? `<div class="entry-meta">Genitore: ${escapeHtml(i.nomeGenitore || "—")}${i.telefonoGenitore ? " · " + escapeHtml(i.telefonoGenitore) : ""}</div>` : ""}
+            ${i.livello != null ? `<div class="entry-meta">Livello: ${escapeHtml(livelloLabel(i.livello) || "—")}</div>` : ""}
             <div class="entry-meta">Disponibilità: ${disponibilitaLabel}</div>
             ${i.stato === "confermata" && i.giornoAssegnato ? `<div class="entry-meta">Assegnato: ${(GIORNI_SETTIMANA.find(x => x.id === i.giornoAssegnato) || {}).label || i.giornoAssegnato} ${i.orarioAssegnato}${i.campoAssegnato ? " · Campo " + escapeHtml(i.campoAssegnato) : ""}</div>` : ""}
             ${i.stato === "annullata" && i.motivoRifiuto ? `<div class="entry-meta">Motivo: ${escapeHtml(i.motivoRifiuto)}</div>` : ""}
@@ -1194,8 +1205,9 @@ function renderIscrizioniCorso(container, corso, iscrizioni) {
           </div>
           <div style="display:flex;flex-direction:column;gap:6px;">
             ${selectSlot}
+            ${i.stato === "lista_attesa" ? `<button class="btn btn-primary inserisci-lista-attesa-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}" data-corso="${corso.id}" data-nome="${escapeHtml(i.nome + " " + i.cognome)}">Inserisci nel corso</button>` : ""}
             ${i.stato === "in_attesa" ? `<button class="btn btn-primary conferma-iscrizione-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}" data-corso="${corso.id}" data-nome="${escapeHtml(i.nome + " " + i.cognome)}" data-email="${escapeHtml(i.email || "")}">${corso.forfettario ? "Conferma iscrizione" : "Conferma in questo slot"}</button>` : ""}
-            ${i.stato === "in_attesa" ? `<button class="btn btn-danger annulla-iscrizione-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}" data-corso="${corso.id}" data-nome="${escapeHtml(i.nome + " " + i.cognome)}" data-email="${escapeHtml(i.email || "")}">Rifiuta</button>` : ""}
+            ${i.stato === "in_attesa" || i.stato === "lista_attesa" ? `<button class="btn btn-danger annulla-iscrizione-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}" data-corso="${corso.id}" data-nome="${escapeHtml(i.nome + " " + i.cognome)}" data-email="${escapeHtml(i.email || "")}">Rifiuta</button>` : ""}
             ${i.stato !== "annullata" && altriCorsi.length > 0 ? `
               <select class="sposta-corso-select" data-id="${i.id}" style="font-size:0.72rem;padding:6px 8px;">
                 <option value="">Sposta al corso…</option>
@@ -1226,6 +1238,9 @@ function renderIscrizioniCorso(container, corso, iscrizioni) {
   });
   container.querySelectorAll(".annulla-iscrizione-btn").forEach(btn => {
     btn.addEventListener("click", () => rifiutaIscrizione(btn.dataset.id, btn.dataset.corso, btn.dataset.nome, btn.dataset.email));
+  });
+  container.querySelectorAll(".inserisci-lista-attesa-btn").forEach(btn => {
+    btn.addEventListener("click", () => inserisciListaAttesaNelCorso(btn.dataset.id, btn.dataset.corso, btn.dataset.nome));
   });
   container.querySelectorAll(".modifica-iscrizione-btn").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -1581,6 +1596,26 @@ async function rifiutaIscrizione(iscrizioneId, corsoId, nome, email) {
   }
 }
 
+// Richiesta di lista d'attesa che il capocorso, dopo aver ricontattato
+// l'interessato, ritiene piazzabile in questo corso: la fa rientrare nel
+// normale flusso "in attesa" → conferma su uno slot, esattamente come una
+// qualunque altra iscrizione arrivata dal modulo pubblico. Non tocca il
+// livello/disponibilità già raccolti in fase di lista d'attesa.
+async function inserisciListaAttesaNelCorso(iscrizioneId, corsoId, nome) {
+  try {
+    await db.collection("iscrizioniCorsi").doc(iscrizioneId).update({
+      stato: "in_attesa",
+      gestitaDaUid: currentProfile.uid,
+      gestitaDaNome: currentProfile.nome
+    });
+    await registraLog(iscrizioneId, corsoId, nome, "inserito_da_lista_attesa", "Spostato dalla lista d'attesa alle iscrizioni in attesa di conferma");
+    await ricaricaIscrizioniCorso(corsoId);
+    await aggiornaContatoriDopoModifica(corsoId);
+  } catch (err) {
+    showError(document.getElementById("corsi-list-error"), "Errore: " + err.message);
+  }
+}
+
 // ---------- Riepilogo giornaliero/settimanale (gruppi confermati) ----------
 
 async function loadIscrizioniConfermate() {
@@ -1591,6 +1626,11 @@ async function loadIscrizioniConfermate() {
 async function loadIscrizioniInAttesa() {
   const snap = await db.collection("iscrizioniCorsi").where("stato", "==", "in_attesa").get();
   iscrizioniInAttesaCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+async function loadIscrizioniListaAttesa() {
+  const snap = await db.collection("iscrizioniCorsi").where("stato", "==", "lista_attesa").get();
+  iscrizioniListaAttesaCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
 // Tutte le iscrizioni create nelle ultime 24h, qualunque sia il loro stato
@@ -1695,13 +1735,14 @@ async function loadGruppiCorso() {
 function conteggioIscrittiCorso(corsoId) {
   const confermati = iscrizioniConfermateCache.filter(i => i.corsoId === corsoId).length;
   const inAttesa = iscrizioniInAttesaCache.filter(i => i.corsoId === corsoId).length;
-  return { confermati, inAttesa, totale: confermati + inAttesa };
+  const listaAttesa = iscrizioniListaAttesaCache.filter(i => i.corsoId === corsoId).length;
+  return { confermati, inAttesa, listaAttesa, totale: confermati + inAttesa };
 }
 
 function contatoreIscrittiHtml(corso) {
-  const { confermati, inAttesa, totale } = conteggioIscrittiCorso(corso.id);
+  const { confermati, inAttesa, listaAttesa, totale } = conteggioIscrittiCorso(corso.id);
   const bastante = corso.minIscrittiConferma && confermati >= corso.minIscrittiConferma;
-  return `<span class="badge" id="corso-contatore-${corso.id}" style="${bastante ? "border-color:#7f9e4a;color:#c1e08f;" : ""}">${totale} iscritt${totale === 1 ? "o" : "i"} (${confermati} conf. · ${inAttesa} in attesa)</span>`;
+  return `<span class="badge" id="corso-contatore-${corso.id}" style="${bastante ? "border-color:#7f9e4a;color:#c1e08f;" : ""}">${totale} iscritt${totale === 1 ? "o" : "i"} (${confermati} conf. · ${inAttesa} in attesa)</span>${listaAttesa > 0 ? `<span class="badge badge-lista-attesa">${listaAttesa} in lista d'attesa</span>` : ""}`;
 }
 
 // Data di chiusura iscrizioni ben visibile in elenco, colorata in base
@@ -1738,6 +1779,7 @@ function aggiornaContatoreCorso(corsoId) {
 async function aggiornaContatoriDopoModifica(corsoId) {
   await loadIscrizioniConfermate();
   await loadIscrizioniInAttesa();
+  await loadIscrizioniListaAttesa();
   aggiornaContatoreCorso(corsoId);
   if (hasPermission(currentProfile, "iscrizioni:gestisci") || hasPermission(currentProfile, "iscrizioni:gestisci_padel")) aggiornaRiepiloghi();
 }
@@ -2042,10 +2084,10 @@ async function stampaListaCorso(corsoId) {
     .map(d => ({ id: d.id, ...d.data() }))
     .sort((a, b) => (a.cognome || "").localeCompare(b.cognome || ""));
 
-  const statoLabel = { in_attesa: "In attesa", confermata: "Confermata", annullata: "Annullata" };
+  const statoLabel = { in_attesa: "In attesa", confermata: "Confermata", annullata: "Annullata", lista_attesa: "In lista d'attesa" };
 
   const righe = iscrizioni.map(i => {
-    const eta = etaDa(i.dataNascita);
+    const eta = etaDa(i.dataNascita) ?? i.eta;
     const slot = i.stato === "confermata" && i.giornoAssegnato
       ? `${(GIORNI_SETTIMANA.find(g => g.id === i.giornoAssegnato) || {}).label || i.giornoAssegnato} ${i.orarioAssegnato}${i.campoAssegnato ? " Campo " + i.campoAssegnato : ""}`
       : "—";
@@ -2056,7 +2098,7 @@ async function stampaListaCorso(corsoId) {
         <td>${statoLabel[i.stato] || i.stato}</td>
         <td>${slot}</td>
         <td>${escapeHtml(i.email || "")}</td>
-        <td>${escapeHtml(i.telefonoGenitore || "")}</td>
+        <td>${escapeHtml(i.telefonoGenitore || i.telefono || "")}</td>
       </tr>
     `;
   }).join("");
@@ -2083,7 +2125,8 @@ const AZIONE_LABEL = {
   spostato: "Spostato corso",
   modificato: "Iscrizione modificata",
   livello_impostato: "Livello impostato",
-  raggruppato: "Gruppi aggiornati"
+  raggruppato: "Gruppi aggiornati",
+  inserito_da_lista_attesa: "Inserito dalla lista d'attesa"
 };
 
 async function toggleStoricoCorso(corsoId) {
@@ -2154,6 +2197,7 @@ function startEditCorso(corso) {
   document.getElementById("corso-min-iscritti").value = corso.minIscrittiConferma != null ? corso.minIscrittiConferma : "";
   document.getElementById("corso-tokenizzazione").checked = corso.tokenizzazioneAttiva !== false;
   document.getElementById("corso-termine-iscrizione").value = corso.terminIscrizione || "";
+  document.getElementById("corso-lista-attesa").checked = corso.listaAttesaAttiva === true;
   document.getElementById("corso-ordine").value = corso.ordine != null ? corso.ordine : "";
   document.getElementById("corso-condizioni").value = corso.condizioniGenerali || "";
   document.getElementById("corso-liv-maestro").checked = (corso.livelloIstruttori || []).includes("maestro");
@@ -2312,6 +2356,7 @@ requireAuth(async (profile) => {
     document.getElementById("stampa-settimanale-btn").addEventListener("click", stampaRiepilogoSettimanale);
     await loadIscrizioniConfermate();
     await loadIscrizioniInAttesa();
+    await loadIscrizioniListaAttesa();
     await loadGruppiCorso();
     await loadRichiesteRecenti();
 

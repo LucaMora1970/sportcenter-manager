@@ -437,8 +437,10 @@ main {
 .badge-confermata { border-color: #7f9e4a; color: #c1e08f; }
 .badge-in-attesa { border-color: #d4b83a; color: #d4b83a; }
 .badge-annullata { border-color: var(--chalk-grey-dim); color: var(--chalk-grey); }
+.badge-lista-attesa { border-color: #7a8fd4; color: #a9b8ea; }
 :root[data-theme="light"] .badge-confermata { border-color: var(--ball-dim); color: var(--ball-dim); }
 :root[data-theme="light"] .badge-in-attesa { border-color: #8a6d00; color: #8a6d00; }
+:root[data-theme="light"] .badge-lista-attesa { border-color: #3a4f9e; color: #3a4f9e; }
 
 /* Storico presenze (scheda allievo): stesso verde di "confermata", --danger
    già temizzata per chiaro/scuro (vedi :root sopra). */

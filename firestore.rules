@@ -352,6 +352,26 @@ service cloud.firestore {
         && !("quotaOspiteCorsoRiferimentoId" in request.resource.data);
     }
 
+    // Lista d'attesa (iscrizioni chiuse ma il capocorso resta disponibile a
+    // valutare un posto singolo che si libera): ramo pubblico separato,
+    // volutamente più leggero di campiIscrizioneMinimi() — niente
+    // disponibilità/ore/indirizzo/condizioni, solo il minimo per poter
+    // essere ricontattati. Il corso deve avere listaAttesaAttiva == true
+    // (deciso dallo staff in Corsi, non un flag che il richiedente può
+    // scegliere da sé) altrimenti chiunque potrebbe scrivere una richiesta
+    // su un corso che non la prevede.
+    function campiListaAttesaMinimi() {
+      return request.resource.data.corsoId is string
+        && exists(/databases/$(database)/documents/corsi/$(request.resource.data.corsoId))
+        && get(/databases/$(database)/documents/corsi/$(request.resource.data.corsoId)).data.approvato == true
+        && get(/databases/$(database)/documents/corsi/$(request.resource.data.corsoId)).data.listaAttesaAttiva == true
+        && request.resource.data.nome is string && request.resource.data.nome.size() > 0
+        && request.resource.data.cognome is string && request.resource.data.cognome.size() > 0
+        && emailValida(request.resource.data.email)
+        && request.resource.data.eta is int
+        && request.resource.data.stato == "lista_attesa";
+    }
+
     match /iscrizioniCorsi/{id} {
       allow create: if
         (
@@ -368,6 +388,13 @@ service cloud.firestore {
               && request.resource.data.telefonoGenitore is string && request.resource.data.telefonoGenitore.size() > 0
             )
           )
+          && nessunCampoAllievoOspite()
+        )
+        ||
+        (
+          // Ramo pubblico lista d'attesa: nessun prezzo/slot in gioco, solo
+          // una richiesta di contatto — vedi campiListaAttesaMinimi().
+          campiListaAttesaMinimi()
           && nessunCampoAllievoOspite()
         )
         ||
@@ -469,10 +496,12 @@ service cloud.firestore {
 
     // Scala di livello/capacità degli allievi dei corsi (1–10 con etichette
     // libere), configurata in Configurazione → Livelli corso. Non è un dato
-    // sensibile ma non serve al pubblico: lettura ai soli utenti loggati,
-    // scrittura a chi gestisce la configurazione.
+    // sensibile — lettura pubblica perché il modulo di lista d'attesa
+    // (iscrizione-corso.html, nessun login) deve poter mostrare le stesse
+    // etichette di livello usate dallo staff; scrittura a chi gestisce la
+    // configurazione.
     match /livelliCorso/{id} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow write: if hasPermission("config:gestisci");
     }
 

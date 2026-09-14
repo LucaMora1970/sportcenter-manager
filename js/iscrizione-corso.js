@@ -11,7 +11,10 @@
 // ============================================================
 
 let corsiApertiCache = [];
+let corsiListaAttesaCache = [];
+let livelliCorsoPubbliciCache = [];
 let corsoSelezionato = null;
+let corsoListaAttesaSelezionato = null;
 let staffProfile = null;
 
 // La pagina resta pubblica (nessun requireAuth/redirect), ma se chi la
@@ -68,28 +71,76 @@ function syncGenitoreObbligatorio() {
   document.getElementById("isc-telgenitore").required = minorenne;
 }
 
+async function loadLivelliCorsoPubblico() {
+  try {
+    const snap = await db.collection("livelliCorso").get();
+    livelliCorsoPubbliciCache = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(l => l.attivo !== false)
+      .sort((a, b) => (a.ordine ?? a.livello ?? 99) - (b.ordine ?? b.livello ?? 99));
+  } catch {
+    livelliCorsoPubbliciCache = [];
+  }
+}
+
 async function loadCorsiAperti() {
   const list = document.getElementById("corsi-aperti-list");
   list.innerHTML = `<div class="empty-state"><div class="display">Caricamento…</div></div>`;
 
   await loadDiscipline();
   await loadFotoDiscipline();
+  await loadLivelliCorsoPubblico();
 
   const snap = await db.collection("corsi").where("approvato", "==", true).get();
+  const tutti = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   const oggi = todayISO();
-  corsiApertiCache = snap.docs
-    .map(d => ({ id: d.id, ...d.data() }))
+  corsiApertiCache = tutti
     .filter(c => c.attivo !== false && (!c.terminIscrizione || c.terminIscrizione >= oggi))
     .sort((a, b) => (a.ordine ?? Infinity) - (b.ordine ?? Infinity) || a.dal.localeCompare(b.dal));
 
+  // Corsi con iscrizioni ormai chiuse ma per cui lo staff accetta comunque
+  // richieste di lista d'attesa (posto singolo che potrebbe liberarsi).
+  corsiListaAttesaCache = tutti
+    .filter(c => c.attivo !== false && c.listaAttesaAttiva === true && !corsiApertiCache.some(o => o.id === c.id))
+    .sort((a, b) => (a.ordine ?? Infinity) - (b.ordine ?? Infinity) || a.dal.localeCompare(b.dal));
+
   renderCorsiAperti();
+  renderCorsiListaAttesa();
 
   // Link diretto (?corso=ID, generato dallo staff in Corsi): se il corso è
   // tra quelli aperti alle iscrizioni si passa dritti al form, altrimenti
-  // (non più approvato/aperto) resta il solito elenco.
+  // se accetta lista d'attesa si passa dritti a quel form più leggero.
   const corsoId = new URLSearchParams(location.search).get("corso");
   const corsoDaLink = corsoId ? corsiApertiCache.find(c => c.id === corsoId) : null;
+  const corsoListaAttesaDaLink = !corsoDaLink && corsoId ? corsiListaAttesaCache.find(c => c.id === corsoId) : null;
   if (corsoDaLink) selezionaCorso(corsoDaLink);
+  else if (corsoListaAttesaDaLink) selezionaCorsoListaAttesa(corsoListaAttesaDaLink);
+}
+
+function corsoListaAttesaCardHtml(c) {
+  return `
+    <div class="entry-card">
+      <div class="entry-main">
+        <span class="badge ${c.disciplina}">${escapeHtml(disciplinaLabel(c.disciplina))}</span>
+        <div class="entry-tipo">${escapeHtml(c.nome)}</div>
+        <div class="entry-meta">${formatDataBreve(c.dal)}${c.al ? " – " + formatDataBreve(c.al) : ""}</div>
+        <div class="entry-meta">Iscrizioni chiuse — solo lista d'attesa</div>
+      </div>
+      <button type="button" class="btn btn-ghost seleziona-corso-lista-attesa-btn" style="width:auto;padding:10px 16px;font-size:0.75rem;" data-id="${c.id}">Richiedi lista d'attesa</button>
+    </div>
+  `;
+}
+
+function renderCorsiListaAttesa() {
+  const wrap = document.getElementById("corsi-lista-attesa-wrap");
+  const list = document.getElementById("corsi-lista-attesa-list");
+  wrap.classList.toggle("hidden", corsiListaAttesaCache.length === 0);
+  if (corsiListaAttesaCache.length === 0) return;
+
+  list.innerHTML = corsiListaAttesaCache.map(corsoListaAttesaCardHtml).join("");
+  list.querySelectorAll(".seleziona-corso-lista-attesa-btn").forEach(btn => {
+    btn.addEventListener("click", () => selezionaCorsoListaAttesa(corsiListaAttesaCache.find(c => c.id === btn.dataset.id)));
+  });
 }
 
 // Foto disciplina configurata in Configurazione → Foto discipline (stesso
@@ -221,6 +272,101 @@ function tornaAllaScelta() {
   document.getElementById("step-scelta").classList.remove("hidden");
 }
 
+function selezionaCorsoListaAttesa(corso) {
+  if (!corso) return;
+  corsoListaAttesaSelezionato = corso;
+
+  document.getElementById("la-corso-nome").textContent = corso.nome;
+
+  const livelloSelect = document.getElementById("la-livello");
+  livelloSelect.innerHTML = `<option value="">Non so / non indicato</option>`
+    + livelliCorsoPubbliciCache.map(l => `<option value="${l.livello}">${l.livello} · ${escapeHtml(l.nome)}</option>`).join("");
+
+  // Disponibilità: ha senso solo se il corso propone davvero delle
+  // combinazioni giorno/orario (niente per i forfettari, che non ne hanno).
+  const disponibilitaEl = document.getElementById("la-disponibilita-list");
+  const giorniConOrari = GIORNI_SETTIMANA.filter(g => (corso.giorniOrari || {})[g.id]?.length > 0);
+  document.getElementById("la-field-disponibilita").classList.toggle("hidden", giorniConOrari.length === 0);
+  disponibilitaEl.innerHTML = giorniConOrari.map(g => `
+    <div class="giorno-orari-block">
+      <div class="row-label" style="margin:14px 0 6px;">${g.label}</div>
+      <div class="checkbox-list">
+        ${corso.giorniOrari[g.id].map(o => `
+          <div class="checkbox-row">
+            <input type="checkbox" class="la-disponibilita-cb" data-giorno="${g.id}" value="${o}" id="la-disp-${g.id}-${o}">
+            <label for="la-disp-${g.id}-${o}">${o}</label>
+          </div>
+        `).join("")}
+      </div>
+    </div>
+  `).join("");
+
+  document.getElementById("step-scelta").classList.add("hidden");
+  document.getElementById("step-lista-attesa-form").classList.remove("hidden");
+  document.getElementById("lista-attesa-form").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function tornaAllaSceltaListaAttesa() {
+  corsoListaAttesaSelezionato = null;
+  document.getElementById("lista-attesa-form").reset();
+  document.getElementById("step-lista-attesa-form").classList.add("hidden");
+  document.getElementById("step-scelta").classList.remove("hidden");
+}
+
+async function onSubmitListaAttesa(e) {
+  e.preventDefault();
+  if (!corsoListaAttesaSelezionato) return;
+
+  const btn = document.getElementById("lista-attesa-save-btn");
+  const errorEl = document.getElementById("lista-attesa-form-error");
+  errorEl.innerHTML = "";
+  btn.disabled = true;
+  btn.textContent = "Invio…";
+
+  try {
+    const eta = parseInt(document.getElementById("la-eta").value, 10);
+    if (!Number.isInteger(eta) || eta < 0) {
+      showError(errorEl, "Inserisci un'età valida.");
+      btn.disabled = false;
+      btn.textContent = "Invia richiesta";
+      return;
+    }
+
+    const disponibilita = {};
+    document.querySelectorAll(".la-disponibilita-cb:checked").forEach(cb => {
+      const g = cb.dataset.giorno;
+      if (!disponibilita[g]) disponibilita[g] = [];
+      disponibilita[g].push(cb.value);
+    });
+
+    const livelloRaw = document.getElementById("la-livello").value;
+
+    await db.collection("iscrizioniCorsi").add({
+      corsoId: corsoListaAttesaSelezionato.id,
+      corsoNome: corsoListaAttesaSelezionato.nome,
+      nome: document.getElementById("la-nome").value.trim(),
+      cognome: document.getElementById("la-cognome").value.trim(),
+      eta,
+      livello: livelloRaw !== "" ? parseInt(livelloRaw, 10) : null,
+      email: document.getElementById("la-email").value.trim(),
+      telefono: document.getElementById("la-telefono").value.trim(),
+      disponibilita,
+      stato: "lista_attesa",
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      ...(staffProfile ? { inseritaDaStaff: true, inseritaDaUid: staffProfile.uid, inseritaDaNome: staffProfile.nome } : {})
+    });
+
+    document.getElementById("step-lista-attesa-form").classList.add("hidden");
+    document.getElementById("step-lista-attesa-fatto").classList.remove("hidden");
+    document.getElementById("step-lista-attesa-fatto").scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (err) {
+    showError(errorEl, "Errore nell'invio: " + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Invia richiesta";
+  }
+}
+
 async function onSubmitIscrizione(e) {
   e.preventDefault();
   if (!corsoSelezionato) return;
@@ -330,6 +476,8 @@ async function avviaSalvataggioCarta(iscrizioneId) {
 document.getElementById("cambia-corso-btn").addEventListener("click", tornaAllaScelta);
 document.getElementById("iscrizione-form").addEventListener("submit", onSubmitIscrizione);
 document.getElementById("isc-datanascita").addEventListener("change", syncGenitoreObbligatorio);
+document.getElementById("la-cambia-corso-btn").addEventListener("click", tornaAllaSceltaListaAttesa);
+document.getElementById("lista-attesa-form").addEventListener("submit", onSubmitListaAttesa);
 
 (async function () {
   await loadDatiCentro();

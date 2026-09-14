@@ -564,6 +564,12 @@
       </div>
 
       <div class="voce">
+        <span class="dove">Corsi → creazione/modifica → checkbox "Accetta richieste in lista d'attesa"</span>
+        <div class="cosa">Raccogliere richieste quando le iscrizioni sono ormai chiuse</div>
+        <div class="come">Pensato per un corso con iscrizioni chiuse (termine passato) ma dove potrebbe comunque liberarsi un posto singolo in un gruppo — o per rinuncia/infortunio di un iscritto. Attivando il toggle, <code>iscrizione-corso.html</code> mostra questo corso in una sezione separata "Corsi con iscrizioni chiuse": chi è interessato lascia nome, età, email, telefono, livello di gioco ed eventuale disponibilità giorni/orari (nessun prezzo mostrato, nessuno slot assegnato — è solo una richiesta di contatto). La richiesta arriva con stato "In lista d'attesa" nel pannello Iscrizioni del corso; il capocorso la ricontatta e, se c'è margine, preme <strong>"Inserisci nel corso"</strong> — la fa rientrare tra le iscrizioni "in attesa" normali, da lì in poi si conferma su uno slot come qualunque altra iscrizione (prezzo e collocazione si decidono solo a questo punto). "Rifiuta" resta disponibile per chiudere una richiesta che non troverà posto. Le richieste in lista d'attesa non contano nei contatori "conferma minimo iscritti" del corso, ma compaiono con un badge dedicato accanto al contatore normale.</div>
+      </div>
+
+      <div class="voce">
         <span class="dove">Corsi → pannello "Iscrizioni" di un corso, oppure "Cerca allievo" → bottone "Modifica" (permesso <code>iscrizioni:gestisci</code> / <code>iscrizioni:gestisci_padel</code>)</span>
         <div class="cosa">Correggere i dati di un'iscrizione già inviata</div>
         <div class="come">Apre un form con tutti i campi del modulo pubblico — anagrafica, contatti, ore/settimana desiderate, <strong>livello</strong> e disponibilità giorni/orari (queste ultime tre solo per i corsi non forfettari). Funziona sia sulle iscrizioni in attesa sia su quelle confermate. Ogni salvataggio lascia una riga nello Storico del corso ("Iscrizione modificata" con l'elenco dei campi cambiati, chi e quando). Non tocca lo stato, lo slot assegnato o il pagamento: per i corsi normali il prezzo è a livello di corso, quindi cambiare le ore non modifica l'importo dovuto.</div>

@@ -304,8 +304,8 @@ function compareCognomeNome(a, b) {
 // (css/style.css) invece di colori inline: solo così il verde
 // "confermata" resta leggibile anche in tema chiaro (vedi
 // :root[data-theme="light"] .badge-confermata).
-const STATO_ISCRIZIONE_LABEL = { in_attesa: "In attesa", confermata: "Confermata", annullata: "Annullata" };
-const STATO_ISCRIZIONE_CLASSE = { in_attesa: "badge-in-attesa", confermata: "badge-confermata", annullata: "badge-annullata" };
+const STATO_ISCRIZIONE_LABEL = { in_attesa: "In attesa", confermata: "Confermata", annullata: "Annullata", lista_attesa: "In lista d'attesa" };
+const STATO_ISCRIZIONE_CLASSE = { in_attesa: "badge-in-attesa", confermata: "badge-confermata", annullata: "badge-annullata", lista_attesa: "badge-lista-attesa" };
 
 function escapeHtml(str) {
   return String(str).replace(/[&<>"']/g, (c) => ({

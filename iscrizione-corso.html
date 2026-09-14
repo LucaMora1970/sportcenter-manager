@@ -50,6 +50,12 @@
       <div id="corsi-aperti-list">
         <div class="empty-state"><div class="display">Caricamento…</div></div>
       </div>
+
+      <div id="corsi-lista-attesa-wrap" class="hidden" style="margin-top:28px;">
+        <div class="section-title"><h2>Corsi con iscrizioni chiuse</h2></div>
+        <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Le iscrizioni sono chiuse, ma potrebbe liberarsi un posto singolo in qualche gruppo. Lascia i tuoi dati: il capocorso ti ricontatterà per valutare assieme la disponibilità — prezzo ed eventuale collocazione si definiscono solo a quel momento.</p>
+        <div id="corsi-lista-attesa-list"></div>
+      </div>
     </div>
 
     <div id="step-form" class="hidden">
@@ -159,6 +165,63 @@
         <p style="color:var(--chalk-grey);font-size:0.85rem;">Vuoi salvare la carta ora, cosicché — se il corso parte — l'importo venga addebitato in automatico senza doverci pensare? È facoltativo: se preferisci, riceverai comunque un link di pagamento quando il corso sarà confermato.</p>
         <button type="button" class="btn btn-primary" id="salva-carta-btn" style="width:auto;padding:10px 16px;">Salva carta ora (facoltativo)</button>
         <div class="error-msg" id="salva-carta-error" style="margin-top:18px;"></div>
+      </div>
+    </div>
+
+    <div id="step-lista-attesa-form" class="hidden">
+      <div class="section-title"><h2 id="la-corso-nome">Lista d'attesa</h2></div>
+      <p style="color:var(--chalk-grey);font-size:0.85rem;margin:-6px 0 16px;">Le iscrizioni a questo corso sono chiuse. Lasciaci i tuoi dati: se si libera un posto singolo compatibile, il capocorso ti ricontatterà per valutare assieme la disponibilità. Nessun costo né posto viene assegnato ora.</p>
+      <button type="button" class="btn btn-ghost" id="la-cambia-corso-btn" style="margin-bottom:18px;">← Scegli un altro corso</button>
+
+      <form id="lista-attesa-form">
+        <div class="row2">
+          <div class="field">
+            <label for="la-nome">Nome</label>
+            <input type="text" id="la-nome" required>
+          </div>
+          <div class="field">
+            <label for="la-cognome">Cognome</label>
+            <input type="text" id="la-cognome" required>
+          </div>
+        </div>
+
+        <div class="row2">
+          <div class="field" style="flex:0 0 110px;">
+            <label for="la-eta">Età</label>
+            <input type="number" id="la-eta" min="0" max="120" step="1" required>
+          </div>
+          <div class="field">
+            <label for="la-livello">Livello di gioco</label>
+            <select id="la-livello"><option value="">Non so / non indicato</option></select>
+          </div>
+        </div>
+
+        <div class="row2">
+          <div class="field">
+            <label for="la-email">Email</label>
+            <input type="email" id="la-email" required>
+          </div>
+          <div class="field">
+            <label for="la-telefono">Telefono</label>
+            <input type="tel" id="la-telefono" placeholder="per essere ricontattati più in fretta">
+          </div>
+        </div>
+
+        <div class="field hidden" id="la-field-disponibilita">
+          <label>Quando saresti disponibile</label>
+          <p style="color:var(--chalk-grey);font-size:0.78rem;margin:-2px 0 8px;">Seleziona le combinazioni che ti andrebbero bene, se un posto si liberasse in uno di questi gruppi.</p>
+          <div id="la-disponibilita-list"></div>
+        </div>
+
+        <div class="error-msg" id="lista-attesa-form-error"></div>
+        <button type="submit" class="btn btn-primary" id="lista-attesa-save-btn">Invia richiesta</button>
+      </form>
+    </div>
+
+    <div id="step-lista-attesa-fatto" class="hidden">
+      <div class="empty-state">
+        <div class="display">Richiesta inviata</div>
+        <p>Grazie! Il capocorso valuterà la tua richiesta e ti contatterà se si libera un posto compatibile.</p>
       </div>
     </div>
 
