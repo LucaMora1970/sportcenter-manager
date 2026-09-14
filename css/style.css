@@ -689,6 +689,13 @@ select:focus, input:focus, textarea:focus {
   padding: 12px 6px calc(12px + env(safe-area-inset-bottom));
 }
 .bottom-nav::-webkit-scrollbar { display: none; }
+
+/* Desktop: niente più la fascia stretta a 480px al centro, la barra
+   occupa tutta la larghezza della finestra e le voci si spargono
+   centrate invece di restare accalcate a sinistra. */
+@media (min-width: 900px) {
+  .bottom-nav { max-width: 100%; justify-content: center; }
+}
 .bottom-nav a {
   flex: 0 0 auto;
   min-width: 68px;
