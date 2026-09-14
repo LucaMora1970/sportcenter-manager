@@ -55,9 +55,29 @@ async function loadCorsi() {
   corsiCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
+// Chi ha solo iscrizioni:gestisci_padel non può leggere in blocco tutta la
+// collection iscrizioniCorsi con una query "piatta": le rules la rifiutano
+// per intero appena il risultato conterrebbe anche un solo documento di
+// un'altra disciplina (tennis/squash). Si interroga quindi "corsi" per
+// sapere quali sono i corsi Padel (lettura pubblica, nessun problema di
+// permesso) e si fa una query per corso (corsoId + stato, entrambi in
+// uguaglianza: nessun indice composito da creare) — stesso pattern già
+// usato in corsi.js/piano-occupazione.js.
 async function loadIscrizioniConfermate() {
-  const snap = await db.collection("iscrizioniCorsi").where("stato", "==", "confermata").get();
-  iscrizioniConfermateCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const discipline = disciplinePresenzeVisibili(currentProfile);
+  if (!discipline) {
+    const snap = await db.collection("iscrizioniCorsi").where("stato", "==", "confermata").get();
+    iscrizioniConfermateCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    return;
+  }
+  if (discipline.length === 0) { iscrizioniConfermateCache = []; return; }
+  const corsiSnap = await db.collection("corsi").where("disciplina", "in", discipline).get();
+  const corsiIds = corsiSnap.docs.map(d => d.id);
+  if (corsiIds.length === 0) { iscrizioniConfermateCache = []; return; }
+  const risultati = await Promise.all(corsiIds.map(id =>
+    db.collection("iscrizioniCorsi").where("corsoId", "==", id).where("stato", "==", "confermata").get()
+  ));
+  iscrizioniConfermateCache = risultati.flatMap(snap => snap.docs.map(d => ({ id: d.id, ...d.data() })));
 }
 
 // Collection piccola: si legge tutta e si filtra lato client, salvo il

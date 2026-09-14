@@ -1618,30 +1618,83 @@ async function inserisciListaAttesaNelCorso(iscrizioneId, corsoId, nome) {
 
 // ---------- Riepilogo giornaliero/settimanale (gruppi confermati) ----------
 
+// Corsi visibili secondo il permesso del profilo: null = nessun filtro
+// (iscrizioni:gestisci, query globale consentita dalle rules), altrimenti
+// l'elenco dei corsi della sola disciplina scoped (es. solo Padel). Usa
+// corsiCache se già popolata, altrimenti interroga "corsi" al volo (letture
+// pubbliche, nessun problema di permesso) — utile perché queste funzioni
+// possono girare prima che loadCorsi() abbia riempito la cache.
+async function corsiPerDisciplineVisibili() {
+  const discipline = disciplineIscrizioniVisibili(currentProfile);
+  if (!discipline) return null;
+  if (discipline.length === 0) return [];
+  if (corsiCache.length > 0) return corsiCache.filter(c => discipline.includes(c.disciplina));
+  const snap = await db.collection("corsi").where("disciplina", "in", discipline).get();
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+// Interroga iscrizioniCorsi su un singolo campo (uguaglianza, es.
+// stato=="confermata") rispettando lo scoping per disciplina. IMPORTANTE:
+// chi ha solo iscrizioni:gestisci_padel non può leggere in blocco tutta la
+// collection con una query "piatta" (senza filtro corsoId) — le rules la
+// rifiutano per intero (permission-denied) appena il risultato conterrebbe
+// anche un solo documento di un'altra disciplina (il get() sul corso, nella
+// regola di lettura, fallisce per quel documento), e con più discipline
+// attive (tennis/padel/squash) questo succede quasi sempre. Prima di questa
+// funzione un profilo scoped restava bloccato su "Caricamento…" perché
+// l'eccezione interrompeva silenziosamente l'inizializzazione della pagina
+// prima ancora di arrivare a caricare i corsi. Per chi è scoped si esegue
+// quindi una query per corso (corsoId + campo, entrambi in uguaglianza:
+// indicizzazione automatica, nessun indice composito da creare) e si
+// uniscono i risultati — stesso principio già applicato a loadGruppiCorso().
+async function fetchIscrizioniScoped(campo, valore) {
+  const corsi = await corsiPerDisciplineVisibili();
+  if (corsi === null) {
+    const snap = await db.collection("iscrizioniCorsi").where(campo, "==", valore).get();
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  }
+  if (corsi.length === 0) return [];
+  const risultati = await Promise.all(corsi.map(c =>
+    db.collection("iscrizioniCorsi").where("corsoId", "==", c.id).where(campo, "==", valore).get()
+  ));
+  return risultati.flatMap(snap => snap.docs.map(d => ({ id: d.id, ...d.data() })));
+}
+
 async function loadIscrizioniConfermate() {
-  const snap = await db.collection("iscrizioniCorsi").where("stato", "==", "confermata").get();
-  iscrizioniConfermateCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  iscrizioniConfermateCache = await fetchIscrizioniScoped("stato", "confermata");
 }
 
 async function loadIscrizioniInAttesa() {
-  const snap = await db.collection("iscrizioniCorsi").where("stato", "==", "in_attesa").get();
-  iscrizioniInAttesaCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  iscrizioniInAttesaCache = await fetchIscrizioniScoped("stato", "in_attesa");
 }
 
 async function loadIscrizioniListaAttesa() {
-  const snap = await db.collection("iscrizioniCorsi").where("stato", "==", "lista_attesa").get();
-  iscrizioniListaAttesaCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  iscrizioniListaAttesaCache = await fetchIscrizioniScoped("stato", "lista_attesa");
 }
 
 // Tutte le iscrizioni create nelle ultime 24h, qualunque sia il loro stato
 // attuale (in_attesa/confermata/annullata/ospite) — a differenza delle due
 // cache sopra, filtrate ciascuna su un solo stato. Serve al riepilogo
 // "Richieste ultime 24 ore" per rintracciare in fretta cosa è arrivato di
-// recente, indipendentemente da come è stato poi gestito.
+// recente, indipendentemente da come è stato poi gestito. Stesso problema di
+// scoping delle funzioni sopra, ma qui il filtro data (">=") impedirebbe di
+// combinarlo con un filtro corsoId senza un indice composito dedicato:
+// per chi è scoped si prende quindi tutto lo storico dei soli corsi
+// visibili (query a uguaglianza, senza indice speciale) e si filtra la
+// soglia delle 24h lato client.
 async function loadRichiesteRecenti() {
   const soglia = firebase.firestore.Timestamp.fromMillis(Date.now() - 24 * 60 * 60 * 1000);
-  const snap = await db.collection("iscrizioniCorsi").where("createdAt", ">=", soglia).get();
-  richiesteRecentiCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const corsi = await corsiPerDisciplineVisibili();
+  if (corsi === null) {
+    const snap = await db.collection("iscrizioniCorsi").where("createdAt", ">=", soglia).get();
+    richiesteRecentiCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    return;
+  }
+  if (corsi.length === 0) { richiesteRecentiCache = []; return; }
+  const risultati = await Promise.all(corsi.map(c => db.collection("iscrizioniCorsi").where("corsoId", "==", c.id).get()));
+  richiesteRecentiCache = risultati
+    .flatMap(snap => snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    .filter(i => i.createdAt && i.createdAt.toMillis() >= soglia.toMillis());
 }
 
 // Richieste recenti di un corso, filtrate per il permesso del ruolo (chi
@@ -2349,16 +2402,25 @@ requireAuth(async (profile) => {
   document.getElementById("corso-cancel-edit-btn").addEventListener("click", cancelEditCorso);
 
   if (puoVedereIscrizioniAlmenoPadel) {
-    await loadLivelliCorso();
     document.getElementById("riepilogo-sezione").classList.remove("hidden");
     document.getElementById("riepilogo-data").value = toISODate(new Date());
     document.getElementById("riepilogo-data").addEventListener("change", aggiornaRiepiloghi);
     document.getElementById("stampa-settimanale-btn").addEventListener("click", stampaRiepilogoSettimanale);
-    await loadIscrizioniConfermate();
-    await loadIscrizioniInAttesa();
-    await loadIscrizioniListaAttesa();
-    await loadGruppiCorso();
-    await loadRichiesteRecenti();
+    // In un try/catch a parte: un eventuale errore qui (permessi, rete) non
+    // deve impedire il caricamento dei corsi sotto — prima di questo la
+    // pagina restava bloccata su "Caricamento…" per sempre se una di
+    // queste letture falliva (vedi fetchIscrizioniScoped sopra).
+    try {
+      await loadLivelliCorso();
+      await loadIscrizioniConfermate();
+      await loadIscrizioniInAttesa();
+      await loadIscrizioniListaAttesa();
+      await loadGruppiCorso();
+      await loadRichiesteRecenti();
+    } catch (err) {
+      console.error("Caricamento riepilogo iscrizioni:", err);
+      showError(document.getElementById("corsi-list-error"), "Alcuni dati di riepilogo non si sono caricati: " + err.message);
+    }
 
     document.getElementById("cerca-allievo-sezione").classList.remove("hidden");
     document.getElementById("cerca-allievo-input").addEventListener("input", renderRicercaAllievi);
