@@ -444,7 +444,7 @@ function stampaRiepilogo() {
 
   document.getElementById("print-area").innerHTML = `
     ${intestazioneStampaHtml()}
-    <h1>Fatturazione fine stagione — corsi</h1>
+    <h1>Fatturazione corsi</h1>
     <table>
       <thead><tr><th>Allievo</th><th>Corso originale</th><th>Importo</th><th>Nota</th><th>Stato</th></tr></thead>
       <tbody>${righeHtml}</tbody>
