@@ -117,7 +117,11 @@ function importiPerEntry(e, utente, config) {
   const tipo = e.tipoAttivitaId ? config.tipiById[e.tipoAttivitaId] : null;
 
   const soggettaQuota = !!(utente && utente.soggettoQuotaCampo && tipo && tipo.soggettoQuotaCampo);
-  const retribuita = !!(tipo && tipo.retribuitoCollaboratore);
+  // Stipendio fisso (es. Manuel Mazzella): le ore restano nel conteggio
+  // (accumulaDisciplina le somma comunque), ma non generano compenso né
+  // finiscono tra le "voci senza tariffa" — non è un errore di
+  // configurazione, è una scelta voluta.
+  const retribuita = !!(tipo && tipo.retribuitoCollaboratore) && !(utente && utente.stipendioFisso);
   const tariffaDisciplina = tariffaOrariaPerData(utente, e.disciplina, e.data);
 
   return {
@@ -304,7 +308,9 @@ function dettaglioCostiPerTipoAttivita(entries, utente, config) {
     const chiaveTipo = e.tipoAttivitaId || ("legacy:" + (e.tipoAttivita || "altro"));
     const ore = e.ore || 0;
 
-    if (tipo && tipo.retribuitoCollaboratore) {
+    // Stipendio fisso: stesse ore mostrate nel dettaglio, ma nessuna riga
+    // di compenso — vedi la stessa condizione in importiPerEntry.
+    if (tipo && tipo.retribuitoCollaboratore && !(utente && utente.stipendioFisso)) {
       const tariffa = tariffaOrariaPerData(utente, e.disciplina, e.data);
       if (tariffa != null) {
         const chiave = chiaveTipo + "|" + tariffa;
@@ -360,7 +366,7 @@ async function loadTutti(dal, al, config) {
     const ore = e.ore || 0;
     totaleOre += ore;
 
-    if (!perUtente[e.userId]) perUtente[e.userId] = { uid: e.userId, nome: e.userNome || e.userId, totale: 0, quotaCampo: 0, compenso: 0, pagatoOnline: 0, perDisciplina: {}, entries: [] };
+    if (!perUtente[e.userId]) perUtente[e.userId] = { uid: e.userId, nome: e.userNome || e.userId, stipendioFisso: !!(usersById[e.userId] && usersById[e.userId].stipendioFisso), totale: 0, quotaCampo: 0, compenso: 0, pagatoOnline: 0, perDisciplina: {}, entries: [] };
     perUtente[e.userId].totale += ore;
     perUtente[e.userId].entries.push(e);
 
@@ -601,7 +607,7 @@ function renderDipendenti(lista) {
       <div class="entry-card">
         <div class="entry-main">
           <div class="entry-tipo">${escapeHtml(d.nome)}</div>
-          ${d.pagatoOnline > 0 ? `<div style="margin-top:6px;"><span class="chip-audit approvato">Incassato online CHF ${d.pagatoOnline.toFixed(2)}</span></div>` : ""}
+          ${d.stipendioFisso || d.pagatoOnline > 0 ? `<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">${d.stipendioFisso ? `<span class="chip-audit">Stipendio fisso — ore elencate, escluse dal compenso</span>` : ""}${d.pagatoOnline > 0 ? `<span class="chip-audit approvato">Incassato online CHF ${d.pagatoOnline.toFixed(2)}</span>` : ""}</div>` : ""}
         </div>
         <div class="entry-ore">${d.totale.toFixed(1)}h</div>
       </div>

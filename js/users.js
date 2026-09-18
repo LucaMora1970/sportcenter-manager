@@ -162,7 +162,7 @@ async function loadUsers() {
         <div class="team-card-header">
           <div>
             <div class="team-card-name">${escapeHtml(u.nome || u.id)}</div>
-            <div class="team-card-meta">${escapeHtml(u.email || "")} · ${escapeHtml(roleLabel)}${u.soggettoQuotaCampo ? " · quota campo" : ""}${u.puoRichiederePagamento ? " · pagamento online" : ""}${tariffe ? " · " + escapeHtml(tariffe) : ""}</div>
+            <div class="team-card-meta">${escapeHtml(u.email || "")} · ${escapeHtml(roleLabel)}${u.soggettoQuotaCampo ? " · quota campo" : ""}${u.stipendioFisso ? " · stipendio fisso" : ""}${u.puoRichiederePagamento ? " · pagamento online" : ""}${tariffe ? " · " + escapeHtml(tariffe) : ""}</div>
           </div>
           <span class="badge" style="${attivo ? "border-color:#7f9e4a;color:#c1e08f;" : "border-color:var(--danger);color:var(--danger);"}">${attivo ? "Attivo" : "Disattivato"}</span>
         </div>
@@ -195,12 +195,15 @@ async function loadUsers() {
             <button class="btn btn-ghost add-tariffa-btn" data-uid="${u.id}">+ Aggiungi tariffa</button>
             <button class="btn btn-ghost save-tariffa-btn" data-uid="${u.id}">Salva tariffe</button>
           </div>
-          <p class="tariffa-hint">Date vuote = vale per tutte le ore. Chiudi una tariffa con "Al" e aprine una nuova con "Dal" per un aumento: i periodi già chiusi restano valutati alla tariffa di allora.</p>
+          <p class="tariffa-hint">Date vuote = vale per tutte le ore. Chiudi una tariffa con "Al" e aprine una nuova con "Dal" per un aumento: i periodi già chiusi restano valutati alla tariffa di allora.${u.stipendioFisso ? " Con \"stipendio fisso\" attivo queste tariffe sono ignorate nel Resoconto: le ore restano visibili ma non generano compenso." : ""}</p>
         </div>
 
         <div class="team-card-actions">
           <button class="btn btn-ghost toggle-quotacampo-btn" data-uid="${u.id}" data-quotacampo="${!!u.soggettoQuotaCampo}">
             ${u.soggettoQuotaCampo ? "Rimuovi quota campo" : "Assegna quota campo"}
+          </button>
+          <button class="btn btn-ghost toggle-stipendiofisso-btn" data-uid="${u.id}" data-stipendiofisso="${!!u.stipendioFisso}">
+            ${u.stipendioFisso ? "Rimuovi stipendio fisso" : "Segna come stipendio fisso"}
           </button>
           <button class="btn btn-ghost toggle-pagamento-btn" data-uid="${u.id}" data-pagamento="${!!u.puoRichiederePagamento}">
             ${u.puoRichiederePagamento ? "Rimuovi pagamento online" : "Assegna pagamento online"}
@@ -229,6 +232,9 @@ async function loadUsers() {
   });
   list.querySelectorAll(".toggle-quotacampo-btn").forEach(btn => {
     btn.addEventListener("click", onToggleQuotaCampo);
+  });
+  list.querySelectorAll(".toggle-stipendiofisso-btn").forEach(btn => {
+    btn.addEventListener("click", onToggleStipendioFisso);
   });
   list.querySelectorAll(".toggle-pagamento-btn").forEach(btn => {
     btn.addEventListener("click", onTogglePagamentoOnline);
@@ -393,6 +399,26 @@ async function onToggleQuotaCampo(e) {
   btn.disabled = true;
   try {
     await db.collection("users").doc(uid).update({ soggettoQuotaCampo: nuovoStato });
+    await loadUsers();
+  } catch (err) {
+    showError(document.getElementById("users-list-error"), "Errore: " + err.message);
+    btn.disabled = false;
+  }
+}
+
+// Collaboratore con stipendio fisso (es. Manuel Mazzella): le sue voci
+// diario restano visibili in ogni vista del Resoconto (ore, tipo
+// attività), ma il Resoconto salta il calcolo del compenso per lui —
+// vedi importiPerEntry/dettaglioCostiPerTipoAttivita in resoconto.js —
+// invece di segnalarlo come "voce senza tariffa configurata", che
+// implicherebbe un errore di configurazione anziché una scelta voluta.
+async function onToggleStipendioFisso(e) {
+  const btn = e.currentTarget;
+  const uid = btn.dataset.uid;
+  const nuovoStato = btn.dataset.stipendiofisso !== "true";
+  btn.disabled = true;
+  try {
+    await db.collection("users").doc(uid).update({ stipendioFisso: nuovoStato });
     await loadUsers();
   } catch (err) {
     showError(document.getElementById("users-list-error"), "Errore: " + err.message);
