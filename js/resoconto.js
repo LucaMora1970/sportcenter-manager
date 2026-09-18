@@ -551,19 +551,24 @@ function disciplineTableHtml(dip, opts = {}) {
 function dettaglioCostiTableHtml(dettaglio, opts = {}) {
   if (!dettaglio || (dettaglio.compenso.length === 0 && dettaglio.quotaCampo.length === 0)) return "";
 
+  // table-layout:fixed con larghezze di colonna fisse (css/style.css,
+  // .dettaglio-costi-table): senza, ogni tabella si adatta al proprio
+  // contenuto e le colonne di due dipendenti diversi non si allineano
+  // più tra una card e l'altra.
   const sezione = (titolo, righe) => {
     if (righe.length === 0) return "";
     const totale = righe.reduce((s, r) => s + r.totale, 0);
     return `
       <div class="${opts.wrapperClass || "dipendente-discipline"}">
         <div class="row-label">${titolo}</div>
-        <table class="app-table">
+        <table class="app-table dettaglio-costi-table">
           <thead>
-            <tr><th>Tipo attività</th><th>Ore/lezioni</th><th>Tariffa</th><th>Totale</th></tr>
+            <tr><th>Disciplina</th><th>Tipo attività</th><th>Ore/lezioni</th><th>Tariffa</th><th>Totale</th></tr>
           </thead>
           <tbody>
             ${righe.map(r => `
               <tr>
+                <td><span class="badge ${escapeHtml(r.disciplina)}">${escapeHtml(disciplinaLabel(r.disciplina) || "—")}</span></td>
                 <td>${escapeHtml(r.tipoNome)}</td>
                 <td>${r.unita === "lezione" ? r.quantita + (r.quantita === 1 ? " lezione" : " lezioni") : r.quantita.toFixed(1) + "h"}</td>
                 <td>CHF ${r.tariffa.toFixed(2)}${r.unita === "lezione" ? "/lezione" : "/ora"}</td>
@@ -572,7 +577,7 @@ function dettaglioCostiTableHtml(dettaglio, opts = {}) {
             `).join("")}
           </tbody>
           <tfoot>
-            <tr><td colspan="3"><strong>Totale</strong></td><td><strong>CHF ${totale.toFixed(2)}</strong></td></tr>
+            <tr><td colspan="4"><strong>Totale</strong></td><td><strong>CHF ${totale.toFixed(2)}</strong></td></tr>
           </tfoot>
         </table>
       </div>
@@ -858,11 +863,12 @@ function dettaglioCostiStampaHtml(dettaglio) {
       <h2>${titolo}</h2>
       <table>
         <thead>
-          <tr><th>Tipo attività</th><th>Ore/lezioni</th><th>Tariffa (CHF)</th><th>Totale (CHF)</th></tr>
+          <tr><th>Disciplina</th><th>Tipo attività</th><th>Ore/lezioni</th><th>Tariffa (CHF)</th><th>Totale (CHF)</th></tr>
         </thead>
         <tbody>
           ${righe.map(r => `
             <tr>
+              <td>${escapeHtml(disciplinaLabel(r.disciplina) || "—")}</td>
               <td>${escapeHtml(r.tipoNome)}</td>
               <td>${r.unita === "lezione" ? r.quantita + (r.quantita === 1 ? " lezione" : " lezioni") : r.quantita.toFixed(2)}</td>
               <td>${r.tariffa.toFixed(2)}${r.unita === "lezione" ? "/lezione" : "/ora"}</td>
@@ -871,7 +877,7 @@ function dettaglioCostiStampaHtml(dettaglio) {
           `).join("")}
         </tbody>
         <tfoot>
-          <tr><th colspan="3">Totale</th><th>${totale.toFixed(2)}</th></tr>
+          <tr><th colspan="4">Totale</th><th>${totale.toFixed(2)}</th></tr>
         </tfoot>
       </table>
     `;
