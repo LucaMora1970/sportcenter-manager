@@ -78,6 +78,8 @@ oraInizio, oraFine, ore (number), note, createdAt
 
 **quoteCampo/{id}** — `disciplina, posizione, periodoInizio, periodoFine, importo, durataMinuti (solo padel), fasciaOraria (solo padel)`
 
+**fatturazioniCorsi/{iscrizioneId}** — riepilogo di supporto (non una fattura vera) per decidere cosa fatturare a fine stagione quando un allievo è stato spostato tra corsi: `corsoOriginaleId, corsoOriginaleNome, prezzoProposto, importoFinale, nota, stato (da_valutare|fatturato)`
+
 ## Struttura file
 ```
 index.html              → login

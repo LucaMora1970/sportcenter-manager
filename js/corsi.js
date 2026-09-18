@@ -2424,6 +2424,8 @@ requireAuth(async (profile) => {
 
     document.getElementById("cerca-allievo-sezione").classList.remove("hidden");
     document.getElementById("cerca-allievo-input").addEventListener("input", renderRicercaAllievi);
+
+    document.getElementById("link-fatturazione-corsi").classList.remove("hidden");
   }
 
   await loadCorsi();

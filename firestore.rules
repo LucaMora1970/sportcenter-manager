@@ -444,6 +444,22 @@ service cloud.firestore {
             && get(/databases/$(database)/documents/corsi/$(request.resource.data.corsoId)).data.disciplina == "padel");
     }
 
+    // Riepilogo di supporto per decidere cosa fatturare a fine stagione
+    // quando un allievo è stato spostato tra corsi (fatturazione-corsi.html)
+    // — NON è una fattura vera (l'app non ha numerazione fiscale), solo un
+    // importo proposto/corretto a mano e uno stato "da_valutare"/
+    // "fatturato": niente da proteggere con una Cloud Function come i
+    // pagamenti veri, stessa logica diretta lato client di "vendite". Scoping
+    // per disciplina identico a iscrizioniCorsi/iscrizioniLog qui sopra.
+    match /fatturazioniCorsi/{id} {
+      allow read, update, delete: if hasPermission("iscrizioni:gestisci")
+        || (hasPermission("iscrizioni:gestisci_padel")
+            && get(/databases/$(database)/documents/corsi/$(resource.data.corsoOriginaleId)).data.disciplina == "padel");
+      allow create: if hasPermission("iscrizioni:gestisci")
+        || (hasPermission("iscrizioni:gestisci_padel")
+            && get(/databases/$(database)/documents/corsi/$(request.resource.data.corsoOriginaleId)).data.disciplina == "padel");
+    }
+
     // Presenze ai corsi (presenze.html): un documento per gruppo+iscrizione
     // +data, id deterministico lato client — "update" serve a correggere la
     // stessa presenza (es. segnata Assente per errore), niente "delete": è

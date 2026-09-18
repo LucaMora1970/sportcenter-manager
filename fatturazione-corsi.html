@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Fatturazione fine stagione — Sport-OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script>if(localStorage.getItem("sportos-tema")==="light")document.documentElement.setAttribute("data-theme","light");var z=localStorage.getItem("sportos-zoom-testo");if(z&&z!=="0")document.documentElement.setAttribute("data-text-size",z);</script>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d1f30">
+</head>
+<body>
+<div class="app app--wide">
+
+  <div class="topbar">
+    <h1>Fatturazione corsi</h1>
+    <div class="user-chip" id="user-chip">—</div>
+    <div class="topbar-actions">
+      <button type="button" class="topbar-link" id="testo-zoom-meno-btn" title="Rimpicciolisci testo" aria-label="Rimpicciolisci testo">A−</button>
+      <button type="button" class="topbar-link" id="testo-zoom-piu-btn" title="Ingrandisci testo" aria-label="Ingrandisci testo">A+</button>
+      <button type="button" class="topbar-link" id="theme-toggle-btn">Tema chiaro</button>
+      <a href="corsi.html" class="topbar-link">← Corsi</a>
+    </div>
+  </div>
+
+  <main>
+
+    <div id="access-denied" class="empty-state hidden">
+      <div class="display">Accesso non consentito</div>
+      <p>Questa sezione è riservata a chi gestisce le iscrizioni ai corsi.</p>
+    </div>
+
+    <div id="content" class="hidden">
+
+      <div class="section-title"><h2>Cosa fatturare per allievo</h2></div>
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Per ogni allievo propone il prezzo del corso a cui si è iscritto <strong>originariamente</strong>, anche se poi è stato spostato — mostra lo storico degli spostamenti e le presenze per corso così puoi correggere l'importo caso per caso. Non genera una fattura vera: serve a decidere l'importo, poi la fattura la emetti tu con i tuoi strumenti di contabilità.</p>
+
+      <div class="error-msg" id="fatt-error"></div>
+
+      <!-- Selezione corsi (una "scaletta di livello" alla volta) -->
+      <div class="section-title"><h2>1. Scegli i corsi da rivedere insieme</h2></div>
+      <div class="gruppo-pills hidden" id="fatt-disciplina-pills"></div>
+      <div class="checkbox-list" id="fatt-corsi-list">
+        <div class="empty-state"><div class="display">Caricamento…</div></div>
+      </div>
+      <button type="button" class="btn btn-primary" id="fatt-carica-btn" style="margin-top:12px;">Carica allievi</button>
+
+      <hr class="court-divider">
+
+      <!-- Risultati -->
+      <div id="fatt-risultati-sezione" class="hidden">
+
+        <div class="scoreboard">
+          <div>
+            <div class="label">Da valutare</div>
+            <div class="value" id="fatt-conteggio-da-valutare">0</div>
+          </div>
+          <div>
+            <div class="label">Fatturato</div>
+            <div class="value" id="fatt-conteggio-fatturato">0</div>
+          </div>
+          <div>
+            <div class="label">Totale importi</div>
+            <div class="value" id="fatt-totale-importi">CHF 0.00</div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="fatt-search-input">Cerca per nome</label>
+          <input type="text" id="fatt-search-input" placeholder="es. Rossi">
+        </div>
+
+        <div id="fatt-allievi-list">
+          <div class="empty-state"><div class="display">Nessun allievo caricato</div></div>
+        </div>
+
+        <button type="button" class="btn btn-ghost" id="fatt-stampa-btn" style="margin-top:12px;">Stampa riepilogo</button>
+
+      </div>
+
+    </div>
+
+  </main>
+
+  <nav class="bottom-nav">
+    <a href="diario.html">Diario</a>
+    <a href="resoconto.html">Resoconto</a>
+    <a href="cassa.html">Cassa</a>
+    <a href="corsi.html" class="active">Corsi</a>
+    <a href="presenze.html">Presenze</a>
+    <a href="allievi.html">Allievi</a>
+    <a href="prenotazioni.html">Prenotazioni</a>
+    <a href="piano-occupazione.html">Camp</a>
+    <a href="soci.html">Soci</a>
+    <a href="utenti.html">Team</a>
+    <a href="configurazione.html">Config</a>
+    <a href="#" id="logout-link">Esci</a>
+  </nav>
+
+  <script>
+    document.querySelector(".bottom-nav a.active")?.scrollIntoView({ inline: "center", block: "nearest" });
+  </script>
+
+</div>
+
+<div id="print-area"></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/fatturazione-corsi.js"></script>
+</body>
+</html>
