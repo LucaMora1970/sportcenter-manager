@@ -184,6 +184,7 @@ async function loadPersonal(uid, dal, al, config) {
     perDisciplina,
     quotaCampo: sommaRighe(perDisciplina, "quotaCampo"),
     compenso: sommaRighe(perDisciplina, "compenso"),
+    dettaglioCosti: dettaglioCostiPerTipoAttivita(entries, utente, config),
     entries
   };
 }
@@ -228,7 +229,10 @@ function quotaCampoTipoAttivitaIds(q) {
   return [];
 }
 
-function quotaCampoPerEntry(entry, campiById, quoteCampoList) {
+// Isolata da quotaCampoPerEntry perché il dettaglio costi per tipo
+// attività deve mostrare la tariffa unitaria (CHF/ora o CHF/lezione), non
+// solo il totale già moltiplicato per ore/lezione.
+function trovaQuotaCampoMatch(entry, campiById, quoteCampoList) {
   if (!entry.campoNumero) return null;
 
   const campo = campiById[entry.disciplina + "|" + entry.campoNumero];
@@ -274,8 +278,63 @@ function quotaCampoPerEntry(entry, campiById, quoteCampoList) {
     return (b.periodoInizio || "").localeCompare(a.periodoInizio || "");
   });
 
-  const match = candidates[0];
+  return candidates[0];
+}
+
+function quotaCampoPerEntry(entry, campiById, quoteCampoList) {
+  const match = trovaQuotaCampoMatch(entry, campiById, quoteCampoList);
+  if (!match) return null;
   return entry.disciplina === "padel" ? match.importo : (entry.ore || 0) * match.importo;
+}
+
+// Dettaglio dei costi di un dipendente spaccato per tipo attività: a
+// differenza del riepilogo per disciplina (che somma tutto insieme), qui
+// ogni riga è tenuta separata anche per la tariffa effettivamente
+// applicata — una stessa "Lezione privata" può aver pagato CHF 20/ora
+// fino a metà periodo e CHF 22/ora dopo un aumento, o una quota campo
+// diversa feriale/festivo: sommarle in un'unica riga darebbe un
+// "ore totali × tariffa" che non torna con la somma reale delle voci.
+function dettaglioCostiPerTipoAttivita(entries, utente, config) {
+  const compensoMap = {};
+  const quotaMap = {};
+
+  entries.forEach(e => {
+    const tipo = e.tipoAttivitaId ? config.tipiById[e.tipoAttivitaId] : null;
+    const nomeTipo = tipoAttivitaLabelFor(e);
+    const chiaveTipo = e.tipoAttivitaId || ("legacy:" + (e.tipoAttivita || "altro"));
+    const ore = e.ore || 0;
+
+    if (tipo && tipo.retribuitoCollaboratore) {
+      const tariffa = tariffaOrariaPerData(utente, e.disciplina, e.data);
+      if (tariffa != null) {
+        const chiave = chiaveTipo + "|" + tariffa;
+        if (!compensoMap[chiave]) {
+          compensoMap[chiave] = { tipoNome: nomeTipo, disciplina: e.disciplina, unita: "ora", tariffa, quantita: 0, totale: 0 };
+        }
+        compensoMap[chiave].quantita += ore;
+        compensoMap[chiave].totale += ore * tariffa;
+      }
+    }
+
+    const soggettaQuota = !!(utente && utente.soggettoQuotaCampo && tipo && tipo.soggettoQuotaCampo);
+    if (soggettaQuota) {
+      const match = trovaQuotaCampoMatch(e, config.campiById, config.quoteCampoList);
+      if (match) {
+        const unita = e.disciplina === "padel" ? "lezione" : "ora";
+        const quantitaRiga = unita === "lezione" ? 1 : ore;
+        const totaleRiga = unita === "lezione" ? match.importo : ore * match.importo;
+        const chiave = chiaveTipo + "|" + unita + "|" + match.importo;
+        if (!quotaMap[chiave]) {
+          quotaMap[chiave] = { tipoNome: nomeTipo, disciplina: e.disciplina, unita, tariffa: match.importo, quantita: 0, totale: 0 };
+        }
+        quotaMap[chiave].quantita += quantitaRiga;
+        quotaMap[chiave].totale += totaleRiga;
+      }
+    }
+  });
+
+  const ordina = mappa => Object.values(mappa).sort((a, b) => b.totale - a.totale);
+  return { compenso: ordina(compensoMap), quotaCampo: ordina(quotaMap) };
 }
 
 async function loadTutti(dal, al, config) {
@@ -368,7 +427,8 @@ async function loadTutti(dal, al, config) {
       compenso: sommaRighe(perDisciplina, "compenso"),
       pagatoOnline: sommaRighe(perDisciplina, "pagatoOnline"),
       vociSenzaQuotaCampo: sommaRighe(perDisciplina, "vociSenzaQuotaCampo"),
-      vociSenzaCompenso: sommaRighe(perDisciplina, "vociSenzaCompenso")
+      vociSenzaCompenso: sommaRighe(perDisciplina, "vociSenzaCompenso"),
+      dettaglioCosti: dettaglioCostiPerTipoAttivita(u.entries, usersById[u.uid], config)
     };
   }).sort((a, b) => b.totale - a.totale);
 
@@ -483,6 +543,46 @@ function disciplineTableHtml(dip, opts = {}) {
   `;
 }
 
+// Dettaglio "ore/lezioni × tariffa = totale" per tipo attività, più
+// preciso del riepilogo per disciplina qui sopra: ogni riga rappresenta
+// una tariffa effettivamente applicata, quindi lo stesso tipo attività
+// può comparire più volte nel periodo se la tariffa (o la quota campo,
+// feriale/festivo) è cambiata — vedi dettaglioCostiPerTipoAttivita.
+function dettaglioCostiTableHtml(dettaglio, opts = {}) {
+  if (!dettaglio || (dettaglio.compenso.length === 0 && dettaglio.quotaCampo.length === 0)) return "";
+
+  const sezione = (titolo, righe) => {
+    if (righe.length === 0) return "";
+    const totale = righe.reduce((s, r) => s + r.totale, 0);
+    return `
+      <div class="${opts.wrapperClass || "dipendente-discipline"}">
+        <div class="row-label">${titolo}</div>
+        <table class="app-table">
+          <thead>
+            <tr><th>Tipo attività</th><th>Ore/lezioni</th><th>Tariffa</th><th>Totale</th></tr>
+          </thead>
+          <tbody>
+            ${righe.map(r => `
+              <tr>
+                <td>${escapeHtml(r.tipoNome)}</td>
+                <td>${r.unita === "lezione" ? r.quantita + (r.quantita === 1 ? " lezione" : " lezioni") : r.quantita.toFixed(1) + "h"}</td>
+                <td>CHF ${r.tariffa.toFixed(2)}${r.unita === "lezione" ? "/lezione" : "/ora"}</td>
+                <td>CHF ${r.totale.toFixed(2)}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+          <tfoot>
+            <tr><td colspan="3"><strong>Totale</strong></td><td><strong>CHF ${totale.toFixed(2)}</strong></td></tr>
+          </tfoot>
+        </table>
+      </div>
+    `;
+  };
+
+  return sezione("Compenso da retribuire (dal club)", dettaglio.compenso)
+    + sezione("Quota campo da incassare (al club)", dettaglio.quotaCampo);
+}
+
 function renderDipendenti(lista) {
   const el = document.getElementById("dipendenti-list");
 
@@ -501,6 +601,7 @@ function renderDipendenti(lista) {
         <div class="entry-ore">${d.totale.toFixed(1)}h</div>
       </div>
       ${disciplineTableHtml(d)}
+      ${dettaglioCostiTableHtml(d.dettaglioCosti)}
       <div class="dipendente-actions">
         <button type="button" class="btn btn-ghost toggle-dettaglio-btn" data-uid="${d.uid}">Dettaglio</button>
         <button type="button" class="btn btn-ghost stampa-btn" data-uid="${d.uid}">Stampa / PDF</button>
@@ -743,9 +844,46 @@ function riepilogoDisciplineStampaHtml(perDisciplina) {
   `;
 }
 
+// Versione a stampa di dettaglioCostiTableHtml: stesse due sezioni
+// (compenso, quota campo) spaccate per tipo attività e tariffa applicata,
+// con i <table>/<th> semplici già usati dal resto del cartaceo invece
+// delle classi CSS pensate per lo schermo.
+function dettaglioCostiStampaHtml(dettaglio) {
+  if (!dettaglio || (dettaglio.compenso.length === 0 && dettaglio.quotaCampo.length === 0)) return "";
+
+  const sezione = (titolo, righe) => {
+    if (righe.length === 0) return "";
+    const totale = righe.reduce((s, r) => s + r.totale, 0);
+    return `
+      <h2>${titolo}</h2>
+      <table>
+        <thead>
+          <tr><th>Tipo attività</th><th>Ore/lezioni</th><th>Tariffa (CHF)</th><th>Totale (CHF)</th></tr>
+        </thead>
+        <tbody>
+          ${righe.map(r => `
+            <tr>
+              <td>${escapeHtml(r.tipoNome)}</td>
+              <td>${r.unita === "lezione" ? r.quantita + (r.quantita === 1 ? " lezione" : " lezioni") : r.quantita.toFixed(2)}</td>
+              <td>${r.tariffa.toFixed(2)}${r.unita === "lezione" ? "/lezione" : "/ora"}</td>
+              <td>${r.totale.toFixed(2)}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+        <tfoot>
+          <tr><th colspan="3">Totale</th><th>${totale.toFixed(2)}</th></tr>
+        </tfoot>
+      </table>
+    `;
+  };
+
+  return sezione("Dettaglio compenso per tipo attività", dettaglio.compenso)
+    + sezione("Dettaglio quota campo per tipo attività", dettaglio.quotaCampo);
+}
+
 // Tabella di stampa condivisa tra il report di un singolo dipendente
 // (vista admin) e il report personale (vista collaboratore).
-function stampaReport({ nome, entries, totale, quotaCampo, compenso, pagatoOnline, perDisciplina }) {
+function stampaReport({ nome, entries, totale, quotaCampo, compenso, pagatoOnline, perDisciplina, dettaglioCosti }) {
   const perGiorno = {};
   entries.forEach(en => {
     if (!perGiorno[en.data]) perGiorno[en.data] = [];
@@ -778,6 +916,7 @@ function stampaReport({ nome, entries, totale, quotaCampo, compenso, pagatoOnlin
     <h1>${escapeHtml(nome)}</h1>
     <p>Periodo: ${formatDataBreve(ultimoPeriodo.dal)} – ${formatDataBreve(ultimoPeriodo.al)}</p>
     ${riepilogoDisciplineStampaHtml(perDisciplina)}
+    ${dettaglioCostiStampaHtml(dettaglioCosti)}
     <h2>Dettaglio</h2>
     <table>
       <thead>
@@ -794,7 +933,7 @@ function stampaReport({ nome, entries, totale, quotaCampo, compenso, pagatoOnlin
 function stampaReportDipendente(uid) {
   const dipendente = (ultimoTutti.perDipendente || []).find(d => d.uid === uid);
   if (!dipendente) return;
-  stampaReport({ nome: dipendente.nome, entries: dipendente.entries, totale: dipendente.totale, quotaCampo: dipendente.quotaCampo, compenso: dipendente.compenso, pagatoOnline: dipendente.pagatoOnline, perDisciplina: dipendente.perDisciplina });
+  stampaReport({ nome: dipendente.nome, entries: dipendente.entries, totale: dipendente.totale, quotaCampo: dipendente.quotaCampo, compenso: dipendente.compenso, pagatoOnline: dipendente.pagatoOnline, perDisciplina: dipendente.perDisciplina, dettaglioCosti: dipendente.dettaglioCosti });
 }
 
 function stampaReportPersonale() {
@@ -805,7 +944,8 @@ function stampaReportPersonale() {
     totale: ultimoPersonal.totale,
     quotaCampo: ultimoPersonal.quotaCampo,
     compenso: ultimoPersonal.compenso,
-    perDisciplina: ultimoPersonal.perDisciplina
+    perDisciplina: ultimoPersonal.perDisciplina,
+    dettaglioCosti: ultimoPersonal.dettaglioCosti
   });
 }
 
@@ -1011,6 +1151,8 @@ async function calcola() {
     document.getElementById("totale-ore").innerHTML = `${personal.totale.toFixed(1)}<small>h</small>`;
     document.getElementById("disciplina-breakdown").innerHTML =
       disciplineTableHtml(personal, { wrapperClass: "tabella-discipline" });
+    document.getElementById("personal-dettaglio-costi").innerHTML =
+      dettaglioCostiTableHtml(personal.dettaglioCosti, { wrapperClass: "tabella-discipline" });
 
     const personalDettaglioEl = document.getElementById("personal-dettaglio");
     personalDettaglioEl.innerHTML = "";
