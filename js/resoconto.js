@@ -219,6 +219,15 @@ function domenicaOFestivo(dataIso) {
   return giorno === 0 || (IMPOSTAZIONI.festivi || []).includes(dataIso);
 }
 
+// Le righe create col vecchio form (selezione singola) hanno tipoAttivitaId
+// invece di tipoAttivitaIds: normalizzato qui così il resto della funzione
+// ragiona sempre su un array, senza bisogno di migrare i dati esistenti.
+function quotaCampoTipoAttivitaIds(q) {
+  if (Array.isArray(q.tipoAttivitaIds) && q.tipoAttivitaIds.length) return q.tipoAttivitaIds;
+  if (q.tipoAttivitaId) return [q.tipoAttivitaId];
+  return [];
+}
+
 function quotaCampoPerEntry(entry, campiById, quoteCampoList) {
   if (!entry.campoNumero) return null;
 
@@ -228,7 +237,10 @@ function quotaCampoPerEntry(entry, campiById, quoteCampoList) {
 
   let candidates = quoteCampoList
     .filter(q => q.disciplina === entry.disciplina)
-    .filter(q => !q.tipoAttivitaId || q.tipoAttivitaId === entry.tipoAttivitaId)
+    .filter(q => {
+      const ids = quotaCampoTipoAttivitaIds(q);
+      return ids.length === 0 || ids.includes(entry.tipoAttivitaId);
+    })
     .filter(q => !q.posizione || q.posizione === posizione)
     .filter(q => !q.tipoGiorno || q.tipoGiorno === tipoGiorno)
     .filter(q => !q.periodoInizio || entry.data >= q.periodoInizio)
@@ -250,8 +262,8 @@ function quotaCampoPerEntry(entry, campiById, quoteCampoList) {
   // "tutti", poi giorno indicato invece di "tutti", poi posizione indicata
   // invece di "tutti", poi il periodo con inizio più recente
   candidates.sort((a, b) => {
-    const aTipo = a.tipoAttivitaId ? 1 : 0;
-    const bTipo = b.tipoAttivitaId ? 1 : 0;
+    const aTipo = quotaCampoTipoAttivitaIds(a).length ? 1 : 0;
+    const bTipo = quotaCampoTipoAttivitaIds(b).length ? 1 : 0;
     if (aTipo !== bTipo) return bTipo - aTipo;
     const aGiorno = a.tipoGiorno ? 1 : 0;
     const bGiorno = b.tipoGiorno ? 1 : 0;

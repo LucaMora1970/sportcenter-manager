@@ -1066,11 +1066,22 @@ function quotaCampoLabel(it) {
 
 const TIPO_GIORNO_LABEL = { feriale: "feriale (lun-sab)", domenica_festivo: "domenica e festivi" };
 
+// I dati salvati prima dell'introduzione della selezione multipla hanno
+// un tipoAttivitaId singolo: qui e ovunque si legga la riga lo si tratta
+// come un array con un solo elemento, così le quote create con il vecchio
+// form restano valide senza bisogno di una migrazione dei dati.
+function quotaCampoTipoAttivitaIds(it) {
+  if (Array.isArray(it.tipoAttivitaIds) && it.tipoAttivitaIds.length) return it.tipoAttivitaIds;
+  if (it.tipoAttivitaId) return [it.tipoAttivitaId];
+  return [];
+}
+
 function quotaCampoMeta(it) {
   const parts = [];
-  if (it.tipoAttivitaId) {
-    const tipo = tipiAttivitaCache.find(t => t.id === it.tipoAttivitaId);
-    parts.push(tipo ? tipo.nome : "tipo attività eliminato");
+  const tipoIds = quotaCampoTipoAttivitaIds(it);
+  if (tipoIds.length) {
+    const nomi = tipoIds.map(id => (tipiAttivitaCache.find(t => t.id === id) || {}).nome || "tipo attività eliminato");
+    parts.push(nomi.join(", "));
   } else {
     parts.push("tutti i tipi attività");
   }
@@ -1104,19 +1115,24 @@ function syncQuotaCampoPadelFields() {
   document.getElementById("quotacampo-importo-label").textContent = isPadel ? "Importo (CHF a lezione)" : "Importo (CHF/ora)";
 }
 
-// Il tipo attività selezionabile dipende dalla disciplina scelta sopra:
+// I tipi attività spuntabili dipendono dalla disciplina scelta sopra:
 // senza questo filtro si potrebbe collegare una quota "tennis" a un tipo
 // attività "padel", un abbinamento che quotaCampoPerEntry non potrebbe mai
 // far scattare (il match parte sempre dalla disciplina della voce diario).
+// Selezione multipla (checkbox, non select) perché più tipi attività della
+// stessa disciplina — es. "Privata socio" e "Privata socio inverno" —
+// possono dover condividere lo stesso importo di quota campo.
 function syncQuotaCampoTipoAttivitaOptions() {
   const disciplina = document.getElementById("new-quotacampo-disciplina").value;
-  const select = document.getElementById("new-quotacampo-tipoattivita");
-  const valorePrecedente = select.value;
-  const tipiPerDisciplina = tipiAttivitaCache
+  const container = document.getElementById("quotacampo-tipoattivita-checks");
+  const selezionatiPrima = Array.from(container.querySelectorAll("input:checked")).map(c => c.value);
+  container.innerHTML = tipiAttivitaCache
     .filter(t => t.disciplina === disciplina)
-    .map(t => ({ id: t.id, label: t.nome }));
-  populateSelect(select, tipiPerDisciplina, "— tutti i tipi —");
-  if (tipiPerDisciplina.some(t => t.id === valorePrecedente)) select.value = valorePrecedente;
+    .map(t => `<div class="checkbox-row"><input type="checkbox" id="qc-tipo-${t.id}" value="${t.id}"><label for="qc-tipo-${t.id}">${escapeHtml(t.nome)}</label></div>`)
+    .join("");
+  container.querySelectorAll("input").forEach(chk => {
+    chk.checked = selezionatiPrima.includes(chk.value);
+  });
 }
 
 // Ricarica una quota esistente nel form. Prima si poteva solo eliminare
@@ -1128,11 +1144,14 @@ function startEditQuotaCampo(quota) {
 
   document.getElementById("new-quotacampo-disciplina").value = quota.disciplina || "";
   // I campi padel vanno mostrati prima di valorizzarli, altrimenti si
-  // riempirebbero dei select ancora nascosti. Stesso motivo per il select
+  // riempirebbero dei select ancora nascosti. Stesso motivo per le checkbox
   // tipo attività: le opzioni dipendono dalla disciplina appena impostata.
   syncQuotaCampoPadelFields();
   syncQuotaCampoTipoAttivitaOptions();
-  document.getElementById("new-quotacampo-tipoattivita").value = quota.tipoAttivitaId || "";
+  const tipoIdsSelezionati = quotaCampoTipoAttivitaIds(quota);
+  document.querySelectorAll("#quotacampo-tipoattivita-checks input").forEach(chk => {
+    chk.checked = tipoIdsSelezionati.includes(chk.value);
+  });
 
   document.getElementById("new-quotacampo-posizione").value = quota.posizione || "";
   document.getElementById("new-quotacampo-dal").value = quota.periodoInizio || "";
@@ -1180,7 +1199,11 @@ async function onCreateQuotaCampo(e) {
   // richiede corrispondenza esatta su entrambi.
   const quota = {
     disciplina,
-    tipoAttivitaId: document.getElementById("new-quotacampo-tipoattivita").value || null,
+    // tipoAttivitaId (singolare) non si scrive più: le righe salvate col
+    // vecchio form restano leggibili via quotaCampoTipoAttivitaIds(), ma
+    // ogni nuovo salvataggio — anche di una riga vecchia riaperta in
+    // modifica — la converte nel nuovo formato ad array.
+    tipoAttivitaIds: Array.from(document.querySelectorAll("#quotacampo-tipoattivita-checks input:checked")).map(c => c.value),
     posizione: document.getElementById("new-quotacampo-posizione").value || null,
     periodoInizio: document.getElementById("new-quotacampo-dal").value || null,
     periodoFine: document.getElementById("new-quotacampo-al").value || null,
@@ -1195,7 +1218,11 @@ async function onCreateQuotaCampo(e) {
     if (editingQuotaCampoId) {
       // "attivo" non è nel payload apposta: è governato dal pulsante
       // Attivo/Disattivato nella lista, salvare qui lo riporterebbe a true.
-      await db.collection("quoteCampo").doc(editingQuotaCampoId).update(quota);
+      // tipoAttivitaId (il vecchio campo singolare) va rimosso esplicitamente:
+      // update() non tocca i campi assenti dal payload, quindi senza questa
+      // riga una quota "tutti i tipi" salvata riaprendo una vecchia riga
+      // continuerebbe a leggere il tipo singolo residuo invece del nuovo array.
+      await db.collection("quoteCampo").doc(editingQuotaCampoId).update({ ...quota, tipoAttivitaId: firebase.firestore.FieldValue.delete() });
     } else {
       await db.collection("quoteCampo").add({ ...quota, attivo: true });
     }
