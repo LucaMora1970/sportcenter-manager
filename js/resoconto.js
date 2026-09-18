@@ -1026,6 +1026,104 @@ function renderRiepilogoContabilita(lista) {
   `;
 }
 
+// Stesso dettaglio costi già calcolato per ogni dipendente (dettaglioCosti,
+// vedi loadTutti/dettaglioCostiPerTipoAttivita), solo appiattito in due
+// liste con il nome del dipendente attaccato a ogni riga — non ricalcola
+// nulla, quindi i numeri restano identici a quelli delle singole card.
+function dettaglioCostiCompleto(perDipendente) {
+  const compenso = [];
+  const quotaCampo = [];
+  perDipendente.forEach(d => {
+    (d.dettaglioCosti.compenso || []).forEach(r => compenso.push({ ...r, dipendenteNome: d.nome }));
+    (d.dettaglioCosti.quotaCampo || []).forEach(r => quotaCampo.push({ ...r, dipendenteNome: d.nome }));
+  });
+  const ordina = arr => arr.sort((a, b) => a.dipendenteNome.localeCompare(b.dipendenteNome) || b.totale - a.totale);
+  return { compenso: ordina(compenso), quotaCampo: ordina(quotaCampo) };
+}
+
+function renderDettaglioCostiCompleto(dettaglio) {
+  const el = document.getElementById("dettaglio-costi-completo-table");
+  if (!el) return;
+
+  if (dettaglio.compenso.length === 0 && dettaglio.quotaCampo.length === 0) {
+    el.innerHTML = `<div class="empty-state"><div class="display">Nessuna voce nel periodo</div></div>`;
+    return;
+  }
+
+  const sezione = (titolo, righe) => {
+    if (righe.length === 0) return "";
+    const totale = righe.reduce((s, r) => s + r.totale, 0);
+    return `
+      <div class="row-label">${titolo}</div>
+      <table class="app-table dettaglio-costi-completo-table" style="margin-bottom:18px;">
+        <thead>
+          <tr><th>Dipendente</th><th>Disciplina</th><th>Tipo attività</th><th>Ore/lezioni</th><th>Tariffa</th><th>Totale</th></tr>
+        </thead>
+        <tbody>
+          ${righe.map(r => `
+            <tr>
+              <td>${escapeHtml(r.dipendenteNome)}</td>
+              <td><span class="badge ${escapeHtml(r.disciplina)}">${escapeHtml(disciplinaLabel(r.disciplina) || "—")}</span></td>
+              <td>${escapeHtml(r.tipoNome)}</td>
+              <td>${r.unita === "lezione" ? r.quantita + (r.quantita === 1 ? " lezione" : " lezioni") : r.quantita.toFixed(1) + "h"}</td>
+              <td>CHF ${r.tariffa.toFixed(2)}${r.unita === "lezione" ? "/lezione" : "/ora"}</td>
+              <td>CHF ${r.totale.toFixed(2)}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+        <tfoot>
+          <tr><td colspan="5"><strong>Totale</strong></td><td><strong>CHF ${totale.toFixed(2)}</strong></td></tr>
+        </tfoot>
+      </table>
+    `;
+  };
+
+  el.innerHTML = sezione("Compenso da retribuire (dal club)", dettaglio.compenso)
+    + sezione("Quota campo da incassare (al club)", dettaglio.quotaCampo);
+}
+
+function stampaDettaglioCostiCompleto() {
+  if (!ultimoTutti || !ultimoTutti.perDipendente) return;
+  const dettaglio = dettaglioCostiCompleto(ultimoTutti.perDipendente);
+
+  const sezione = (titolo, righe) => {
+    if (righe.length === 0) return `<h2>${titolo}</h2><p>Nessuna voce nel periodo.</p>`;
+    const totale = righe.reduce((s, r) => s + r.totale, 0);
+    return `
+      <h2>${titolo}</h2>
+      <table>
+        <thead>
+          <tr><th>Dipendente</th><th>Disciplina</th><th>Tipo attività</th><th>Ore/lezioni</th><th>Tariffa (CHF)</th><th>Totale (CHF)</th></tr>
+        </thead>
+        <tbody>
+          ${righe.map(r => `
+            <tr>
+              <td>${escapeHtml(r.dipendenteNome)}</td>
+              <td>${escapeHtml(disciplinaLabel(r.disciplina) || "—")}</td>
+              <td>${escapeHtml(r.tipoNome)}</td>
+              <td>${r.unita === "lezione" ? r.quantita + (r.quantita === 1 ? " lezione" : " lezioni") : r.quantita.toFixed(2)}</td>
+              <td>${r.tariffa.toFixed(2)}${r.unita === "lezione" ? "/lezione" : "/ora"}</td>
+              <td>${r.totale.toFixed(2)}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+        <tfoot>
+          <tr><th colspan="5">Totale</th><th>${totale.toFixed(2)}</th></tr>
+        </tfoot>
+      </table>
+    `;
+  };
+
+  document.getElementById("print-area").innerHTML = `
+    <h1>Dettaglio costi per tipo attività — tutti i dipendenti</h1>
+    <p>Periodo: ${formatDataBreve(ultimoPeriodo.dal)} – ${formatDataBreve(ultimoPeriodo.al)}</p>
+    ${sezione("Compenso da retribuire (dal club)", dettaglio.compenso)}
+    ${sezione("Quota campo da incassare (al club)", dettaglio.quotaCampo)}
+  `;
+
+  window.print();
+}
+
 function stampaRiepilogoCompleto() {
   if (!ultimoTutti || !ultimoTutti.perDipendente) return;
   const lista = ultimoTutti.perDipendente;
@@ -1169,6 +1267,7 @@ async function calcola() {
       ultimoTutti = tutti;
       renderDipendenti(tutti.perDipendente);
       renderRiepilogoContabilita(tutti.perDipendente);
+      renderDettaglioCostiCompleto(dettaglioCostiCompleto(tutti.perDipendente));
       renderPerTipoAttivita(tutti.perTipoAttivita);
       filtraERenderAllievi();
 
@@ -1241,6 +1340,7 @@ requireAuth(async (profile) => {
   });
 
   document.getElementById("stampa-tutti-btn").addEventListener("click", stampaRiepilogoCompleto);
+  document.getElementById("stampa-dettaglio-completo-btn").addEventListener("click", stampaDettaglioCostiCompleto);
   document.getElementById("allievi-search-input").addEventListener("input", filtraERenderAllievi);
   document.getElementById("stampa-lista-allievi-btn").addEventListener("click", stampaListaAllievi);
 
