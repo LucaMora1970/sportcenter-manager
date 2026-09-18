@@ -1068,6 +1068,12 @@ const TIPO_GIORNO_LABEL = { feriale: "feriale (lun-sab)", domenica_festivo: "dom
 
 function quotaCampoMeta(it) {
   const parts = [];
+  if (it.tipoAttivitaId) {
+    const tipo = tipiAttivitaCache.find(t => t.id === it.tipoAttivitaId);
+    parts.push(tipo ? tipo.nome : "tipo attività eliminato");
+  } else {
+    parts.push("tutti i tipi attività");
+  }
   if (it.periodoInizio || it.periodoFine) {
     parts.push(`${it.periodoInizio || "…"} → ${it.periodoFine || "…"}`);
   }
@@ -1098,6 +1104,21 @@ function syncQuotaCampoPadelFields() {
   document.getElementById("quotacampo-importo-label").textContent = isPadel ? "Importo (CHF a lezione)" : "Importo (CHF/ora)";
 }
 
+// Il tipo attività selezionabile dipende dalla disciplina scelta sopra:
+// senza questo filtro si potrebbe collegare una quota "tennis" a un tipo
+// attività "padel", un abbinamento che quotaCampoPerEntry non potrebbe mai
+// far scattare (il match parte sempre dalla disciplina della voce diario).
+function syncQuotaCampoTipoAttivitaOptions() {
+  const disciplina = document.getElementById("new-quotacampo-disciplina").value;
+  const select = document.getElementById("new-quotacampo-tipoattivita");
+  const valorePrecedente = select.value;
+  const tipiPerDisciplina = tipiAttivitaCache
+    .filter(t => t.disciplina === disciplina)
+    .map(t => ({ id: t.id, label: t.nome }));
+  populateSelect(select, tipiPerDisciplina, "— tutti i tipi —");
+  if (tipiPerDisciplina.some(t => t.id === valorePrecedente)) select.value = valorePrecedente;
+}
+
 // Ricarica una quota esistente nel form. Prima si poteva solo eliminare
 // e ricreare: con periodi, posizione e (per il padel) durata e fascia da
 // reinserire a mano, correggere un importo significava rifare tutto —
@@ -1107,8 +1128,11 @@ function startEditQuotaCampo(quota) {
 
   document.getElementById("new-quotacampo-disciplina").value = quota.disciplina || "";
   // I campi padel vanno mostrati prima di valorizzarli, altrimenti si
-  // riempirebbero dei select ancora nascosti.
+  // riempirebbero dei select ancora nascosti. Stesso motivo per il select
+  // tipo attività: le opzioni dipendono dalla disciplina appena impostata.
   syncQuotaCampoPadelFields();
+  syncQuotaCampoTipoAttivitaOptions();
+  document.getElementById("new-quotacampo-tipoattivita").value = quota.tipoAttivitaId || "";
 
   document.getElementById("new-quotacampo-posizione").value = quota.posizione || "";
   document.getElementById("new-quotacampo-dal").value = quota.periodoInizio || "";
@@ -1132,6 +1156,7 @@ function cancelEditQuotaCampo() {
   editingQuotaCampoId = null;
   document.getElementById("new-quotacampo-form").reset();
   syncQuotaCampoPadelFields();
+  syncQuotaCampoTipoAttivitaOptions();
   document.getElementById("quotacampo-form-title").textContent = "Nuova quota campo";
   document.getElementById("create-quotacampo-btn").textContent = "+ Aggiungi quota campo";
   document.getElementById("cancel-edit-quotacampo-btn").classList.add("hidden");
@@ -1155,6 +1180,7 @@ async function onCreateQuotaCampo(e) {
   // richiede corrispondenza esatta su entrambi.
   const quota = {
     disciplina,
+    tipoAttivitaId: document.getElementById("new-quotacampo-tipoattivita").value || null,
     posizione: document.getElementById("new-quotacampo-posizione").value || null,
     periodoInizio: document.getElementById("new-quotacampo-dal").value || null,
     periodoFine: document.getElementById("new-quotacampo-al").value || null,
@@ -2501,6 +2527,7 @@ requireAuth(async (profile) => {
   document.getElementById("cancel-edit-tipoattivita-btn").addEventListener("click", cancelEditTipoAttivita);
   document.getElementById("new-quotacampo-form").addEventListener("submit", onCreateQuotaCampo);
   document.getElementById("new-quotacampo-disciplina").addEventListener("change", syncQuotaCampoPadelFields);
+  document.getElementById("new-quotacampo-disciplina").addEventListener("change", syncQuotaCampoTipoAttivitaOptions);
   document.getElementById("cancel-edit-quotacampo-btn").addEventListener("click", cancelEditQuotaCampo);
   syncQuotaCampoPadelFields();
   wirePrezzoRowRemoval();
@@ -2544,6 +2571,10 @@ requireAuth(async (profile) => {
   await loadCampi();
   await loadTipiGruppoPadel();
   await loadTipiAttivita();
+  // Il select "Tipo attività" del form Quote campo dipende dalla
+  // disciplina e da tipiAttivitaCache, entrambi non ancora pronti quando
+  // syncQuotaCampoPadelFields() era stato chiamato in fase di wiring.
+  syncQuotaCampoTipoAttivitaOptions();
   await loadQuoteCampo();
   await seedCategorieSocioIfEmpty();
   await loadQuotaSocioImpostazioni();

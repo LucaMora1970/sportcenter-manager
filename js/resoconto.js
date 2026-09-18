@@ -210,8 +210,8 @@ function fasciaOrariaFor(oraInizio) {
 }
 
 // Trova la quota campo dovuta per una voce diario, incrociando
-// disciplina, posizione del campo usato, data (periodo) e — solo per
-// il padel — durata effettiva della lezione e fascia oraria.
+// disciplina, tipo attività, posizione del campo usato, data (periodo) e
+// — solo per il padel — durata effettiva della lezione e fascia oraria.
 // IMPOSTAZIONI.festivi (js/utils.js) distingue solo la domenica dai
 // festivi infrasettimanali, come richiesto — il sabato resta feriale.
 function domenicaOFestivo(dataIso) {
@@ -228,6 +228,7 @@ function quotaCampoPerEntry(entry, campiById, quoteCampoList) {
 
   let candidates = quoteCampoList
     .filter(q => q.disciplina === entry.disciplina)
+    .filter(q => !q.tipoAttivitaId || q.tipoAttivitaId === entry.tipoAttivitaId)
     .filter(q => !q.posizione || q.posizione === posizione)
     .filter(q => !q.tipoGiorno || q.tipoGiorno === tipoGiorno)
     .filter(q => !q.periodoInizio || entry.data >= q.periodoInizio)
@@ -245,10 +246,13 @@ function quotaCampoPerEntry(entry, campiById, quoteCampoList) {
 
   if (candidates.length === 0) return null;
 
-  // preferisci la quota più specifica: giorno indicato invece di "tutti",
-  // poi posizione indicata invece di "tutti", poi il periodo con inizio
-  // più recente
+  // preferisci la quota più specifica: tipo attività indicato invece di
+  // "tutti", poi giorno indicato invece di "tutti", poi posizione indicata
+  // invece di "tutti", poi il periodo con inizio più recente
   candidates.sort((a, b) => {
+    const aTipo = a.tipoAttivitaId ? 1 : 0;
+    const bTipo = b.tipoAttivitaId ? 1 : 0;
+    if (aTipo !== bTipo) return bTipo - aTipo;
     const aGiorno = a.tipoGiorno ? 1 : 0;
     const bGiorno = b.tipoGiorno ? 1 : 0;
     if (aGiorno !== bGiorno) return bGiorno - aGiorno;
