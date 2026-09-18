@@ -1095,7 +1095,14 @@ select:focus, input:focus, textarea:focus {
    table-layout:fixed ogni tabella si adatta al proprio contenuto (un nome
    tipo attività più lungo allarga la colonna) e le colonne numeriche di
    un dipendente non si allineano più con quelle del dipendente sotto. */
-.dettaglio-costi-table { table-layout: fixed; }
+/* min-width: con table-layout:fixed le colonne sono percentuali della
+   tabella, non del contenuto — su schermo stretto si restringerebbero
+   sotto la larghezza del testo (es. "CHF 45.00/lezione") che allora
+   trabocca visivamente sulla cella accanto invece di andare a capo
+   (le celle sono a nowrap). Il min-width tiene le colonne leggibili e
+   lascia scorrere la tabella in orizzontale nel contenitore che ha già
+   overflow-x:auto (.dipendente-discipline / #dettaglio-costi-completo-table). */
+.dettaglio-costi-table { table-layout: fixed; min-width: 520px; }
 .dettaglio-costi-table th:nth-child(1), .dettaglio-costi-table td:nth-child(1) { width: 16%; }
 .dettaglio-costi-table th:nth-child(2), .dettaglio-costi-table td:nth-child(2) { width: 32%; white-space: normal; }
 .dettaglio-costi-table th:nth-child(3), .dettaglio-costi-table td:nth-child(3) { width: 18%; }
@@ -1104,7 +1111,7 @@ select:focus, input:focus, textarea:focus {
 
 /* Stessa idea, versione consolidata con la colonna Dipendente in più
    (Resoconto → Dettaglio costi — tutti i dipendenti). */
-.dettaglio-costi-completo-table { table-layout: fixed; }
+.dettaglio-costi-completo-table { table-layout: fixed; min-width: 680px; }
 .dettaglio-costi-completo-table th:nth-child(1), .dettaglio-costi-completo-table td:nth-child(1) { width: 20%; white-space: normal; }
 .dettaglio-costi-completo-table th:nth-child(2), .dettaglio-costi-completo-table td:nth-child(2) { width: 13%; }
 .dettaglio-costi-completo-table th:nth-child(3), .dettaglio-costi-completo-table td:nth-child(3) { width: 27%; white-space: normal; }
