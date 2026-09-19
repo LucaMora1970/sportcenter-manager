@@ -301,7 +301,7 @@ function aggiornaScoreboard(righeFiltrate) {
   });
   document.getElementById("fatt-conteggio-da-valutare").textContent = daValutare;
   document.getElementById("fatt-conteggio-fatturato").textContent = fatturato;
-  document.getElementById("fatt-totale-importi").textContent = "CHF " + totale.toFixed(2);
+  document.getElementById("fatt-totale-importi").innerHTML = "<small>CHF</small>" + totale.toLocaleString("de-CH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function rigaCardHtml(riga) {

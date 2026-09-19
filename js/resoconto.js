@@ -577,7 +577,7 @@ function dettaglioCostiTableHtml(dettaglio, opts = {}) {
                 <td><span class="badge ${escapeHtml(r.disciplina)}">${escapeHtml(disciplinaLabel(r.disciplina) || "—")}</span></td>
                 <td>${escapeHtml(r.tipoNome)}</td>
                 <td>${r.unita === "lezione" ? r.quantita + (r.quantita === 1 ? " lezione" : " lezioni") : r.quantita.toFixed(1) + "h"}</td>
-                <td>CHF ${r.tariffa.toFixed(2)}${r.unita === "lezione" ? "/lezione" : "/ora"}</td>
+                <td>CHF ${r.tariffa.toFixed(2)}<span class="unita-tariffa">${r.unita === "lezione" ? "/lezione" : "/ora"}</span></td>
                 <td>CHF ${r.totale.toFixed(2)}</td>
               </tr>
             `).join("")}
@@ -1072,7 +1072,7 @@ function renderDettaglioCostiCompleto(dettaglio) {
               <td><span class="badge ${escapeHtml(r.disciplina)}">${escapeHtml(disciplinaLabel(r.disciplina) || "—")}</span></td>
               <td>${escapeHtml(r.tipoNome)}</td>
               <td>${r.unita === "lezione" ? r.quantita + (r.quantita === 1 ? " lezione" : " lezioni") : r.quantita.toFixed(1) + "h"}</td>
-              <td>CHF ${r.tariffa.toFixed(2)}${r.unita === "lezione" ? "/lezione" : "/ora"}</td>
+              <td>CHF ${r.tariffa.toFixed(2)}<span class="unita-tariffa">${r.unita === "lezione" ? "/lezione" : "/ora"}</span></td>
               <td>CHF ${r.totale.toFixed(2)}</td>
             </tr>
           `).join("")}

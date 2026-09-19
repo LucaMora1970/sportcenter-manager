@@ -303,6 +303,32 @@ main {
   margin-left: 4px;
 }
 
+/* Variante compatta (Fatturazione corsi): i due conteggi affiancati, il
+   totale su una riga a sé — con tre colonne "Totale importi" (CHF a 5
+   cifre in Space Mono da 2.4rem) andava a capo e i tre valori si
+   sovrapponevano su mobile. */
+.scoreboard--compact {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+  align-items: end;
+  padding: 14px var(--gap);
+}
+.scoreboard--compact .label { white-space: nowrap; font-size: 0.65rem; }
+.scoreboard--compact .value { font-size: 1.6rem; white-space: nowrap; }
+.scoreboard--compact .value small { font-size: 0.75rem; margin: 0 6px 0 0; }
+.scoreboard--compact .scoreboard-totale {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--court-blue-700);
+}
+.scoreboard--compact .scoreboard-totale .label { margin-bottom: 0; }
+.scoreboard--compact .scoreboard-totale .value { font-size: 1.3rem; text-align: right; }
+
 /* Divisore "riga di campo" */
 .court-divider {
   border: none;
@@ -890,6 +916,15 @@ select:focus, input:focus, textarea:focus {
 .semaforo-dot[data-selected="true"].giallo { background: #d4b83a; }
 .semaforo-dot[data-selected="true"].verde { background: #7f9e4a; }
 .dettaglio-giorni .entry-card { margin-bottom: 8px; }
+/* Tabelle dentro il dettaglio (es. presenze per corso in Fatturazione
+   corsi): niente nowrap globale, altrimenti il nome corso lungo spinge la
+   tabella oltre la card e la pagina scorre in orizzontale su mobile. */
+.dettaglio-giorni .app-table { margin: 8px 0 12px; }
+.dettaglio-giorni .app-table td,
+.dettaglio-giorni .app-table th { white-space: normal; overflow-wrap: anywhere; }
+.dettaglio-giorni .app-table td:last-child,
+.dettaglio-giorni .app-table th:last-child { white-space: nowrap; text-align: right; width: 1%; }
+.dettaglio-giorni .app-table td:first-child { font-family: 'Inter', sans-serif; }
 
 /* Resoconto: riga allievo compatta ("Per allievo"), un tocco per
    espandere invece dei due bottoni pieni "Dettaglio"/"Stampa" sempre
@@ -1102,22 +1137,32 @@ select:focus, input:focus, textarea:focus {
    (le celle sono a nowrap). Il min-width tiene le colonne leggibili e
    lascia scorrere la tabella in orizzontale nel contenitore che ha già
    overflow-x:auto (.dipendente-discipline / #dettaglio-costi-completo-table). */
-.dettaglio-costi-table { table-layout: fixed; min-width: 520px; }
-.dettaglio-costi-table th:nth-child(1), .dettaglio-costi-table td:nth-child(1) { width: 16%; }
-.dettaglio-costi-table th:nth-child(2), .dettaglio-costi-table td:nth-child(2) { width: 32%; white-space: normal; }
+.dettaglio-costi-table { table-layout: fixed; min-width: 560px; }
+.dettaglio-costi-table th:nth-child(1), .dettaglio-costi-table td:nth-child(1) { width: 14%; }
+.dettaglio-costi-table th:nth-child(2), .dettaglio-costi-table td:nth-child(2) { width: 26%; white-space: normal; }
 .dettaglio-costi-table th:nth-child(3), .dettaglio-costi-table td:nth-child(3) { width: 18%; }
-.dettaglio-costi-table th:nth-child(4), .dettaglio-costi-table td:nth-child(4) { width: 17%; }
-.dettaglio-costi-table th:nth-child(5), .dettaglio-costi-table td:nth-child(5) { width: 17%; }
+.dettaglio-costi-table th:nth-child(4), .dettaglio-costi-table td:nth-child(4) { width: 20%; }
+.dettaglio-costi-table th:nth-child(5), .dettaglio-costi-table td:nth-child(5) { width: 22%; }
 
 /* Stessa idea, versione consolidata con la colonna Dipendente in più
    (Resoconto → Dettaglio costi — tutti i dipendenti). */
-.dettaglio-costi-completo-table { table-layout: fixed; min-width: 680px; }
-.dettaglio-costi-completo-table th:nth-child(1), .dettaglio-costi-completo-table td:nth-child(1) { width: 20%; white-space: normal; }
-.dettaglio-costi-completo-table th:nth-child(2), .dettaglio-costi-completo-table td:nth-child(2) { width: 13%; }
-.dettaglio-costi-completo-table th:nth-child(3), .dettaglio-costi-completo-table td:nth-child(3) { width: 27%; white-space: normal; }
+.dettaglio-costi-completo-table { table-layout: fixed; min-width: 720px; }
+.dettaglio-costi-completo-table th:nth-child(1), .dettaglio-costi-completo-table td:nth-child(1) { width: 18%; white-space: normal; }
+.dettaglio-costi-completo-table th:nth-child(2), .dettaglio-costi-completo-table td:nth-child(2) { width: 12%; }
+.dettaglio-costi-completo-table th:nth-child(3), .dettaglio-costi-completo-table td:nth-child(3) { width: 22%; white-space: normal; }
 .dettaglio-costi-completo-table th:nth-child(4), .dettaglio-costi-completo-table td:nth-child(4) { width: 15%; }
-.dettaglio-costi-completo-table th:nth-child(5), .dettaglio-costi-completo-table td:nth-child(5) { width: 13%; }
-.dettaglio-costi-completo-table th:nth-child(6), .dettaglio-costi-completo-table td:nth-child(6) { width: 12%; }
+.dettaglio-costi-completo-table th:nth-child(5), .dettaglio-costi-completo-table td:nth-child(5) { width: 15%; }
+.dettaglio-costi-completo-table th:nth-child(6), .dettaglio-costi-completo-table td:nth-child(6) { width: 18%; }
+
+/* Unità della tariffa (/ora, /lezione) su una seconda riga: "CHF 45.00/lezione"
+   in Space Mono è più largo della colonna Tariffa e, con le celle a nowrap,
+   finiva sopra la colonna Totale. */
+.unita-tariffa {
+  display: block;
+  font-size: 0.68rem;
+  color: var(--chalk-grey);
+  margin-top: 1px;
+}
 
 /* ---------- Tabellone prenotazione campo padel ---------- */
 
