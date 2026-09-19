@@ -177,7 +177,8 @@ function leggiFormCorso() {
     costoIstruttoreOra: num("corso-costo-istruttore"),
     costoCampoOrganizzazioneOra: num("corso-costo-campo"),
     costoMateriale: num("corso-costo-materiale"),
-    prezzoRichiesto: num("corso-prezzo-richiesto")
+    prezzoRichiesto: num("corso-prezzo-richiesto"),
+    prezzoAOra: document.getElementById("corso-prezzo-a-ora").checked
   };
 
   // Corso forfettario: i campi di calendario/soglie/costi non fanno parte
@@ -190,7 +191,8 @@ function leggiFormCorso() {
       etaMin: null, etaMax: null,
       maxIscrittiPerSessione: null, minIscrittiConferma: null,
       livelloIstruttori: [],
-      costoIstruttoreOra: null, costoCampoOrganizzazioneOra: null, costoMateriale: null
+      costoIstruttoreOra: null, costoCampoOrganizzazioneOra: null, costoMateriale: null,
+      prezzoAOra: false
     });
   }
 
@@ -2260,6 +2262,7 @@ function startEditCorso(corso) {
   document.getElementById("corso-costo-campo").value = corso.costoCampoOrganizzazioneOra != null ? corso.costoCampoOrganizzazioneOra : "";
   document.getElementById("corso-costo-materiale").value = corso.costoMateriale != null ? corso.costoMateriale : "";
   document.getElementById("corso-prezzo-richiesto").value = corso.prezzoRichiesto != null ? corso.prezzoRichiesto : "";
+  document.getElementById("corso-prezzo-a-ora").checked = corso.prezzoAOra === true;
 
   aggiornaCostoCalcolato();
 

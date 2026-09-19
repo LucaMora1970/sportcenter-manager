@@ -191,14 +191,39 @@ async function calcolaRigaAllievo(iscrizione) {
     presenzeNonDisponibili = true;
   }
 
+  // Corsi a ora (prezzoAOra): il prezzo del corso vale per ogni ora a
+  // settimana, quindi chi ne frequenta 2 o 3 va moltiplicato. Le ore sono
+  // quelle dei gruppi assegnati (uno per ora/settimana, durata della
+  // sessione del corso originale); se non ha ancora gruppi si ripiega
+  // sulle ore richieste all'iscrizione, e in mancanza anche di quelle su 1h
+  // (segnalato nella card, da correggere a mano).
+  const prezzoAOra = corsoOriginale?.prezzoAOra === true;
+  const corsoAttuale = corsiCache.find(c => c.id === iscrizione.corsoId);
+  const durataOre = ((corsoOriginale?.durataSessioneMinuti || corsoAttuale?.durataSessioneMinuti || 60)) / 60;
+  const nrGruppi = (iscrizione.gruppoIds || []).length;
+  const oreAssegnate = nrGruppi * durataOre;
+  const oreRichieste = iscrizione.nrOreDesiderate || null;
+  let oreFatturabili = 1, oreOrigine = "nessuna";
+  if (oreAssegnate > 0) { oreFatturabili = oreAssegnate; oreOrigine = "gruppi"; }
+  else if (oreRichieste) { oreFatturabili = oreRichieste; oreOrigine = "richieste"; }
+  const prezzoUnitario = corsoOriginale && corsoOriginale.prezzoRichiesto != null ? corsoOriginale.prezzoRichiesto : null;
+  const prezzoProposto = prezzoUnitario == null ? null : (prezzoAOra ? prezzoUnitario * oreFatturabili : prezzoUnitario);
+
   return {
+    prezzoAOra,
+    prezzoUnitario,
+    nrGruppi,
+    oreAssegnate,
+    oreRichieste,
+    oreFatturabili,
+    oreOrigine,
     iscrizioneId: iscrizione.id,
     nome: iscrizione.nome,
     cognome: iscrizione.cognome,
     allievoId: iscrizione.allievoId || null,
     corsoOriginaleId,
     corsoOriginaleNome: corsoOriginale?.nome || "— corso non trovato —",
-    prezzoProposto: corsoOriginale && corsoOriginale.prezzoRichiesto != null ? corsoOriginale.prezzoRichiesto : null,
+    prezzoProposto,
     fuMaiSpostato: partenze.length > 0,
     storicoSpostamenti,
     storicoNonDisponibile,
@@ -239,6 +264,8 @@ async function salvaRigaFatturazione(iscrizioneId, { importoFinale, nota, stato 
     corsoOriginaleId: riga.corsoOriginaleId,
     corsoOriginaleNome: riga.corsoOriginaleNome,
     prezzoProposto: riga.prezzoProposto,
+    prezzoAOra: riga.prezzoAOra,
+    oreFatturabili: riga.prezzoAOra ? riga.oreFatturabili : null,
     importoFinale,
     nota,
     stato,
@@ -301,7 +328,32 @@ function aggiornaScoreboard(righeFiltrate) {
   });
   document.getElementById("fatt-conteggio-da-valutare").textContent = daValutare;
   document.getElementById("fatt-conteggio-fatturato").textContent = fatturato;
+  const piuOre = righeFiltrate.filter(r => r.prezzoAOra && r.oreFatturabili > 1).length;
+  const piuOreEl = document.getElementById("fatt-piu-ore-info");
+  piuOreEl.textContent = piuOre > 0 ? `${piuOre} ${piuOre === 1 ? "allievo frequenta" : "allievi frequentano"} più di 1 ora a settimana (corsi a ora): importo già moltiplicato per le ore.` : "";
+  piuOreEl.classList.toggle("hidden", piuOre === 0);
   document.getElementById("fatt-totale-importi").innerHTML = "<small>CHF</small>" + totale.toLocaleString("de-CH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatOreFatt(n) {
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+
+// Riga "CHF 30.00 × 3h (3 gruppi × 1h)" per i corsi a ora, con avviso se le
+// ore non arrivano dai gruppi assegnati o non coincidono con le richieste.
+function oreRigaHtml(riga) {
+  if (!riga.prezzoAOra) return "";
+  const ore = formatOreFatt(riga.oreFatturabili);
+  const formula = riga.prezzoUnitario == null ? "" : `CHF ${riga.prezzoUnitario.toFixed(2)} × ${ore}h`;
+  const origine = riga.oreOrigine === "gruppi"
+    ? `${riga.nrGruppi} ${riga.nrGruppi === 1 ? "gruppo" : "gruppi"} assegnat${riga.nrGruppi === 1 ? "o" : "i"}`
+    : riga.oreOrigine === "richieste" ? "ore richieste, nessun gruppo assegnato" : "ore non indicate, proposta 1h";
+  let avviso = "";
+  if (riga.oreOrigine === "nessuna") avviso = "Ore non indicate né gruppi assegnati: controlla in Allievi/Presenze.";
+  else if (riga.oreOrigine === "gruppi" && riga.oreRichieste && riga.oreRichieste !== riga.oreAssegnate)
+    avviso = `Ha richiesto ${formatOreFatt(riga.oreRichieste)}h/sett. ma ne ha ${ore}h assegnate.`;
+  return `<div class="entry-meta fatt-ore" style="margin-top:6px;"><strong>${ore}h/sett.</strong>${formula ? " · " + formula : ""} <span style="opacity:.8">(${origine})</span></div>`
+    + (avviso ? `<div class="entry-meta" style="color:var(--danger);margin-top:2px;">${avviso}</div>` : "");
 }
 
 function rigaCardHtml(riga) {
@@ -334,10 +386,12 @@ function rigaCardHtml(riga) {
           <div class="entry-tipo">${escapeHtml(riga.cognome)} ${escapeHtml(riga.nome)}</div>
           <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">
             ${riga.fuMaiSpostato ? `<span class="badge">Spostato</span>` : ""}
+            ${riga.prezzoAOra && riga.oreFatturabili > 1 ? `<span class="badge">${formatOreFatt(riga.oreFatturabili)} ore</span>` : ""}
             ${riga.prezzoProposto == null ? `<span class="badge" style="border-color:var(--danger);color:var(--danger);">Prezzo non configurato sul corso originale</span>` : ""}
             <span class="badge ${stato === "fatturato" ? "badge-confermata" : "badge-in-attesa"}">${stato === "fatturato" ? "Fatturato" : "Da valutare"}</span>
           </div>
           <div class="entry-meta" style="margin-top:6px;">Corso originale: ${escapeHtml(riga.corsoOriginaleNome)}</div>
+          ${oreRigaHtml(riga)}
         </div>
         <div class="entry-ore">CHF ${importo.toFixed(2)}</div>
       </div>
