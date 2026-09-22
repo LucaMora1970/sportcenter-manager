@@ -20,6 +20,10 @@ let ultimoTutti = null; // risultato dell'ultimo calcolo admin, per dettaglio/st
 let ultimoPersonal = null; // { entries } dell'ultimo calcolo personale, per dettaglio/stampa
 let ultimoPeriodo = null; // { dal, al } dell'ultimo calcolo
 
+// Sovrapprezzo fisso per le voci diario con prenotataUltimoMinuto (vedi
+// diario.js/configurazione.js), a prescindere dalla durata della lezione.
+const SOVRAPPREZZO_ULTIMO_MINUTO = 5;
+
 function pad2(n) {
   return String(n).padStart(2, "0");
 }
@@ -288,7 +292,8 @@ function trovaQuotaCampoMatch(entry, campiById, quoteCampoList) {
 function quotaCampoPerEntry(entry, campiById, quoteCampoList) {
   const match = trovaQuotaCampoMatch(entry, campiById, quoteCampoList);
   if (!match) return null;
-  return entry.disciplina === "padel" ? match.importo : (entry.ore || 0) * match.importo;
+  const base = entry.disciplina === "padel" ? match.importo : (entry.ore || 0) * match.importo;
+  return entry.prenotataUltimoMinuto ? base + SOVRAPPREZZO_ULTIMO_MINUTO : base;
 }
 
 // Dettaglio dei costi di un dipendente spaccato per tipo attività: a
@@ -335,6 +340,18 @@ function dettaglioCostiPerTipoAttivita(entries, utente, config) {
         }
         quotaMap[chiave].quantita += quantitaRiga;
         quotaMap[chiave].totale += totaleRiga;
+
+        // Sovrapprezzo ultimo minuto: riga a parte (tariffa fissa a
+        // lezione, non oraria) così non altera la tariffa/ora mostrata
+        // sopra — vedi SOVRAPPREZZO_ULTIMO_MINUTO in quotaCampoPerEntry.
+        if (e.prenotataUltimoMinuto) {
+          const chiaveSupp = chiaveTipo + "|ultimominuto";
+          if (!quotaMap[chiaveSupp]) {
+            quotaMap[chiaveSupp] = { tipoNome: nomeTipo + " (ultimo minuto)", disciplina: e.disciplina, unita: "lezione", tariffa: SOVRAPPREZZO_ULTIMO_MINUTO, quantita: 0, totale: 0 };
+          }
+          quotaMap[chiaveSupp].quantita += 1;
+          quotaMap[chiaveSupp].totale += SOVRAPPREZZO_ULTIMO_MINUTO;
+        }
       }
     }
   });

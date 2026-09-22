@@ -77,6 +77,12 @@ function rowHtml(rowId) {
         <div class="row-allievo-list"></div>
         <button type="button" class="btn btn-ghost row-add-allievo-btn" style="width:auto;padding:6px 10px;font-size:0.7rem;margin-top:2px;">+ Aggiungi allievo</button>
       </div>
+      <div class="field row-ultimominuto-field hidden">
+        <div class="checkbox-row">
+          <input type="checkbox" class="row-ultimominuto" id="row-ultimominuto-${rowId}">
+          <label for="row-ultimominuto-${rowId}">Prenotata all'ultimo minuto (+CHF 5 quota campo)</label>
+        </div>
+      </div>
       <div class="row2">
         <div class="field row-nrore-field" style="flex:0 0 110px;">
           <label>Nr. ore</label>
@@ -374,6 +380,24 @@ function syncAllievoField(rowEl) {
   }
 }
 
+// Disponibile solo per i tipi attività marcati in Configurazione (tipico:
+// lezioni private tennis soci/non soci) — vedi tipo.ultimoMinutoDisponibile.
+// Se il tipo attività cambia e il campo si nasconde, la spunta si azzera:
+// altrimenti resterebbe salvato un sovrapprezzo non più pertinente al
+// nuovo tipo scelto.
+function syncUltimoMinutoField(rowEl) {
+  const tipoAttivitaSel = rowEl.querySelector(".row-tipoattivita");
+  const tipo = tipiAttivitaCache.find(t => t.id === tipoAttivitaSel.value);
+  const field = rowEl.querySelector(".row-ultimominuto-field");
+
+  if (tipo && tipo.ultimoMinutoDisponibile) {
+    field.classList.remove("hidden");
+  } else {
+    field.classList.add("hidden");
+    rowEl.querySelector(".row-ultimominuto").checked = false;
+  }
+}
+
 function addRow() {
   rowCounter++;
   const container = document.getElementById("rows-container");
@@ -383,13 +407,16 @@ function addRow() {
   populateSelect(rowEl.querySelector(".row-disciplina"), DISCIPLINE);
   populateRowDependents(rowEl);
   syncAllievoField(rowEl);
+  syncUltimoMinutoField(rowEl);
 
   rowEl.querySelector(".row-disciplina").addEventListener("change", () => {
     populateRowDependents(rowEl);
     syncAllievoField(rowEl);
+    syncUltimoMinutoField(rowEl);
   });
   rowEl.querySelector(".row-tipoattivita").addEventListener("change", () => {
     syncAllievoField(rowEl);
+    syncUltimoMinutoField(rowEl);
     syncOrarioAuto(rowEl);
     syncCampoField(rowEl);
   });
@@ -477,6 +504,14 @@ async function estraiEntryDaRiga(rowEl, dataVal) {
   if (oraInizio) entry.oraInizio = oraInizio;
   if (oraFine) entry.oraFine = oraFine;
   if (campoSel.value) entry.campoNumero = campoSel.value;
+  // Sempre scritto esplicitamente (mai omesso come gli altri campi
+  // opzionali): in modifica, onSalvaModificaVoce fa un update() con solo i
+  // campi restituiti da qui, quindi se il maestro toglie la spunta va
+  // salvato "false", non semplicemente omesso, altrimenti un vecchio
+  // "true" resterebbe in Firestore.
+  const ultimoMinutoField = rowEl.querySelector(".row-ultimominuto-field");
+  entry.prenotataUltimoMinuto = !ultimoMinutoField.classList.contains("hidden")
+    && rowEl.querySelector(".row-ultimominuto").checked;
   if (disciplina === "padel" && gruppoSel && gruppoSel.value) {
     entry.tipoGruppoId = gruppoSel.value;
     entry.tipoGruppoNome = selectedLabel(gruppoSel);
@@ -681,6 +716,7 @@ function renderEntries(entries) {
     if (en.tipoGruppoNome) metaParts.push(en.tipoGruppoNome);
     if (nomiAllievi(en)) metaParts.push("Allievo: " + nomiAllievi(en));
     if (en.oraInizio || en.oraFine) metaParts.push(`${en.oraInizio || "—"}–${en.oraFine || "—"}`);
+    if (en.prenotataUltimoMinuto) metaParts.push("Ultimo minuto (+CHF 5)");
     if (en.note) metaParts.push(en.note);
 
     return `
@@ -790,6 +826,7 @@ function renderVociDaApprovare(entries) {
     if (en.campoNumero) metaParts.push("Campo " + en.campoNumero);
     if (en.oraInizio || en.oraFine) metaParts.push(`${en.oraInizio || "—"}–${en.oraFine || "—"}`);
     if (nomiAllievi(en)) metaParts.push("Allievo: " + nomiAllievi(en));
+    if (en.prenotataUltimoMinuto) metaParts.push("Ultimo minuto (+CHF 5)");
     if (en.note) metaParts.push(en.note);
 
     return `
@@ -872,9 +909,11 @@ function toggleModificaVoce(en, onSalvato) {
   rowEl.querySelector(".row-disciplina").addEventListener("change", () => {
     populateRowDependents(rowEl);
     syncAllievoField(rowEl);
+    syncUltimoMinutoField(rowEl);
   });
   rowEl.querySelector(".row-tipoattivita").addEventListener("change", () => {
     syncAllievoField(rowEl);
+    syncUltimoMinutoField(rowEl);
     syncOrarioAuto(rowEl);
     syncCampoField(rowEl);
   });
@@ -891,6 +930,8 @@ function precompilaRigaModifica(rowEl, en) {
   syncCampoField(rowEl);
   syncOrarioAuto(rowEl);
   syncAllievoField(rowEl);
+  syncUltimoMinutoField(rowEl);
+  if (en.prenotataUltimoMinuto) rowEl.querySelector(".row-ultimominuto").checked = true;
 
   if (en.campoNumero) rowEl.querySelector(".row-campo").value = en.campoNumero;
   if (en.tipoGruppoId) {
@@ -1021,6 +1062,7 @@ function renderCorrezioneVoce(en, opts = {}) {
   if (en.campoNumero) metaParts.push("Campo " + en.campoNumero);
   if (en.oraInizio || en.oraFine) metaParts.push(`${en.oraInizio || "—"}–${en.oraFine || "—"}`);
   if (nomiAllievi(en)) metaParts.push("Allievo: " + nomiAllievi(en));
+  if (en.prenotataUltimoMinuto) metaParts.push("Ultimo minuto (+CHF 5)");
 
   document.getElementById("correzione-container").innerHTML = `
     <div class="entry-card">

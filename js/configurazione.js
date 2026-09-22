@@ -987,6 +987,7 @@ function startEditTipoAttivita(tipo) {
   document.getElementById("new-tipoattivita-retribuito").checked = !!tipo.retribuitoCollaboratore;
   document.getElementById("new-tipoattivita-richiedeallievo").checked = !!tipo.richiedeAllievo;
   document.getElementById("new-tipoattivita-richiedecampo").checked = tipo.richiedeCampo !== false;
+  document.getElementById("new-tipoattivita-ultimominuto").checked = !!tipo.ultimoMinutoDisponibile;
 
   document.getElementById("prezzi-rows-container").innerHTML = "";
   (tipo.prezzi || []).forEach(p => addPrezzoRow(p));
@@ -1025,6 +1026,7 @@ async function onCreateTipoAttivita(e) {
   const retribuitoCollaboratore = document.getElementById("new-tipoattivita-retribuito").checked;
   const richiedeAllievo = document.getElementById("new-tipoattivita-richiedeallievo").checked;
   const richiedeCampo = document.getElementById("new-tipoattivita-richiedecampo").checked;
+  const ultimoMinutoDisponibile = document.getElementById("new-tipoattivita-ultimominuto").checked;
 
   const prezzi = [];
   document.querySelectorAll(".prezzo-row").forEach(row => {
@@ -1044,9 +1046,9 @@ async function onCreateTipoAttivita(e) {
   try {
     if (!nome) throw new Error("Inserisci un nome.");
     if (editingTipoAttivitaId) {
-      await db.collection("tipiAttivita").doc(editingTipoAttivitaId).update({ nome, disciplina, ordine, durataMinuti, soggettoQuotaCampo, retribuitoCollaboratore, richiedeAllievo, richiedeCampo, prezzi });
+      await db.collection("tipiAttivita").doc(editingTipoAttivitaId).update({ nome, disciplina, ordine, durataMinuti, soggettoQuotaCampo, retribuitoCollaboratore, richiedeAllievo, richiedeCampo, ultimoMinutoDisponibile, prezzi });
     } else {
-      await db.collection("tipiAttivita").add({ nome, disciplina, ordine, durataMinuti, soggettoQuotaCampo, retribuitoCollaboratore, richiedeAllievo, richiedeCampo, attivo: true, prezzi });
+      await db.collection("tipiAttivita").add({ nome, disciplina, ordine, durataMinuti, soggettoQuotaCampo, retribuitoCollaboratore, richiedeAllievo, richiedeCampo, ultimoMinutoDisponibile, attivo: true, prezzi });
     }
     cancelEditTipoAttivita();
     await loadTipiAttivita();
