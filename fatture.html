@@ -129,9 +129,13 @@
       </details>
 
       <!-- Nuova fattura -->
-      <details class="config-section" id="nuova-details">
-        <summary><h2>Nuova fattura</h2></summary>
-        <div class="config-section-body">
+      <button type="button" class="btn btn-primary" id="nuova-btn" style="margin-bottom:16px;">+ Nuova fattura</button>
+      <div class="modal-backdrop hidden" id="nuova-modal" role="dialog" aria-modal="true" aria-labelledby="nuova-titolo">
+        <div class="modal-box">
+          <div class="modal-head">
+            <h2 id="nuova-titolo">Nuova fattura</h2>
+            <button type="button" class="btn btn-ghost" id="nuova-chiudi" aria-label="Chiudi">✕</button>
+          </div>
           <div class="error-msg" id="nuova-error"></div>
           <form id="nuova-form">
             <div class="field">
@@ -184,7 +188,7 @@
             <button type="submit" class="btn btn-primary" id="emetti-btn">Emetti fattura e scarica PDF</button>
           </form>
         </div>
-      </details>
+      </div>
 
       <!-- Fatture emesse -->
       <div class="section-title"><h2>Fatture emesse</h2></div>

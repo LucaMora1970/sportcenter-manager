@@ -234,7 +234,18 @@ function applicaPrecompilazione() {
     renderRighe();
   }
   origineForm = pre.origine || null;
-  document.getElementById("nuova-details").open = true;
+  apriModalNuova();
+}
+
+function apriModalNuova() {
+  document.getElementById("nuova-error").innerHTML = "";
+  document.getElementById("nuova-modal").classList.remove("hidden");
+  document.body.style.overflow = "hidden";
+}
+
+function chiudiModalNuova() {
+  document.getElementById("nuova-modal").classList.add("hidden");
+  document.body.style.overflow = "";
 }
 
 function scaricaBase64(nomeFile, base64) {
@@ -266,8 +277,9 @@ async function emettiFattura(e) {
   const errEl = document.getElementById("nuova-error");
   errEl.innerHTML = "";
   if (!configCorrente) {
+    chiudiModalNuova();
     document.getElementById("config-details").open = true;
-    return showError(errEl, "Prima compila e salva i «Dati per la fattura» (creditore e IBAN).");
+    return showError(document.getElementById("fatt-error"), "Prima compila e salva i «Dati per la fattura» (creditore e IBAN).");
   }
   const val = id => document.getElementById(id).value.trim();
   const righe = righeForm.map(r => ({
@@ -300,7 +312,7 @@ async function emettiFattura(e) {
     righeForm = [{ descrizione: "", quantita: 1, prezzoUnitario: "" }];
     origineForm = null;
     renderRighe();
-    document.getElementById("nuova-details").open = false;
+    chiudiModalNuova();
     await caricaFatture();
   } catch (err) {
     showError(errEl, erroreFunzione(err));
@@ -465,6 +477,12 @@ requireAuth(async (profile) => {
   document.getElementById("cfg-form").addEventListener("submit", salvaConfig);
   document.getElementById("cfg-iban").addEventListener("input", aggiornaInfoIban);
   document.getElementById("nuova-form").addEventListener("submit", emettiFattura);
+  document.getElementById("nuova-btn").addEventListener("click", apriModalNuova);
+  document.getElementById("nuova-chiudi").addEventListener("click", chiudiModalNuova);
+  document.getElementById("nuova-modal").addEventListener("click", (e) => {
+    if (e.target.id === "nuova-modal") chiudiModalNuova();
+  });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") chiudiModalNuova(); });
   document.getElementById("aggiungi-riga-btn").addEventListener("click", () => {
     righeForm.push({ descrizione: "", quantita: 1, prezzoUnitario: "" });
     renderRighe();

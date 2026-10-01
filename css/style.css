@@ -1349,3 +1349,34 @@ select:focus, input:focus, textarea:focus {
   /* Riga di separazione tra i gruppi/slot: gap pulito, senza bordi. */
   #print-area tr.spacer td { border: none; padding: 4px; }
 }
+
+/* Modal generico (usato da Fatture): sotto il loading-overlay (z-index
+   1000) così lo spinner resta visibile durante le chiamate. */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(13, 31, 48, 0.7);
+  z-index: 500;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: var(--gap);
+  overflow-y: auto;
+}
+.modal-box {
+  background: var(--court-blue-900);
+  border: 1px solid var(--court-blue-700);
+  border-radius: var(--radius);
+  width: 100%;
+  max-width: 640px;
+  padding: var(--gap);
+  margin: auto;
+}
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.modal-head h2 { font-size: 1.1rem; }
