@@ -4233,6 +4233,14 @@ exports.addebitaIscrizioneCorso = onCall(
       return { addebitato: false, motivo: "Nessuna carta salvata per questa iscrizione." };
     }
 
+    // Corsi con listino a scaglioni: il prezzo dipende dal numero finale di
+    // iscritti, quindi nulla si addebita alla conferma — si fattura a
+    // corso chiuso da Fatturazione corsi.
+    const corsoDoc = await db.collection("corsi").doc(iscrizione.corsoId).get();
+    if (corsoDoc.exists && (corsoDoc.data().listinoPrezzi || []).length > 0) {
+      return { addebitato: false, motivo: "Corso con listino a scaglioni: si fattura a corso chiuso." };
+    }
+
     const importo = await importoIscrizioneCorso(iscrizione);
     if (!importo || importo <= 0) {
       return { addebitato: false, motivo: "Prezzo del corso non configurato." };

@@ -130,6 +130,37 @@ function syncForfettario() {
   });
 }
 
+// ---------- Listino a scaglioni (form) ----------
+
+function aggiungiRigaListino(iscritti, prezzo) {
+  const riga = document.createElement("div");
+  riga.className = "listino-riga";
+  riga.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;";
+  riga.innerHTML = `
+    <input type="number" class="listino-iscritti" min="1" step="1" placeholder="iscritti" style="width:90px;" value="${iscritti ?? ""}">
+    <span class="entry-meta">iscritti → CHF</span>
+    <input type="number" class="listino-prezzo" min="0" step="0.5" placeholder="a persona" style="width:110px;" value="${prezzo ?? ""}">
+    <button type="button" class="btn btn-ghost listino-rimuovi" style="width:auto;padding:6px 10px;font-size:0.72rem;">×</button>
+  `;
+  riga.querySelector(".listino-rimuovi").addEventListener("click", () => riga.remove());
+  document.getElementById("corso-listino-righe").appendChild(riga);
+}
+
+function impostaListinoForm(listino) {
+  document.getElementById("corso-listino-righe").innerHTML = "";
+  (listino || []).forEach(r => aggiungiRigaListino(r.iscritti, r.prezzo));
+}
+
+function leggiListinoForm() {
+  const righe = Array.from(document.querySelectorAll("#corso-listino-righe .listino-riga")).map(r => ({
+    iscritti: parseInt(r.querySelector(".listino-iscritti").value, 10),
+    prezzo: parseFloat(r.querySelector(".listino-prezzo").value)
+  }));
+  return righe
+    .filter(r => r.iscritti > 0 && !isNaN(r.prezzo))
+    .sort((a, b) => a.iscritti - b.iscritti);
+}
+
 // ---------- Lettura form ----------
 
 function leggiFormCorso() {
@@ -178,6 +209,7 @@ function leggiFormCorso() {
     costoCampoOrganizzazioneOra: num("corso-costo-campo"),
     costoMateriale: num("corso-costo-materiale"),
     prezzoRichiesto: num("corso-prezzo-richiesto"),
+    listinoPrezzi: leggiListinoForm(),
     prezzoAOra: document.getElementById("corso-prezzo-a-ora").checked
   };
 
@@ -256,7 +288,7 @@ function corsoCardHtml(c, { puoGestire, puoVedereIscrizioni, puoApprovare }) {
           ${terminIscrizioneHtml(c)}
           ${c.listaAttesaAttiva ? `<span class="badge badge-lista-attesa">Lista d'attesa attiva</span>` : ""}
           ${c.forfettario
-            ? `<div class="entry-meta">${formatDataBreve(c.dal)}${c.al ? " – " + formatDataBreve(c.al) : ""} · Forfait · CHF ${(c.prezzoRichiesto || 0).toFixed(2)}</div>`
+            ? `<div class="entry-meta">${formatDataBreve(c.dal)}${c.al ? " – " + formatDataBreve(c.al) : ""} · Forfait · ${listinoCorso(c).length ? escapeHtml(listinoCorsoTesto(c)) : "CHF " + (c.prezzoRichiesto || 0).toFixed(2)}</div>`
             : `<div class="entry-meta">${formatDataBreve(c.dal)}${c.al ? " – " + formatDataBreve(c.al) : ""} · ${c.nrSessioni || "—"} sessioni da ${c.durataSessioneMinuti || "—"}' · campi: ${campiLabel}</div>
           <div class="entry-meta giorni-toggle" data-id="${c.id}">+ Giorni e orari proposti</div>
           <div class="hidden" id="giorni-dettaglio-${c.id}">${giorniOrariRighe}</div>`}
@@ -2263,6 +2295,7 @@ function startEditCorso(corso) {
   document.getElementById("corso-costo-materiale").value = corso.costoMateriale != null ? corso.costoMateriale : "";
   document.getElementById("corso-prezzo-richiesto").value = corso.prezzoRichiesto != null ? corso.prezzoRichiesto : "";
   document.getElementById("corso-prezzo-a-ora").checked = corso.prezzoAOra === true;
+  impostaListinoForm(corso.listinoPrezzi);
 
   aggiornaCostoCalcolato();
 
@@ -2288,6 +2321,7 @@ function startDuplicaCorso(corso) {
 function cancelEditCorso() {
   editingCorsoId = null;
   document.getElementById("corso-form").reset();
+  impostaListinoForm([]);
   syncForfettario();
   syncOrariCampiDisciplina();
   aggiornaCostoCalcolato();
@@ -2316,7 +2350,15 @@ async function onSubmitCorso(e) {
       if (form.campiNumeri.length === 0) throw new Error("Seleziona almeno un campo proposto.");
       if (!form.minIscrittiConferma) throw new Error("Inserisci il numero minimo di iscritti per la conferma.");
     }
-    if (form.prezzoRichiesto == null) throw new Error("Inserisci il prezzo richiesto.");
+    if (form.listinoPrezzi.length > 0) {
+      const soglie = form.listinoPrezzi.map(r => r.iscritti);
+      if (new Set(soglie).size !== soglie.length) throw new Error("Nel listino ogni numero di iscritti può comparire una sola volta.");
+      // Il prezzo "di base" (usato da quota ospite, elenchi, ecc.) è quello
+      // del primo scaglione, cioè il più alto.
+      form.prezzoRichiesto = form.listinoPrezzi[0].prezzo;
+    } else if (form.prezzoRichiesto == null) {
+      throw new Error("Inserisci il prezzo richiesto o compila il listino.");
+    }
     if (!hasPermission(currentProfile, "corsi:gestisci") && form.disciplina !== "padel") {
       throw new Error("Con questo permesso puoi creare/modificare solo corsi di disciplina Padel.");
     }
@@ -2390,6 +2432,7 @@ requireAuth(async (profile) => {
 
   syncForfettario();
   syncOrariCampiDisciplina();
+  document.getElementById("corso-listino-aggiungi").addEventListener("click", () => aggiungiRigaListino());
 
   document.getElementById("corso-disciplina").addEventListener("change", syncOrariCampiDisciplina);
   document.getElementById("corso-forfettario").addEventListener("change", () => {

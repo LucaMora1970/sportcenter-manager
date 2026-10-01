@@ -269,12 +269,19 @@
           </div>
           <div class="field">
             <label for="corso-prezzo-richiesto">Prezzo richiesto (CHF)</label>
-            <input type="number" id="corso-prezzo-richiesto" min="0" step="0.5" required>
+            <input type="number" id="corso-prezzo-richiesto" min="0" step="0.5">
           </div>
         </div>
         <div class="checkbox-row" id="corso-field-prezzo-a-ora" style="margin:-6px 0 14px;">
           <input type="checkbox" id="corso-prezzo-a-ora">
           <label for="corso-prezzo-a-ora">Il prezzo è a ora, per ogni ora a settimana — chi frequenta 2 o 3 ore paga il prezzo moltiplicato per le ore (solo in Fatturazione corsi)</label>
+        </div>
+
+        <div class="field" id="corso-field-listino" style="margin:0 0 14px;">
+          <label>Listino per numero di iscritti (facoltativo)</label>
+          <div id="corso-listino-righe"></div>
+          <button type="button" class="btn btn-ghost" id="corso-listino-aggiungi" style="width:auto;padding:8px 12px;font-size:0.72rem;">+ Aggiungi scaglione</button>
+          <div class="entry-meta" style="margin-top:6px;">Prezzo a persona in base a quanti iscritti ha il corso (il prezzo più alto vale sotto la prima soglia). Se compilato, sostituisce il prezzo richiesto; nulla viene addebitato fino alla chiusura del corso, poi si fattura da Fatturazione corsi.</div>
         </div>
 
         <div class="scoreboard" id="corso-scoreboard-costo" style="margin: 6px 0 18px;">

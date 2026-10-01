@@ -567,6 +567,34 @@ async function onProvaComeUtente(btn, tipo, id, nome) {
   }
 }
 
+// ---------- Listino corsi a scaglioni ----------
+// corso.listinoPrezzi = [{ iscritti: 2, prezzo: 200 }, ...]: prezzo a
+// persona in base al numero di iscritti del corso. Vuoto/assente → vale
+// solo corso.prezzoRichiesto (corsi esistenti invariati).
+
+function listinoCorso(corso) {
+  return (corso?.listinoPrezzi || [])
+    .filter(r => r && r.iscritti > 0 && r.prezzo != null)
+    .sort((a, b) => a.iscritti - b.iscritti);
+}
+
+// Scaglione con la soglia più alta <= n; sotto la soglia minima vale il
+// prezzo dello scaglione più basso (il più caro). Senza listino torna
+// prezzoRichiesto.
+function prezzoCorsoPerIscritti(corso, n) {
+  const listino = listinoCorso(corso);
+  if (listino.length === 0) return corso?.prezzoRichiesto ?? null;
+  let scelto = listino[0];
+  listino.forEach(r => { if (r.iscritti <= n) scelto = r; });
+  return scelto.prezzo;
+}
+
+function listinoCorsoTesto(corso) {
+  return listinoCorso(corso)
+    .map((r, i, arr) => `${r.iscritti}${i === arr.length - 1 ? "+" : ""} iscritti: CHF ${Number(r.prezzo).toFixed(2)}`)
+    .join(" · ");
+}
+
 // Banner fisso in cima alla pagina finché il flag di modalità test resta
 // in sessionStorage — nessun markup da aggiungere pagina per pagina,
 // no-op se il flag non c'è (stesso approccio di initMenuUtente sopra).

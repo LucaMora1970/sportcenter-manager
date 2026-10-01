@@ -149,6 +149,22 @@ async function raccogliIscrizioniInAmbito(corsoIds) {
 
 // ---------- Ricostruzione corso originale + presenze per allievo ----------
 
+// Iscritti "veri" di un corso (per il listino a scaglioni): esclusi
+// annullate, lista d'attesa e ospiti (gli ospiti pagano la quota del corso
+// di riferimento, non fanno numero). Cache per caricamento.
+let iscrittiPerCorsoCache = {};
+
+async function contaIscrittiCorso(corsoId) {
+  if (iscrittiPerCorsoCache[corsoId] == null) {
+    const snap = await db.collection("iscrizioniCorsi").where("corsoId", "==", corsoId).get();
+    iscrittiPerCorsoCache[corsoId] = snap.docs.filter(d => {
+      const i = d.data();
+      return i.stato !== "annullata" && i.stato !== "lista_attesa" && i.tipo !== "ospite";
+    }).length;
+  }
+  return iscrittiPerCorsoCache[corsoId];
+}
+
 async function calcolaRigaAllievo(iscrizione) {
   // Lo storico può contenere righe contro un corso fuori dalla disciplina
   // del profilo (es. un allievo spostato anche verso/da un'altra
@@ -206,12 +222,17 @@ async function calcolaRigaAllievo(iscrizione) {
   let oreFatturabili = 1, oreOrigine = "nessuna";
   if (oreAssegnate > 0) { oreFatturabili = oreAssegnate; oreOrigine = "gruppi"; }
   else if (oreRichieste) { oreFatturabili = oreRichieste; oreOrigine = "richieste"; }
-  const prezzoUnitario = corsoOriginale && corsoOriginale.prezzoRichiesto != null ? corsoOriginale.prezzoRichiesto : null;
+  const haListino = listinoCorso(corsoOriginale).length > 0;
+  const nrIscrittiCorso = haListino ? await contaIscrittiCorso(corsoOriginaleId) : null;
+  const prezzoUnitario = corsoOriginale
+    ? (haListino ? prezzoCorsoPerIscritti(corsoOriginale, nrIscrittiCorso) : (corsoOriginale.prezzoRichiesto ?? null))
+    : null;
   const prezzoProposto = prezzoUnitario == null ? null : (prezzoAOra ? prezzoUnitario * oreFatturabili : prezzoUnitario);
 
   return {
     prezzoAOra,
     prezzoUnitario,
+    nrIscrittiCorso,
     nrGruppi,
     oreAssegnate,
     oreRichieste,
@@ -265,6 +286,8 @@ async function salvaRigaFatturazione(iscrizioneId, { importoFinale, nota, stato 
     corsoOriginaleNome: riga.corsoOriginaleNome,
     prezzoProposto: riga.prezzoProposto,
     prezzoAOra: riga.prezzoAOra,
+    nrIscrittiCorso: riga.nrIscrittiCorso ?? null,
+    prezzoUnitario: riga.prezzoUnitario ?? null,
     oreFatturabili: riga.prezzoAOra ? riga.oreFatturabili : null,
     importoFinale,
     nota,
@@ -295,6 +318,7 @@ async function onCaricaAllievi() {
   document.getElementById("fatt-risultati-sezione").classList.remove("hidden");
 
   try {
+    iscrittiPerCorsoCache = {};
     const iscrizioni = await raccogliIscrizioniInAmbito(corsoIds);
     righeAllievi = await inBatch(iscrizioni, 10, calcolaRigaAllievo);
     righeAllievi.sort((a, b) => (a.cognome || "").localeCompare(b.cognome || "") || (a.nome || "").localeCompare(b.nome || ""));
@@ -391,6 +415,7 @@ function rigaCardHtml(riga) {
             <span class="badge ${stato === "fatturato" ? "badge-confermata" : "badge-in-attesa"}">${stato === "fatturato" ? "Fatturato" : "Da valutare"}</span>
           </div>
           <div class="entry-meta" style="margin-top:6px;">Corso originale: ${escapeHtml(riga.corsoOriginaleNome)}</div>
+          ${riga.nrIscrittiCorso != null ? `<div class="entry-meta" style="margin-top:6px;">Listino: ${riga.nrIscrittiCorso} iscritti nel corso → CHF ${riga.prezzoUnitario != null ? riga.prezzoUnitario.toFixed(2) : "—"} a persona</div>` : ""}
           ${oreRigaHtml(riga)}
         </div>
         <div class="entry-ore">CHF ${importo.toFixed(2)}</div>
