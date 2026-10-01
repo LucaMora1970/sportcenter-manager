@@ -797,13 +797,29 @@ service cloud.firestore {
       return exists(/databases/$(database)/documents/giocatoriPadel/$(request.auth.uid));
     }
 
+    // PRIVACY: contiene nome e cognome veri e il socioId, quindi NON è più
+    // leggibile dagli altri giocatori né dal pubblico — solo dal giocatore
+    // stesso e dallo staff dei corsi/padel. La classifica e le pagine di
+    // invito usano giocatoriPadelPubblico (sotto), che ha solo pseudonimo
+    // e livello.
+    function staffPadel() {
+      return hasPermission("corsi:gestisci_padel") || hasPermission("iscrizioni:gestisci_padel")
+        || hasPermission("corsi:gestisci") || hasPermission("iscrizioni:gestisci");
+    }
+
     match /giocatoriPadel/{uid} {
-      allow get: if true; // per mostrare un nome su una pagina di invito
-      allow list: if isSignedIn() && (
-        giocatorePadelRegistrato()
-        || hasPermission("corsi:gestisci_padel") || hasPermission("iscrizioni:gestisci_padel")
-        || hasPermission("corsi:gestisci") || hasPermission("iscrizioni:gestisci")
-      );
+      allow get: if isSignedIn() && (request.auth.uid == uid || staffPadel());
+      allow list: if isSignedIn() && staffPadel();
+      allow write: if false;
+    }
+
+    // Copia pubblica (solo pseudonimo, livello, attivo), scritta dal trigger
+    // sincronizzaGiocatorePadelPubblico. Il singolo documento è leggibile da
+    // tutti (serve per mostrare un pseudonimo su una pagina di invito),
+    // l'elenco ai giocatori registrati e allo staff.
+    match /giocatoriPadelPubblico/{uid} {
+      allow get: if true;
+      allow list: if isSignedIn() && (giocatorePadelRegistrato() || staffPadel());
       allow write: if false;
     }
 

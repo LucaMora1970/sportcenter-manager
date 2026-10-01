@@ -441,7 +441,7 @@ async function onSubmitRegistrazione(e) {
 // sia a chi risponde a un invito, non solo il conteggio delle conferme.
 async function risolviNomiGiocatori(ids) {
   const unici = [...new Set(ids)].filter(Boolean);
-  const docs = await Promise.all(unici.map(id => db.collection("giocatoriPadel").doc(id).get().catch(() => null)));
+  const docs = await Promise.all(unici.map(id => db.collection("giocatoriPadelPubblico").doc(id).get().catch(() => null)));
   const mappa = {};
   docs.forEach(d => { if (d && d.exists) mappa[d.id] = d.data().pseudonimo || "Giocatore"; });
   return mappa;
@@ -607,8 +607,10 @@ async function rispondiInvito(token, risposta) {
 async function caricaClassifica() {
   const el = document.getElementById("classifica-list");
   try {
-    const snap = await db.collection("giocatoriPadel").where("attivo", "==", true).orderBy("livelloEffettivo", "desc").get();
-    classificaCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // Copia pubblica (solo pseudonimo e livello): giocatoriPadel contiene
+    // i nomi veri e non è leggibile da altri giocatori.
+    const snap = await db.collection("giocatoriPadelPubblico").orderBy("livelloEffettivo", "desc").get();
+    classificaCache = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(g => g.attivo !== false);
   } catch (err) {
     el.innerHTML = `<p style="color:var(--chalk-grey);font-size:0.84rem;">Errore nel caricamento: ${escapeHtml(err.message)}</p>`;
     return;

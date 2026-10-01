@@ -31,7 +31,7 @@ const nodemailer = require("nodemailer");
 const { generaPdfFattura, swissUtils } = require("./fattura-pdf");
 const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
-const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { onDocumentCreated, onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const { defineSecret } = require("firebase-functions/params");
 const { initializeApp } = require("firebase-admin/app");
@@ -4475,6 +4475,48 @@ exports.onIscrizioneCorsoCreata = onDocumentCreated(
     }
   }
 );
+
+// Community Padel — privacy dei giocatori. giocatoriPadel/{uid} contiene il
+// nome e cognome VERI (e il socioId): non deve essere leggibile da altri
+// giocatori né dal pubblico. La classifica e le pagine di invito leggono
+// invece giocatoriPadelPubblico/{uid}, una copia con SOLO pseudonimo,
+// livello e stato attivo, tenuta allineata da questo trigger a ogni
+// scrittura (registrazione, livello, disattivazione...) — nessun altro
+// punto del codice deve ricordarsi di aggiornarla.
+function proiezionePubblicaGiocatorePadel(g) {
+  return {
+    pseudonimo: g.pseudonimo || null,
+    livelloEffettivo: g.livelloEffettivo != null ? g.livelloEffettivo : null,
+    attivo: g.attivo !== false
+  };
+}
+
+exports.sincronizzaGiocatorePadelPubblico = onDocumentWritten(
+  { document: "giocatoriPadel/{uid}", region: "europe-west6" },
+  async (event) => {
+    const ref = db.collection("giocatoriPadelPubblico").doc(event.params.uid);
+    const dopo = event.data && event.data.after;
+    if (!dopo || !dopo.exists) { await ref.delete().catch(() => {}); return; }
+    await ref.set(proiezionePubblicaGiocatorePadel(dopo.data()));
+  }
+);
+
+// Allinea in blocco i giocatori già esistenti (da lanciare UNA volta dopo il
+// deploy, solo admin). Non tocca giocatoriPadel: scrive solo la copia pubblica.
+exports.riallineaGiocatoriPadelPubblico = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+  const { isAdmin } = await permessiUtente(request.auth.uid);
+  if (!isAdmin) throw new HttpsError("permission-denied", "Solo un amministratore.");
+  const snap = await db.collection("giocatoriPadel").get();
+  for (let i = 0; i < snap.docs.length; i += 400) {
+    const batch = db.batch();
+    snap.docs.slice(i, i + 400).forEach(d => {
+      batch.set(db.collection("giocatoriPadelPubblico").doc(d.id), proiezionePubblicaGiocatorePadel(d.data()));
+    });
+    await batch.commit();
+  }
+  return { allineati: snap.size };
+});
 
 // Migrazione una tantum (ma rieseguibile senza duplicare): collega ogni
 // iscrizione storica priva di allievoId a un profilo allieviCorsi,
