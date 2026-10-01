@@ -29,6 +29,16 @@ function oggiISO() {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
+// Scadenza predefinita: oggi + "Giorni di scadenza" dei dati fattura (30 se
+// la configurazione non c'è ancora). Modificabile fattura per fattura.
+function scadenzaPredefinitaISO() {
+  const giorni = configCorrente && configCorrente.giorniScadenza != null ? configCorrente.giorniScadenza : 30;
+  const d = new Date();
+  d.setDate(d.getDate() + giorni);
+  const p = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 function formatDataBreve(iso) {
   if (!iso) return "—";
   const [y, m, d] = iso.split("-");
@@ -239,6 +249,9 @@ function applicaPrecompilazione() {
 
 function apriModalNuova() {
   document.getElementById("nuova-error").innerHTML = "";
+  const scadEl = document.getElementById("fat-scadenza");
+  if (!scadEl.value) scadEl.value = scadenzaPredefinitaISO();
+  scadEl.min = oggiISO();
   document.getElementById("nuova-modal").classList.remove("hidden");
   document.body.style.overflow = "hidden";
 }
@@ -291,6 +304,9 @@ async function emettiFattura(e) {
     return showError(errEl, "Controlla le righe: servono descrizione, quantità maggiore di zero e prezzo.");
   }
   if (!(totaleForm() > 0)) return showError(errEl, "Il totale deve essere maggiore di zero.");
+  const scadenza = val("fat-scadenza");
+  if (!scadenza) return showError(errEl, "Indica la data di scadenza.");
+  if (scadenza < oggiISO()) return showError(errEl, "La scadenza non può essere prima di oggi.");
 
   const btn = document.getElementById("emetti-btn");
   btn.disabled = true;
@@ -302,6 +318,7 @@ async function emettiFattura(e) {
         cap: val("dest-cap"), localita: val("dest-localita"), email: val("dest-email")
       },
       oggetto: val("fat-oggetto"),
+      dataScadenza: scadenza,
       note: val("fat-note"),
       righe,
       origine: origineForm
