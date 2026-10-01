@@ -191,7 +191,9 @@ function generaPdfFattura(fattura) {
       pdf.font("Helvetica").fontSize(9).fillColor(GRIGIO);
       const noteFinali = [
         fattura.notaIva,
-        `Pagabile entro il ${formatoData(fattura.dataScadenza)} tramite la polizza di versamento QR qui sotto.`,
+        fattura.stato === "annullata"
+          ? "FATTURA ANNULLATA — non effettuare il pagamento."
+          : `Pagabile entro il ${formatoData(fattura.dataScadenza)} tramite la polizza di versamento QR qui sotto.`,
         fattura.note,
         fattura.pieDiPagina
       ].filter(Boolean);
@@ -202,6 +204,16 @@ function generaPdfFattura(fattura) {
 
       // --- Sezione di pagamento QR (ultimi 105 mm della pagina) ---
       new SwissQRBill(datiQr(fattura), { language: "IT" }).attachTo(pdf);
+
+      // Fattura annullata: filigrana ben visibile nella parte alta della
+      // pagina (sopra la polizza, che resterebbe altrimenti pagabile).
+      if (fattura.stato === "annullata") {
+        pdf.save();
+        pdf.rotate(-30, { origin: [mm(105), mm(120)] });
+        pdf.fillColor("#c23b2e").opacity(0.3).font("Helvetica-Bold").fontSize(78)
+          .text("ANNULLATA", mm(5), mm(105), { width: mm(200), align: "center", lineBreak: false });
+        pdf.restore();
+      }
       pdf.end();
     } catch (err) {
       reject(err);

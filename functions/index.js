@@ -5932,6 +5932,11 @@ exports.emettiFattura = onCall(async (request) => {
       createdAt: FieldValue.serverTimestamp()
     };
     tx.set(fatturaRef, doc);
+    tx.set(fatturaRef.collection("eventi").doc(), {
+      daStato: null, aStato: "emessa", motivo: null, dataPagamento: null,
+      daUid: request.auth.uid, daNome: (userData && userData.nome) || "",
+      at: FieldValue.serverTimestamp()
+    });
     return doc;
   });
 
@@ -5984,27 +5989,68 @@ exports.inviaFatturaEmail = onCall({ secrets: MAIL_SECRETS, memory: "512MiB" }, 
   const aggiornamento = { inviataA: destinatario, inviataIl: FieldValue.serverTimestamp() };
   if (fattura.stato === "emessa") aggiornamento.stato = "inviata";
   await ref.update(aggiornamento);
+  await ref.collection("eventi").add({
+    daStato: fattura.stato, aStato: aggiornamento.stato || fattura.stato, motivo: `Inviata a ${destinatario}`, dataPagamento: null,
+    daUid: request.auth.uid, daNome: "",
+    at: FieldValue.serverTimestamp()
+  });
   return { inviata: true, a: destinatario };
 });
 
+// Cambio di stato di una fattura: sempre in transazione e sempre con una
+// riga nel registro fatture/{id}/eventi (chi, quando, da→a, motivo), che il
+// client non può né scrivere né modificare. L'annullamento richiede un
+// motivo e resta scritto sulla fattura stessa (annullataAt/Da/motivo): il
+// numero non si riusa né si cancella (numerazione continua).
 exports.aggiornaStatoFattura = onCall(async (request) => {
-  await richiediPermessoFatture(request);
-  const { id, stato, dataPagamento } = request.data || {};
+  const { userData } = await richiediPermessoFatture(request);
+  const { id, stato, dataPagamento, motivo } = request.data || {};
   if (!STATI_FATTURA.includes(stato)) throw new HttpsError("invalid-argument", "Stato non valido.");
-  const { ref, fattura } = await caricaFattura(id);
-  const aggiornamento = { stato };
-  if (stato === "pagata") {
-    const dp = dataPagamento || oggiZurigo();
-    if (!dataIsoValida(dp)) throw new HttpsError("invalid-argument", "Data di pagamento non valida.");
-    aggiornamento.dataPagamento = dp;
-  } else {
-    aggiornamento.dataPagamento = FieldValue.delete();
-  }
-  // Il numero resta assegnato: una fattura annullata non si cancella né si
-  // riusa (obbligo di numerazione continua), si marca soltanto.
-  if (fattura.stato === "annullata" && stato !== "annullata") {
-    throw new HttpsError("failed-precondition", "Una fattura annullata non può essere riaperta: emettine una nuova.");
-  }
-  await ref.update(aggiornamento);
+  if (!id) throw new HttpsError("invalid-argument", "id fattura mancante.");
+  const motivoPulito = testoPulito(motivo, 300);
+  const daNome = (userData && userData.nome) || "";
+  const ref = db.collection("fatture").doc(String(id));
+
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new HttpsError("not-found", "Fattura non trovata.");
+    const f = snap.data();
+
+    // Una fattura annullata non si riapre né si modifica: si emette una nuova.
+    if (f.stato === "annullata") {
+      throw new HttpsError("failed-precondition", "Una fattura annullata non può più essere modificata: emettine una nuova.");
+    }
+    if (f.stato === stato) throw new HttpsError("failed-precondition", "La fattura è già in questo stato.");
+    if (stato === "annullata" && motivoPulito.length < 5) {
+      throw new HttpsError("invalid-argument", "Per annullare una fattura serve un motivo (almeno 5 caratteri).");
+    }
+    if (f.stato === "pagata" && !motivoPulito) {
+      throw new HttpsError("invalid-argument", "Per togliere lo stato «pagata» serve un motivo.");
+    }
+
+    const aggiornamento = { stato };
+    let dp = null;
+    if (stato === "pagata") {
+      dp = dataPagamento || oggiZurigo();
+      if (!dataIsoValida(dp)) throw new HttpsError("invalid-argument", "Data di pagamento non valida.");
+      if (dp < f.dataEmissione) throw new HttpsError("invalid-argument", "La data di pagamento non può precedere l'emissione.");
+      aggiornamento.dataPagamento = dp;
+    } else {
+      aggiornamento.dataPagamento = FieldValue.delete();
+    }
+    if (stato === "annullata") {
+      aggiornamento.annullataAt = FieldValue.serverTimestamp();
+      aggiornamento.annullataDa = request.auth.uid;
+      aggiornamento.annullataDaNome = daNome;
+      aggiornamento.motivoAnnullo = motivoPulito;
+    }
+    tx.update(ref, aggiornamento);
+    tx.set(ref.collection("eventi").doc(), {
+      daStato: f.stato, aStato: stato,
+      motivo: motivoPulito || null, dataPagamento: dp,
+      daUid: request.auth.uid, daNome,
+      at: FieldValue.serverTimestamp()
+    });
+  });
   return { ok: true };
 });

@@ -402,11 +402,13 @@ function fatturaCardHtml(f) {
           <div class="entry-meta" style="margin-top:6px;">Emessa il ${formatDataBreve(f.dataEmissione)} · scadenza ${formatDataBreve(f.dataScadenza)}${f.dataPagamento ? ` · pagata il ${formatDataBreve(f.dataPagamento)}` : ""}</div>
           ${f.oggetto ? `<div class="entry-meta">${escapeHtml(f.oggetto)}</div>` : ""}
           ${f.inviataA ? `<div class="entry-meta">Inviata a ${escapeHtml(f.inviataA)}</div>` : ""}
+          ${f.stato === "annullata" ? `<div class="entry-meta" style="color:var(--danger);">Annullata${f.annullataAt ? " il " + f.annullataAt.toDate().toLocaleDateString("it-CH") : ""}${f.annullataDaNome ? " da " + escapeHtml(f.annullataDaNome) : ""}${f.motivoAnnullo ? " — " + escapeHtml(f.motivoAnnullo) : ""}</div>` : ""}
         </div>
         <div class="entry-ore">CHF ${chf(f.totale)}</div>
       </div>
       <div class="dipendente-actions">
         <button type="button" class="btn btn-ghost" data-azione="pdf" data-id="${f.id}">PDF</button>
+        <button type="button" class="btn btn-ghost" data-azione="storico" data-id="${f.id}">Storico</button>
         ${f.stato !== "annullata" ? `<button type="button" class="btn btn-ghost" data-azione="email" data-id="${f.id}">Invia email</button>` : ""}
         ${!chiusa ? `<button type="button" class="btn btn-primary" data-azione="pagata" data-id="${f.id}">Segna pagata</button>` : ""}
         ${f.stato !== "annullata" ? `<button type="button" class="btn btn-danger" data-azione="annulla" data-id="${f.id}">Annulla</button>` : ""}
@@ -444,6 +446,17 @@ async function azioneFattura(azione, id) {
       await scaricaPdf(id);
       return;
     }
+    if (azione === "storico") {
+      const snap = await db.collection("fatture").doc(id).collection("eventi").orderBy("at").get();
+      const righe = snap.docs.map(d => {
+        const e = d.data();
+        const quando = e.at ? e.at.toDate().toLocaleString("it-CH") : "—";
+        const passo = e.daStato ? `${STATI_LABEL[e.daStato] || e.daStato} → ${STATI_LABEL[e.aStato] || e.aStato}` : (STATI_LABEL[e.aStato] || e.aStato);
+        return `${quando} · ${passo}${e.daNome ? " · " + e.daNome : ""}${e.motivo ? " · " + e.motivo : ""}`;
+      });
+      alert(`Storico fattura ${f.numero}\n\n` + (righe.join("\n") || "Nessun evento registrato (fattura emessa prima del registro)."));
+      return;
+    }
     if (azione === "email") {
       const to = prompt(`Invia la fattura ${f.numero} a quale indirizzo email?`, f.inviataA || f.destinatario.email || "");
       if (!to) return;
@@ -456,8 +469,10 @@ async function azioneFattura(azione, id) {
       if (!data) return;
       await cloudFunctions().httpsCallable("aggiornaStatoFattura")({ id, stato: "pagata", dataPagamento: data.trim() });
     } else if (azione === "annulla") {
-      if (!confirm(`Annullare la fattura ${f.numero}? Il numero resta assegnato e non si può riaprire.`)) return;
-      await cloudFunctions().httpsCallable("aggiornaStatoFattura")({ id, stato: "annullata" });
+      const motivo = prompt(`Annullare la fattura ${f.numero}? Il numero resta assegnato e non si può riaprire.\n\nMotivo dell'annullamento (obbligatorio):`);
+      if (motivo === null) return;
+      if (motivo.trim().length < 5) { showError(errEl, "Per annullare serve un motivo di almeno 5 caratteri."); return; }
+      await cloudFunctions().httpsCallable("aggiornaStatoFattura")({ id, stato: "annullata", motivo: motivo.trim() });
     }
     await caricaFatture();
   } catch (err) {
