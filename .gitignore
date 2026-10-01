@@ -1,0 +1,10 @@
+# Dipendenze e segreti locali
+node_modules/
+.env
+.env.*
+functions/.secret.local
+*.log
+
+# Sistema e strumenti locali
+.DS_Store
+.claude/

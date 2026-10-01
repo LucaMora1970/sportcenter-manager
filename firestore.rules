@@ -55,20 +55,64 @@ service cloud.firestore {
     // tutti; chi ha "diario:leggi_tutti" può leggere tutti gli utenti
     // (serve al Resoconto per calcolare quota campo e compenso per
     // dipendente), ma non modificarli.
+    //
+    // Anti-escalation: "users:gestisci" è un permesso potente ma NON deve
+    // bastare a diventare amministratore. Chi lo ha non può: assegnare a
+    // nessuno (né a sé) un ruolo con "*", modificare o eliminare un utente
+    // che ha già un ruolo con "*", né modificare/eliminare il proprio
+    // documento (cambiarsi ruolo, riattivarsi...). Solo il vero admin
+    // (isAdmin()) può farlo.
+    function ruoloEAdmin(ruoloId) {
+      return ruoloId is string && ruoloId.size() > 0
+        && exists(/databases/$(database)/documents/roles/$(ruoloId))
+        && get(/databases/$(database)/documents/roles/$(ruoloId)).data.get("permessi", []).hasAny(["*"]);
+    }
+
     match /users/{userId} {
       allow read: if isSignedIn() && (
         request.auth.uid == userId
         || hasPermission("users:gestisci")
         || hasPermission("diario:leggi_tutti")
       );
-      allow write: if hasPermission("users:gestisci");
+      allow create: if isAdmin() || (
+        hasPermission("users:gestisci")
+        && !ruoloEAdmin(request.resource.data.get("ruoloId", ""))
+      );
+      allow update: if isAdmin() || (
+        hasPermission("users:gestisci")
+        && userId != request.auth.uid
+        && !ruoloEAdmin(resource.data.get("ruoloId", ""))
+        && !ruoloEAdmin(request.resource.data.get("ruoloId", ""))
+      );
+      allow delete: if isAdmin() || (
+        hasPermission("users:gestisci")
+        && userId != request.auth.uid
+        && !ruoloEAdmin(resource.data.get("ruoloId", ""))
+      );
     }
 
     // I ruoli sono leggibili da chi è loggato (servono per calcolare i permessi),
-    // ma modificabili solo da chi gestisce i ruoli.
+    // ma modificabili solo da chi gestisce i ruoli — con gli stessi limiti
+    // anti-escalation di sopra: chi ha solo "ruoli:gestisci" non può creare
+    // o modificare un ruolo con "*", né toccare il proprio ruolo (altrimenti
+    // potrebbe darsi qualunque permesso, "*" compreso).
     match /roles/{roleId} {
       allow read: if isSignedIn();
-      allow write: if hasPermission("ruoli:gestisci");
+      allow create: if isAdmin() || (
+        hasPermission("ruoli:gestisci")
+        && !request.resource.data.get("permessi", []).hasAny(["*"])
+      );
+      allow update: if isAdmin() || (
+        hasPermission("ruoli:gestisci")
+        && roleId != userDoc().data.get("ruoloId", "")
+        && !resource.data.get("permessi", []).hasAny(["*"])
+        && !request.resource.data.get("permessi", []).hasAny(["*"])
+      );
+      allow delete: if isAdmin() || (
+        hasPermission("ruoli:gestisci")
+        && roleId != userDoc().data.get("ruoloId", "")
+        && !resource.data.get("permessi", []).hasAny(["*"])
+      );
     }
 
     // Minuti entro cui un dipendente può eliminare una propria voce diario

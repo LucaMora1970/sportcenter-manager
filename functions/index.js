@@ -493,6 +493,24 @@ async function notificaGiocatoriAggiunti(bookingId, { disciplina, campoLabel, da
 // "Padel"/"Campo {courtId}" — per tennis/squash (dove courtId è l'id
 // interno del doc "campi", non il numero mostrato) servono per mostrare
 // un'etichetta leggibile sul biglietto.
+// Rilascia il blocco di un credito agganciato a una prenotazione il cui
+// pagamento è fallito (o non è partito): senza, il credito resterebbe
+// inutilizzabile fino alla scadenza naturale del blocco (15 minuti).
+async function rilasciaBloccoCredito(creditCode, bookingId) {
+  if (!creditCode) return;
+  try {
+    const ref = db.collection("credits").doc(creditCode);
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (snap.exists && snap.data().lockBookingId === bookingId) {
+        tx.update(ref, { lockBookingId: FieldValue.delete(), lockAt: FieldValue.delete() });
+      }
+    });
+  } catch (err) {
+    console.error("rilasciaBloccoCredito:", err);
+  }
+}
+
 async function confermaPrenotazionePubblica({ bookingId, courtId, date, startTime, endTime, prezzo, token, paymentId, creditCode, creditoScalato, disciplina, campoLabel }) {
   const bookingCode = await generaCodicePrenotazioneUnivoco();
 
@@ -546,13 +564,24 @@ async function confermaPrenotazionePubblica({ bookingId, courtId, date, startTim
 
   if (creditCode && creditoScalato > 0) {
     const creditoRef = db.collection("credits").doc(creditCode);
-    const creditoSnap = await creditoRef.get();
-    if (creditoSnap.exists) {
-      const nuovoResiduo = Math.max(0, creditoSnap.data().remainingAmount - creditoScalato);
-      await creditoRef.update({
+    // Lettura+scrittura in transazione (prima erano separate: due conferme
+    // simultanee scalavano dallo stesso saldo letto) e rilascio del
+    // blocco messo alla creazione della prenotazione.
+    const scalato = await db.runTransaction(async (tx) => {
+      const creditoSnap = await tx.get(creditoRef);
+      if (!creditoSnap.exists) return false;
+      const residuo = creditoSnap.data().remainingAmount;
+      if (residuo < creditoScalato) console.error("confermaPrenotazionePubblica: credito insufficiente", { creditCode, bookingId, residuo, creditoScalato });
+      const nuovoResiduo = Math.max(0, residuo - creditoScalato);
+      tx.update(creditoRef, {
         remainingAmount: nuovoResiduo,
-        status: nuovoResiduo === 0 ? "USED" : "PARTIALLY_USED"
+        status: nuovoResiduo === 0 ? "USED" : "PARTIALLY_USED",
+        lockBookingId: FieldValue.delete(),
+        lockAt: FieldValue.delete()
       });
+      return true;
+    });
+    if (scalato) {
       await db.collection("creditTransactions").add({
         creditId: creditCode, bookingId, type: "REDEEM", amount: creditoScalato,
         createdAt: FieldValue.serverTimestamp()
@@ -745,10 +774,33 @@ exports.creaPrenotazionePubblica = onCall(
         .filter(b => b.status === "PENDING_PAYMENT" || b.status === "PENDING_CONFIRMATION" || b.status === "CONFIRMED" || b.status === "COMPLETED")
         .map(b => ({ start: orarioToMin(b.startTime), end: orarioToMin(b.endTime) }));
 
+      // Credito: riletto QUI dentro (non dalla lettura iniziale, che con
+      // richieste parallele è uguale per tutte) e "agganciato" a questa
+      // prenotazione finché è in corso. Senza il blocco, N richieste
+      // simultanee con lo stesso codice vedevano tutte il saldo intero e
+      // ottenevano N prenotazioni gratis con un solo credito.
+      let creditoRef = null;
+      if (creditCode) {
+        creditoRef = db.collection("credits").doc(creditCode);
+        const cs = await tx.get(creditoRef);
+        const c = cs.exists ? cs.data() : null;
+        if (!c || ["USED", "EXPIRED", "CANCELLED"].includes(c.status)) {
+          throw new HttpsError("failed-precondition", "Codice credito non valido o già utilizzato.");
+        }
+        const lockAttivo = c.lockBookingId && c.lockAt && (Date.now() - c.lockAt.toMillis()) < PENDING_SCADUTO_MINUTI * 60000;
+        if (lockAttivo) {
+          throw new HttpsError("failed-precondition", "Questo credito è già in uso su una prenotazione in corso: riprova tra qualche minuto.");
+        }
+        if (c.remainingAmount < creditoDaScalare) {
+          throw new HttpsError("failed-precondition", "Il credito residuo è cambiato: riprova.");
+        }
+      }
+
       if (!validStarts(existingBookings, durationMinutes, close, feriale(date, festivi), eOggi(date)).includes(startMin)) {
         throw new HttpsError("failed-precondition", "Questo slot non è più disponibile — scegline un altro.");
       }
 
+      if (creditoRef) tx.update(creditoRef, { lockBookingId: bookingRef.id, lockAt: FieldValue.serverTimestamp() });
       tx.set(bookingRef, {
         courtId: court, date, startTime, endTime,
         status: "PENDING_PAYMENT",
@@ -815,6 +867,7 @@ exports.creaPrenotazionePubblica = onCall(
 
       return { pagamentoNecessario: true, token, paymentPageUrl };
     } catch (err) {
+      await rilasciaBloccoCredito(creditCode, bookingRef.id);
       await bookingRef.delete();
       console.error("creaPrenotazionePubblica: errore PostFinance:", err);
       throw new HttpsError("internal", "Errore nella creazione del pagamento. Riprova.");
@@ -1026,6 +1079,9 @@ exports.eliminaPrenotazioneOperatore = onCall(async (request) => {
 exports.webhookPostFinance = onRequest(
   { secrets: [POSTFINANCE_SPACE_ID, POSTFINANCE_USER_ID, POSTFINANCE_APP_KEY, ...MAIL_SECRETS] },
   async (req, res) => {
+    // Impronta dell'evento in corso: se l'elaborazione fallisce la si
+    // rilascia, così il nuovo tentativo di PostFinance può riprovare.
+    let eventoRef = null;
     try {
       const transactionId = req.body?.entityId;
       if (!transactionId) { res.status(400).send("missing entityId"); return; }
@@ -1039,6 +1095,25 @@ exports.webhookPostFinance = onRequest(
         || transaction.state === TransactionState.Decline
         || transaction.state === TransactionState.Voided;
       if (!successo && !fallito) { res.status(200).send("ok (stato intermedio)"); return; }
+
+      // Idempotenza: lo stesso evento (transazione + esito) si elabora UNA
+      // volta sola. Il webhook è pubblico e PostFinance stessa può
+      // riprovare: senza questa guardia ogni ripetizione rigenererebbe
+      // codici credito, rifarebbe incrementi e rinnovi. Un'elaborazione
+      // rimasta "IN_CORSO" da oltre 5 minuti (crash a metà) si può
+      // riprendere.
+      eventoRef = db.collection("webhookEventi").doc(`${transaction.id}_${successo ? "ok" : "ko"}`);
+      const daElaborare = await db.runTransaction(async (tx) => {
+        const snap = await tx.get(eventoRef);
+        if (snap.exists) {
+          const e = snap.data();
+          const inCorsoRecente = e.stato === "IN_CORSO" && e.avviatoAt && (Date.now() - e.avviatoAt.toMillis()) < 5 * 60000;
+          if (e.stato === "ELABORATO" || inCorsoRecente) return false;
+        }
+        tx.set(eventoRef, { stato: "IN_CORSO", avviatoAt: FieldValue.serverTimestamp() });
+        return true;
+      });
+      if (!daElaborare) { res.status(200).send("ok (già elaborato)"); return; }
 
       const meta = transaction.metaData || {};
 
@@ -1236,13 +1311,16 @@ exports.webhookPostFinance = onRequest(
             });
           }
         } else {
+          await rilasciaBloccoCredito(meta.creditCode, meta.bookingId);
           await db.collection("bookings").doc(meta.bookingId).delete();
         }
       }
 
+      await eventoRef.set({ stato: "ELABORATO", elaboratoAt: FieldValue.serverTimestamp() }, { merge: true });
       res.status(200).send("ok");
     } catch (err) {
       console.error("webhookPostFinance error:", err);
+      if (eventoRef) await eventoRef.delete().catch(() => {});
       res.status(500).send("error");
     }
   }
@@ -1929,6 +2007,22 @@ async function permessiUtente(uid) {
     if (roleSnap.exists) permessi = roleSnap.data().permessi || [];
   }
   return { userData, permessi, isAdmin: permessi.includes("*") };
+}
+
+// Registro delle azioni sensibili sugli account (reset password, eliminazione
+// utenti...): scritto solo dal server (nessuna regola client = nega tutto),
+// serve a ricostruire chi ha fatto cosa e quando in caso di contestazione.
+async function registraAuditSicurezza(azione, request, dettaglio) {
+  try {
+    await db.collection("auditSicurezza").add({
+      azione,
+      daUid: request.auth ? request.auth.uid : null,
+      dettaglio: dettaglio || {},
+      createdAt: FieldValue.serverTimestamp()
+    });
+  } catch (err) {
+    console.error("registraAuditSicurezza:", err);
+  }
 }
 
 // ---------- Iscrizione socio (self-service, pubblico) ----------
@@ -4855,8 +4949,28 @@ exports.generaLinkResetPassword = onCall(async (request) => {
   const { email } = request.data || {};
   if (!email) throw new HttpsError("invalid-argument", "Email mancante.");
 
+  // Chi ha solo users:gestisci non può generare il link di reset per un
+  // amministratore: sarebbe un modo per prenderne l'account e quindi
+  // ottenere ogni permesso.
+  let targetUid = null;
+  try {
+    targetUid = (await getAuth().getUserByEmail(email)).uid;
+  } catch (err) {
+    if (err.code !== "auth/user-not-found") {
+      throw new HttpsError("failed-precondition", "Impossibile verificare l'utente.");
+    }
+  }
+  if (targetUid && !isAdmin) {
+    const target = await permessiUtente(targetUid);
+    if (target.isAdmin) {
+      await registraAuditSicurezza("reset_password_negato_admin", request, { targetUid });
+      throw new HttpsError("permission-denied", "Solo un amministratore può reimpostare la password di un amministratore.");
+    }
+  }
+
   try {
     const link = await getAuth().generatePasswordResetLink(email, { url: `${APP_URL}index.html` });
+    await registraAuditSicurezza("reset_password_link", request, { targetUid, email });
     return { link };
   } catch (err) {
     throw new HttpsError("failed-precondition", "Impossibile generare il link: " + err.message);
@@ -4884,6 +4998,13 @@ exports.eliminaUtente = onCall(async (request) => {
 
   const userSnap = await db.collection("users").doc(uid).get();
   if (!userSnap.exists) throw new HttpsError("not-found", "Utente non trovato.");
+
+  // Un amministratore lo elimina solo un altro amministratore.
+  if (!isAdmin && (await permessiUtente(uid)).isAdmin) {
+    await registraAuditSicurezza("elimina_utente_negato_admin", request, { targetUid: uid });
+    throw new HttpsError("permission-denied", "Solo un amministratore può eliminare un amministratore.");
+  }
+  await registraAuditSicurezza("elimina_utente", request, { targetUid: uid, nome: userSnap.data().nome || null, email: userSnap.data().email || null });
 
   // Nessun'azienda deve restare con un referente puntato a un utente che
   // non esiste più — stesso scollegamento fatto da collegaReferenteAzienda
