@@ -793,7 +793,14 @@ function domenicaOFestivo(dataIso) {
   return giorno === 0 || (IMPOSTAZIONI.festivi || []).includes(dataIso);
 }
 
-function quotaCampoPerPrenotazione(booking, quoteCampoList) {
+// Di domenica/festivo il maestro paga il campo come un utente esterno:
+// l'importo è la tariffa "esterno" di Tariffe campi (stessa regola del
+// Resoconto, vedi trovaQuotaCampoMatch in js/resoconto.js); se non è
+// configurata si ripiega sulla quota campo normale.
+function quotaCampoPerPrenotazione(booking, quoteCampoList, tariffeCampiList) {
+  const tariffaEsterno = tariffaEsternoPadelDomenicale(tariffeCampiList, booking.date, booking.startTime, booking.endTime);
+  if (tariffaEsterno != null) return tariffaEsterno;
+
   const durata = orarioToMin(booking.endTime) - orarioToMin(booking.startTime);
   const fascia = fasciaOrariaFor(booking.startTime);
   const tipoGiorno = domenicaOFestivo(booking.date) ? "domenica_festivo" : "feriale";
@@ -892,10 +899,11 @@ async function calcolaResocontoPeriodo(e) {
   btn.textContent = "Calcolo…";
 
   try {
-    const [ticketsSnap, bookingsSnap, quoteCampoSnap, creditsSnap] = await Promise.all([
+    const [ticketsSnap, bookingsSnap, quoteCampoSnap, tariffeCampiSnap, creditsSnap] = await Promise.all([
       db.collection("bookingTickets").where("courtId", "==", COURT_ID).where("date", ">=", dal).where("date", "<=", al).get(),
       db.collection("bookings").where("courtId", "==", COURT_ID).where("date", ">=", dal).where("date", "<=", al).get(),
       db.collection("quoteCampo").get(),
+      db.collection("tariffeCampi").get(),
       db.collection("credits")
         .where("createdAt", ">=", new Date(dal + "T00:00:00"))
         .where("createdAt", "<=", new Date(al + "T23:59:59"))
@@ -924,6 +932,7 @@ async function calcolaResocontoPeriodo(e) {
     const quoteCampoList = quoteCampoSnap.docs
       .map(d => d.data())
       .filter(q => q.attivo !== false);
+    const tariffeCampiList = tariffeCampiSnap.docs.map(d => d.data());
 
     const perDurata = {};
     let totaleVendite = 0;
@@ -938,7 +947,7 @@ async function calcolaResocontoPeriodo(e) {
         perDurata[durata].totale += (t.price || 0);
         totaleVendite += (t.price || 0);
       } else if (t.type === "STAFF_EXEMPT") {
-        const quota = quotaCampoPerPrenotazione(t, quoteCampoList);
+        const quota = quotaCampoPerPrenotazione(t, quoteCampoList, tariffeCampiList);
         if (quota != null) {
           totaleQuotaCampo += quota;
         } else {

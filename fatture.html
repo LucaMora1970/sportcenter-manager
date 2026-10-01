@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Fatture — Sport-OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script>if(localStorage.getItem("sportos-tema")==="light")document.documentElement.setAttribute("data-theme","light");var z=localStorage.getItem("sportos-zoom-testo");if(z&&z!=="0")document.documentElement.setAttribute("data-text-size",z);</script>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d1f30">
+</head>
+<body>
+<div class="app app--wide">
+
+  <div class="topbar">
+    <h1>Fatture</h1>
+    <div class="user-chip" id="user-chip">—</div>
+    <div class="topbar-actions">
+      <button type="button" class="topbar-link" id="testo-zoom-meno-btn" title="Rimpicciolisci testo" aria-label="Rimpicciolisci testo">A−</button>
+      <button type="button" class="topbar-link" id="testo-zoom-piu-btn" title="Ingrandisci testo" aria-label="Ingrandisci testo">A+</button>
+      <button type="button" class="topbar-link" id="theme-toggle-btn">Tema chiaro</button>
+    </div>
+  </div>
+
+  <main>
+
+    <div id="access-denied" class="empty-state hidden">
+      <div class="display">Accesso non consentito</div>
+      <p>Questa sezione è riservata a chi può emettere fatture.</p>
+    </div>
+
+    <div id="content" class="hidden">
+
+      <div class="error-msg" id="fatt-error"></div>
+
+      <!-- Riepilogo -->
+      <div class="scoreboard scoreboard--compact">
+        <div>
+          <div class="label">Da incassare</div>
+          <div class="value" id="riep-aperte"><small>CHF</small>0.00</div>
+        </div>
+        <div>
+          <div class="label">Scadute</div>
+          <div class="value" id="riep-scadute">0</div>
+        </div>
+        <div class="scoreboard-totale">
+          <div class="label">Incassato nell'anno</div>
+          <div class="value" id="riep-incassato"><small>CHF</small>0.00</div>
+        </div>
+      </div>
+
+      <!-- Dati per la fattura -->
+      <details class="config-section" id="config-details">
+        <summary><h2>Dati per la fattura</h2></summary>
+        <div class="config-section-body">
+          <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Compaiono su ogni fattura e nella polizza di versamento QR. Le fatture già emesse conservano i dati di quando sono state emesse: cambiare l'IBAN qui vale solo per le fatture nuove.</p>
+          <div class="error-msg" id="cfg-error"></div>
+          <form id="cfg-form">
+            <div class="field">
+              <label for="cfg-nome">Nome (intestatario del conto)</label>
+              <input type="text" id="cfg-nome" required maxlength="70" placeholder="es. Tennis Club Mendrisio">
+            </div>
+            <div class="row2">
+              <div class="field" style="flex:3;">
+                <label for="cfg-via">Via</label>
+                <input type="text" id="cfg-via" required maxlength="70">
+              </div>
+              <div class="field" style="flex:1;">
+                <label for="cfg-civico">N.</label>
+                <input type="text" id="cfg-civico" maxlength="16">
+              </div>
+            </div>
+            <div class="row2">
+              <div class="field" style="flex:1;">
+                <label for="cfg-cap">CAP</label>
+                <input type="text" id="cfg-cap" required maxlength="16">
+              </div>
+              <div class="field" style="flex:2;">
+                <label for="cfg-localita">Località</label>
+                <input type="text" id="cfg-localita" required maxlength="35">
+              </div>
+            </div>
+            <div class="row2">
+              <div class="field">
+                <label for="cfg-telefono">Telefono (facoltativo)</label>
+                <input type="text" id="cfg-telefono" maxlength="40">
+              </div>
+              <div class="field">
+                <label for="cfg-email">Email (facoltativa)</label>
+                <input type="email" id="cfg-email" maxlength="120">
+              </div>
+            </div>
+            <div class="field">
+              <label for="cfg-iban">IBAN</label>
+              <input type="text" id="cfg-iban" required placeholder="CH.. .... .... .... .... ." autocomplete="off">
+              <div class="entry-meta" id="cfg-iban-info" style="margin-top:6px;"></div>
+            </div>
+            <div class="field">
+              <label for="cfg-tipo-rif">Riferimento di pagamento</label>
+              <select id="cfg-tipo-rif">
+                <option value="SCOR">SCOR (ISO 11649) — per IBAN normale</option>
+                <option value="QRR">QRR (27 cifre) — richiede un QR-IBAN</option>
+                <option value="NON">Nessun riferimento</option>
+              </select>
+              <div class="entry-meta" style="margin-top:6px;">Con un IBAN normale usa SCOR. Quando la banca fornirà un QR-IBAN, inseriscilo sopra e scegli QRR: nessun'altra modifica.</div>
+            </div>
+            <div class="row2">
+              <div class="field">
+                <label for="cfg-giorni">Giorni di scadenza</label>
+                <input type="number" id="cfg-giorni" min="0" max="365" step="1" value="30">
+              </div>
+            </div>
+            <div class="field">
+              <label for="cfg-nota-iva">Nota IVA</label>
+              <input type="text" id="cfg-nota-iva" maxlength="200" value="Non soggetto a IVA.">
+            </div>
+            <div class="field">
+              <label for="cfg-piede">Testo a piè di fattura (facoltativo)</label>
+              <textarea id="cfg-piede" rows="2" maxlength="300" placeholder="es. Grazie per la fiducia."></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary">Salva dati</button>
+          </form>
+        </div>
+      </details>
+
+      <!-- Nuova fattura -->
+      <details class="config-section" id="nuova-details">
+        <summary><h2>Nuova fattura</h2></summary>
+        <div class="config-section-body">
+          <div class="error-msg" id="nuova-error"></div>
+          <form id="nuova-form">
+            <div class="field">
+              <label for="dest-nome">Destinatario</label>
+              <input type="text" id="dest-nome" required maxlength="70" placeholder="Nome e cognome o ragione sociale">
+            </div>
+            <div class="row2">
+              <div class="field" style="flex:3;">
+                <label for="dest-via">Via</label>
+                <input type="text" id="dest-via" maxlength="70">
+              </div>
+              <div class="field" style="flex:1;">
+                <label for="dest-civico">N.</label>
+                <input type="text" id="dest-civico" maxlength="16">
+              </div>
+            </div>
+            <div class="row2">
+              <div class="field" style="flex:1;">
+                <label for="dest-cap">CAP</label>
+                <input type="text" id="dest-cap" maxlength="16">
+              </div>
+              <div class="field" style="flex:2;">
+                <label for="dest-localita">Località</label>
+                <input type="text" id="dest-localita" maxlength="35">
+              </div>
+            </div>
+            <p class="entry-meta" style="margin:-8px 0 14px;">Se manca via, CAP o località, la polizza QR esce senza il campo «Pagabile da» (valido per lo standard, ma il cliente dovrà scrivere i suoi dati a mano e i pagamenti sono più difficili da abbinare).</p>
+            <div class="field">
+              <label for="dest-email">Email (per l'invio, facoltativa)</label>
+              <input type="email" id="dest-email" maxlength="120">
+            </div>
+            <div class="field">
+              <label for="fat-oggetto">Oggetto (facoltativo)</label>
+              <input type="text" id="fat-oggetto" maxlength="140" placeholder="es. Corso tennis stagione 2026/27">
+            </div>
+
+            <div class="section-title"><h3 style="font-size:0.9rem;">Righe</h3></div>
+            <div id="righe-container"></div>
+            <button type="button" class="btn btn-ghost" id="aggiungi-riga-btn">+ Aggiungi riga</button>
+
+            <div class="entry-card" style="margin-top:14px;">
+              <div class="entry-main"><div class="entry-tipo">Totale</div></div>
+              <div class="entry-ore" id="nuova-totale">CHF 0.00</div>
+            </div>
+
+            <div class="field" style="margin-top:14px;">
+              <label for="fat-note">Nota (facoltativa, appare sulla fattura)</label>
+              <textarea id="fat-note" rows="2" maxlength="500"></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary" id="emetti-btn">Emetti fattura e scarica PDF</button>
+          </form>
+        </div>
+      </details>
+
+      <!-- Fatture emesse -->
+      <div class="section-title"><h2>Fatture emesse</h2></div>
+      <div class="gruppo-pills" id="filtro-stato-pills"></div>
+      <div class="field">
+        <label for="fat-search">Cerca per numero o destinatario</label>
+        <input type="text" id="fat-search" placeholder="es. 2026-0001 o Rossi">
+      </div>
+      <div id="fatture-list">
+        <div class="empty-state"><div class="display">Caricamento…</div></div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <nav class="bottom-nav">
+    <a href="diario.html">Diario</a>
+    <a href="resoconto.html">Resoconto</a>
+    <a href="cassa.html">Cassa</a>
+    <a href="corsi.html">Corsi</a>
+    <a href="presenze.html">Presenze</a>
+    <a href="allievi.html">Allievi</a>
+    <a href="prenotazioni.html">Prenotazioni</a>
+    <a href="piano-occupazione.html">Camp</a>
+    <a href="fatture.html" class="active">Fatture</a>
+    <a href="soci.html">Soci</a>
+    <a href="utenti.html">Team</a>
+    <a href="configurazione.html">Config</a>
+    <a href="#" id="logout-link">Esci</a>
+  </nav>
+
+  <script>
+    document.querySelector(".bottom-nav a.active")?.scrollIntoView({ inline: "center", block: "nearest" });
+  </script>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/fatture.js"></script>
+</body>
+</html>

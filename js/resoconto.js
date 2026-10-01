@@ -59,10 +59,11 @@ function last7DaysRange() {
 // quindi anche un collaboratore senza permessi speciali può calcolarsi
 // la propria quota campo e il proprio compenso.
 async function loadConfigCalcoli() {
-  const [tipiSnap, campiSnap, quoteCampoSnap] = await Promise.all([
+  const [tipiSnap, campiSnap, quoteCampoSnap, tariffeCampiSnap] = await Promise.all([
     db.collection("tipiAttivita").get(),
     db.collection("campi").get(),
-    db.collection("quoteCampo").get()
+    db.collection("quoteCampo").get(),
+    db.collection("tariffeCampi").get()
   ]);
 
   const tipiById = {};
@@ -81,7 +82,11 @@ async function loadConfigCalcoli() {
     .map(d => d.data())
     .filter(q => q.attivo !== false);
 
-  return { tipiById, campiById, quoteCampoList };
+  // Serve solo per il padel di domenica/festivo, dove la quota campo è la
+  // tariffa "esterno" (vedi trovaQuotaCampoMatch). Leggibile da chiunque.
+  const tariffeCampiList = tariffeCampiSnap.docs.map(d => d.data());
+
+  return { tipiById, campiById, quoteCampoList, tariffeCampiList };
 }
 
 // Quota campo e compenso di una singola voce di diario. È l'unico punto
@@ -131,7 +136,7 @@ function importiPerEntry(e, utente, config) {
   return {
     tipo,
     soggettaQuota,
-    quotaCampo: soggettaQuota ? quotaCampoPerEntry(e, config.campiById, config.quoteCampoList) : null,
+    quotaCampo: soggettaQuota ? quotaCampoPerEntry(e, config.campiById, config.quoteCampoList, config.tariffeCampiList) : null,
     retribuita,
     compenso: retribuita && tariffaDisciplina ? (e.ore || 0) * tariffaDisciplina : null
   };
@@ -240,8 +245,19 @@ function quotaCampoTipoAttivitaIds(q) {
 // Isolata da quotaCampoPerEntry perché il dettaglio costi per tipo
 // attività deve mostrare la tariffa unitaria (CHF/ora o CHF/lezione), non
 // solo il totale già moltiplicato per ore/lezione.
-function trovaQuotaCampoMatch(entry, campiById, quoteCampoList) {
+//
+// Eccezione padel: di domenica/festivo il maestro paga il campo come un
+// utente esterno, quindi l'importo è la tariffa "esterno" di Tariffe
+// campi per quello slot (fascia e durata dalla voce), non una riga di
+// Quote campo. Se quella tariffa non è configurata si ripiega sulla
+// quota campo normale (che può avere già una riga domenica/festivo).
+function trovaQuotaCampoMatch(entry, campiById, quoteCampoList, tariffeCampiList) {
   if (!entry.campoNumero) return null;
+
+  if (entry.disciplina === "padel") {
+    const tariffaEsterno = tariffaEsternoPadelDomenicale(tariffeCampiList, entry.data, entry.oraInizio, entry.oraFine);
+    if (tariffaEsterno != null) return { importo: tariffaEsterno, tariffaEsterno: true };
+  }
 
   const campo = campiById[entry.disciplina + "|" + entry.campoNumero];
   const posizione = campo ? campo.posizione : null;
@@ -289,8 +305,8 @@ function trovaQuotaCampoMatch(entry, campiById, quoteCampoList) {
   return candidates[0];
 }
 
-function quotaCampoPerEntry(entry, campiById, quoteCampoList) {
-  const match = trovaQuotaCampoMatch(entry, campiById, quoteCampoList);
+function quotaCampoPerEntry(entry, campiById, quoteCampoList, tariffeCampiList) {
+  const match = trovaQuotaCampoMatch(entry, campiById, quoteCampoList, tariffeCampiList);
   if (!match) return null;
   const base = entry.disciplina === "padel" ? match.importo : (entry.ore || 0) * match.importo;
   return entry.prenotataUltimoMinuto ? base + SOVRAPPREZZO_ULTIMO_MINUTO : base;
@@ -329,14 +345,16 @@ function dettaglioCostiPerTipoAttivita(entries, utente, config) {
 
     const soggettaQuota = !!(utente && utente.soggettoQuotaCampo && tipo && tipo.soggettoQuotaCampo);
     if (soggettaQuota) {
-      const match = trovaQuotaCampoMatch(e, config.campiById, config.quoteCampoList);
+      const match = trovaQuotaCampoMatch(e, config.campiById, config.quoteCampoList, config.tariffeCampiList);
       if (match) {
         const unita = e.disciplina === "padel" ? "lezione" : "ora";
         const quantitaRiga = unita === "lezione" ? 1 : ore;
         const totaleRiga = unita === "lezione" ? match.importo : ore * match.importo;
-        const chiave = chiaveTipo + "|" + unita + "|" + match.importo;
+        // Il padel di domenica/festivo a tariffa esterno è una riga a
+        // parte, anche a parità di importo con una quota feriale.
+        const chiave = chiaveTipo + "|" + unita + "|" + match.importo + (match.tariffaEsterno ? "|esterno" : "");
         if (!quotaMap[chiave]) {
-          quotaMap[chiave] = { tipoNome: nomeTipo, disciplina: e.disciplina, unita, tariffa: match.importo, quantita: 0, totale: 0 };
+          quotaMap[chiave] = { tipoNome: match.tariffaEsterno ? nomeTipo + " (domenica/festivo, tariffa esterno)" : nomeTipo, disciplina: e.disciplina, unita, tariffa: match.importo, quantita: 0, totale: 0 };
         }
         quotaMap[chiave].quantita += quantitaRiga;
         quotaMap[chiave].totale += totaleRiga;

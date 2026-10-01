@@ -28,6 +28,7 @@
 
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
+const { generaPdfFattura, swissUtils } = require("./fattura-pdf");
 const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onDocumentCreated } = require("firebase-functions/v2/firestore");
@@ -5595,3 +5596,260 @@ exports.manutenzioneCommunityPadel = onSchedule(
     await Promise.all(daDisattivare.map(d => d.ref.update({ attivo: false })));
   }
 );
+
+
+// ============================================================
+// FATTURE CON POLIZZA QR (standard svizzero QR-bill)
+// ------------------------------------------------------------
+// Dati:
+//  - fattureConfig/main     dati del creditore, IBAN, tipo riferimento
+//                           (SCOR | QRR | NON), giorni di scadenza, note.
+//                           Letto/scritto dal client con fatture:gestisci.
+//  - fattureContatori/main  progressivo per anno (anno_2026: 12). Solo
+//                           server: i numeri non devono mai avere buchi
+//                           né doppioni.
+//  - fatture/{id}           la fattura emessa, con SNAPSHOT di creditore,
+//                           IBAN e riferimento: il PDF si rigenera sempre
+//                           identico anche se la configurazione cambia.
+//                           Creata/modificata solo da queste funzioni.
+//
+// Tipo di riferimento: con un IBAN normale (es. Raiffeisen) si usa SCOR
+// (ISO 11649) o nessuno; quando la banca fornirà un QR-IBAN (IID
+// 30000-31999) basta cambiare IBAN e tipoRiferimento in "QRR" nella
+// pagina Fatture, senza toccare codice. Un QR-IBAN senza QRR, o un QRR
+// con un IBAN normale, vengono rifiutati: la banca scarterebbe il
+// pagamento.
+// ============================================================
+
+const STATI_FATTURA = ["emessa", "inviata", "pagata", "annullata"];
+
+async function richiediPermessoFatture(request) {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+  const { userData, permessi, isAdmin } = await permessiUtente(request.auth.uid);
+  if (userData && userData.attivo === false) throw new HttpsError("permission-denied", "Utente disattivato.");
+  if (!isAdmin && !permessi.includes("fatture:gestisci")) {
+    throw new HttpsError("permission-denied", "Permesso mancante: fatture:gestisci.");
+  }
+  return { userData };
+}
+
+function testoPulito(v, max) {
+  return String(v == null ? "" : v).replace(/\s+/g, " ").trim().slice(0, max);
+}
+
+function arrotonda2(n) {
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
+function oggiZurigo() {
+  return new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Zurich" });
+}
+
+function aggiungiGiorniIso(iso, giorni) {
+  const d = new Date(iso + "T12:00:00Z");
+  d.setUTCDate(d.getUTCDate() + giorni);
+  return d.toISOString().slice(0, 10);
+}
+
+function dataIsoValida(s) {
+  return typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(new Date(s + "T12:00:00Z").getTime());
+}
+
+function indirizzoPulito(p, { conEmail } = {}) {
+  const out = {
+    nome: testoPulito(p.nome, 70),
+    via: testoPulito(p.via, 70),
+    civico: testoPulito(p.civico, 16),
+    cap: testoPulito(p.cap, 16),
+    localita: testoPulito(p.localita, 35),
+    paese: (testoPulito(p.paese, 2) || "CH").toUpperCase()
+  };
+  if (conEmail) out.email = testoPulito(p.email, 120);
+  return out;
+}
+
+// Riferimento di pagamento per il progressivo dato, in base al tipo
+// configurato. Cifre derivate da anno + progressivo (6 cifre).
+function costruisciRiferimento(tipo, anno, progressivo) {
+  const base = String(anno) + String(progressivo).padStart(6, "0");
+  if (tipo === "SCOR") return "RF" + swissUtils.calculateSCORReferenceChecksum(base) + base;
+  if (tipo === "QRR") {
+    const corpo = base.padStart(26, "0");
+    return corpo + swissUtils.calculateQRReferenceChecksum(corpo);
+  }
+  return "";
+}
+
+function verificaConfigFatture(cfg) {
+  if (!cfg || !cfg.creditore || !cfg.iban) {
+    throw new HttpsError("failed-precondition", "Configura prima i dati per la fattura (creditore e IBAN).");
+  }
+  const c = indirizzoPulito(cfg.creditore);
+  if (!c.nome || !c.via || !c.cap || !c.localita) {
+    throw new HttpsError("failed-precondition", "Dati del creditore incompleti: servono nome, via, CAP e località.");
+  }
+  const iban = String(cfg.iban).replace(/\s+/g, "").toUpperCase();
+  if (!swissUtils.isIBANValid(iban)) throw new HttpsError("failed-precondition", "L'IBAN configurato non è valido.");
+  if (!/^(CH|LI)/.test(iban)) throw new HttpsError("failed-precondition", "Il QR-bill richiede un IBAN svizzero o del Liechtenstein.");
+  const tipo = ["SCOR", "QRR", "NON"].includes(cfg.tipoRiferimento) ? cfg.tipoRiferimento : "SCOR";
+  const qrIban = swissUtils.isQRIBAN(iban);
+  if (qrIban && tipo !== "QRR") {
+    throw new HttpsError("failed-precondition", "Con un QR-IBAN il tipo di riferimento deve essere QRR.");
+  }
+  if (!qrIban && tipo === "QRR") {
+    throw new HttpsError("failed-precondition", "Il riferimento QRR richiede un QR-IBAN: con questo IBAN normale usa SCOR o nessun riferimento.");
+  }
+  return { creditore: c, iban, tipoRiferimento: tipo };
+}
+
+exports.emettiFattura = onCall(async (request) => {
+  const { userData } = await richiediPermessoFatture(request);
+  const dati = request.data || {};
+
+  const cfgSnap = await db.collection("fattureConfig").doc("main").get();
+  const cfg = cfgSnap.exists ? cfgSnap.data() : null;
+  const { creditore, iban, tipoRiferimento } = verificaConfigFatture(cfg);
+
+  const destinatario = indirizzoPulito(dati.destinatario || {}, { conEmail: true });
+  if (!destinatario.nome) throw new HttpsError("invalid-argument", "Il nome del destinatario è obbligatorio.");
+  if (destinatario.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(destinatario.email)) {
+    throw new HttpsError("invalid-argument", "L'email del destinatario non è valida.");
+  }
+
+  const righeIn = Array.isArray(dati.righe) ? dati.righe : [];
+  if (righeIn.length === 0) throw new HttpsError("invalid-argument", "Aggiungi almeno una riga.");
+  if (righeIn.length > 60) throw new HttpsError("invalid-argument", "Troppe righe (massimo 60).");
+  const righe = righeIn.map((r, i) => {
+    const descrizione = testoPulito(r.descrizione, 200);
+    const quantita = Number(r.quantita);
+    const prezzoUnitario = Number(r.prezzoUnitario);
+    if (!descrizione) throw new HttpsError("invalid-argument", `Riga ${i + 1}: descrizione mancante.`);
+    if (!(quantita > 0) || !isFinite(quantita)) throw new HttpsError("invalid-argument", `Riga ${i + 1}: quantità non valida.`);
+    if (!isFinite(prezzoUnitario)) throw new HttpsError("invalid-argument", `Riga ${i + 1}: prezzo non valido.`);
+    return { descrizione, quantita, prezzoUnitario: arrotonda2(prezzoUnitario), importo: arrotonda2(quantita * prezzoUnitario) };
+  });
+  const totale = arrotonda2(righe.reduce((s, r) => s + r.importo, 0));
+  if (!(totale > 0)) throw new HttpsError("invalid-argument", "Il totale della fattura deve essere maggiore di zero.");
+  if (totale > 999999999.99) throw new HttpsError("invalid-argument", "Importo troppo elevato.");
+
+  const dataEmissione = dati.dataEmissione ? String(dati.dataEmissione) : oggiZurigo();
+  if (!dataIsoValida(dataEmissione)) throw new HttpsError("invalid-argument", "Data di emissione non valida.");
+  const giorni = Number.isFinite(Number(cfg.giorniScadenza)) ? Math.max(0, Math.round(Number(cfg.giorniScadenza))) : 30;
+  const dataScadenza = dati.dataScadenza ? String(dati.dataScadenza) : aggiungiGiorniIso(dataEmissione, giorni);
+  if (!dataIsoValida(dataScadenza)) throw new HttpsError("invalid-argument", "Data di scadenza non valida.");
+
+  const anno = parseInt(dataEmissione.slice(0, 4), 10);
+  const contatoreRef = db.collection("fattureContatori").doc("main");
+  const fatturaRef = db.collection("fatture").doc();
+
+  const fattura = await db.runTransaction(async (tx) => {
+    const cSnap = await tx.get(contatoreRef);
+    const campo = "anno_" + anno;
+    const progressivo = ((cSnap.exists ? cSnap.data()[campo] : 0) || 0) + 1;
+    tx.set(contatoreRef, { [campo]: progressivo }, { merge: true });
+
+    const doc = {
+      numero: `${anno}-${String(progressivo).padStart(4, "0")}`,
+      anno,
+      progressivo,
+      valuta: "CHF",
+      dataEmissione,
+      dataScadenza,
+      destinatario,
+      oggetto: testoPulito(dati.oggetto, 140),
+      righe,
+      totale,
+      iban,
+      tipoRiferimento,
+      riferimento: costruisciRiferimento(tipoRiferimento, anno, progressivo),
+      creditore,
+      contatti: { telefono: testoPulito(cfg.telefono, 40), email: testoPulito(cfg.email, 120) },
+      notaIva: testoPulito(cfg.notaIva, 200),
+      pieDiPagina: testoPulito(cfg.pieDiPagina, 300),
+      note: testoPulito(dati.note, 500),
+      origine: dati.origine && dati.origine.tipo ? {
+        tipo: testoPulito(dati.origine.tipo, 40),
+        id: testoPulito(dati.origine.id, 80)
+      } : null,
+      stato: "emessa",
+      emessaDa: request.auth.uid,
+      emessaDaNome: (userData && userData.nome) || "",
+      createdAt: FieldValue.serverTimestamp()
+    };
+    tx.set(fatturaRef, doc);
+    return doc;
+  });
+
+  return { id: fatturaRef.id, numero: fattura.numero, riferimento: fattura.riferimento, totale: fattura.totale };
+});
+
+async function caricaFattura(id) {
+  if (!id) throw new HttpsError("invalid-argument", "id fattura mancante.");
+  const snap = await db.collection("fatture").doc(String(id)).get();
+  if (!snap.exists) throw new HttpsError("not-found", "Fattura non trovata.");
+  return { ref: snap.ref, fattura: snap.data() };
+}
+
+exports.pdfFattura = onCall({ memory: "512MiB" }, async (request) => {
+  await richiediPermessoFatture(request);
+  const { fattura } = await caricaFattura((request.data || {}).id);
+  const pdf = await generaPdfFattura(fattura);
+  return { nomeFile: `Fattura-${fattura.numero}.pdf`, base64: pdf.toString("base64") };
+});
+
+exports.inviaFatturaEmail = onCall({ secrets: MAIL_SECRETS, memory: "512MiB" }, async (request) => {
+  await richiediPermessoFatture(request);
+  const { id, to, messaggio } = request.data || {};
+  const { ref, fattura } = await caricaFattura(id);
+  if (fattura.stato === "annullata") throw new HttpsError("failed-precondition", "La fattura è annullata.");
+
+  const destinatario = testoPulito(to || fattura.destinatario.email, 120);
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(destinatario)) {
+    throw new HttpsError("invalid-argument", "Indirizzo email del destinatario mancante o non valido.");
+  }
+
+  const pdf = await generaPdfFattura(fattura);
+  const centroSnap = await db.collection("impostazioni").doc("centro").get();
+  const centro = centroSnap.exists ? centroSnap.data() : {};
+  const firma = fattura.creditore.nome;
+  const corpo = String(messaggio || "").trim().slice(0, 2000) ||
+    `Gentile ${fattura.destinatario.nome},\n\nin allegato trovi la fattura ${fattura.numero} di CHF ${fattura.totale.toFixed(2)}, ` +
+    `da pagare entro il ${fattura.dataScadenza.split("-").reverse().join(".")} con la polizza di versamento QR inclusa nel PDF.\n\nCordiali saluti,\n${firma}`;
+  const html = corpo.split(/\n{2,}/).map(p => `<p>${escapeHtmlBase(p).replace(/\n/g, "<br>")}</p>`).join("");
+
+  await mailTransporter().sendMail({
+    from: MAIL_FROM.value(),
+    to: destinatario,
+    replyTo: centro.email || undefined,
+    subject: `Fattura ${fattura.numero} — ${firma}`,
+    html,
+    attachments: [{ filename: `Fattura-${fattura.numero}.pdf`, content: pdf, contentType: "application/pdf" }]
+  });
+
+  const aggiornamento = { inviataA: destinatario, inviataIl: FieldValue.serverTimestamp() };
+  if (fattura.stato === "emessa") aggiornamento.stato = "inviata";
+  await ref.update(aggiornamento);
+  return { inviata: true, a: destinatario };
+});
+
+exports.aggiornaStatoFattura = onCall(async (request) => {
+  await richiediPermessoFatture(request);
+  const { id, stato, dataPagamento } = request.data || {};
+  if (!STATI_FATTURA.includes(stato)) throw new HttpsError("invalid-argument", "Stato non valido.");
+  const { ref, fattura } = await caricaFattura(id);
+  const aggiornamento = { stato };
+  if (stato === "pagata") {
+    const dp = dataPagamento || oggiZurigo();
+    if (!dataIsoValida(dp)) throw new HttpsError("invalid-argument", "Data di pagamento non valida.");
+    aggiornamento.dataPagamento = dp;
+  } else {
+    aggiornamento.dataPagamento = FieldValue.delete();
+  }
+  // Il numero resta assegnato: una fattura annullata non si cancella né si
+  // riusa (obbligo di numerazione continua), si marca soltanto.
+  if (fattura.stato === "annullata" && stato !== "annullata") {
+    throw new HttpsError("failed-precondition", "Una fattura annullata non può essere riaperta: emettine una nuova.");
+  }
+  await ref.update(aggiornamento);
+  return { ok: true };
+});

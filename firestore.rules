@@ -444,9 +444,23 @@ service cloud.firestore {
             && get(/databases/$(database)/documents/corsi/$(request.resource.data.corsoId)).data.disciplina == "padel");
     }
 
+    // Fatture con polizza QR: la configurazione (creditore, IBAN) la legge
+    // e la scrive chi ha fatture:gestisci; le fatture emesse si leggono
+    // soltanto — creazione, invio e cambi di stato passano SEMPRE dalle
+    // Cloud Functions (emettiFattura ecc.), così la numerazione resta
+    // continua e uno snapshot emesso non si altera da browser. Il
+    // contatore (fattureContatori) non ha regole: solo server.
+    match /fattureConfig/{id} {
+      allow read, write: if hasPermission("fatture:gestisci");
+    }
+    match /fatture/{id} {
+      allow read: if hasPermission("fatture:gestisci");
+      allow write: if false;
+    }
+
     // Riepilogo di supporto per decidere cosa fatturare a fine stagione
     // quando un allievo è stato spostato tra corsi (fatturazione-corsi.html)
-    // — NON è una fattura vera (l'app non ha numerazione fiscale), solo un
+    // — NON è una fattura vera (quelle con polizza QR sono in fatture.html), solo un
     // importo proposto/corretto a mano e uno stato "da_valutare"/
     // "fatturato": niente da proteggere con una Cloud Function come i
     // pagamenti veri, stessa logica diretta lato client di "vendite". Scoping

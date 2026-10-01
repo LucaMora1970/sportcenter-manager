@@ -3,13 +3,13 @@
 // fatturare a fine stagione, quando durante l'anno ci sono stati
 // spostamenti di allievi tra corsi/gruppi per bilanciare i livelli.
 //
-// NON genera una fattura vera (l'app non ha numerazione fiscale/IVA):
-// propone un importo per allievo — di base il prezzo del corso a cui si
+// Non emette la fattura: propone un importo per allievo — di base il prezzo del corso a cui si
 // è iscritto ORIGINARIAMENTE, non quello attuale — mostra lo storico
 // degli spostamenti e le presenze per corso, e lascia correggere
-// l'importo a mano prima di segnarlo come gestito. La fattura vera la
-// emette lo staff fuori da Sport-OS, con i propri strumenti di
-// contabilità; questo è solo il riepilogo su cui basarsi.
+// l'importo a mano prima di segnarlo come gestito. La fattura con
+// polizza QR si emette poi dalla pagina Fatture (fatture.html), cui il
+// pulsante "Crea fattura" nel dettaglio dell'allievo porta i dati già
+// compilati (vedi creaFatturaDaRiga).
 //
 // Il corso originario non è leggibile direttamente sull'iscrizione:
 // iscrizioniCorsi.corsoId viene sovrascritto a ogni spostamento (vedi
@@ -242,6 +242,11 @@ async function calcolaRigaAllievo(iscrizione) {
     nome: iscrizione.nome,
     cognome: iscrizione.cognome,
     allievoId: iscrizione.allievoId || null,
+    via: iscrizione.via || "",
+    cap: iscrizione.cap || "",
+    localita: iscrizione.localita || "",
+    email: iscrizione.email || "",
+    nomeGenitore: iscrizione.nomeGenitore || "",
     corsoOriginaleId,
     corsoOriginaleNome: corsoOriginale?.nome || "— corso non trovato —",
     prezzoProposto,
@@ -443,6 +448,7 @@ function rigaCardHtml(riga) {
         </div>
         <div class="error-msg" id="fatt-salva-error-${riga.iscrizioneId}"></div>
         <button type="button" class="btn btn-primary fatt-salva-btn" data-id="${riga.iscrizioneId}">Salva</button>
+        ${hasPermission(currentProfile, "fatture:gestisci") ? `<button type="button" class="btn btn-ghost fatt-crea-fattura-btn" data-id="${riga.iscrizioneId}" style="margin-top:8px;">Crea fattura con polizza QR</button>` : ""}
       </div>
     </div>
   `;
@@ -474,6 +480,42 @@ function renderRigheAllievi() {
   listEl.querySelectorAll(".fatt-salva-btn").forEach(btn => {
     btn.addEventListener("click", () => onSalvaRiga(btn.dataset.id));
   });
+  listEl.querySelectorAll(".fatt-crea-fattura-btn").forEach(btn => {
+    btn.addEventListener("click", () => creaFatturaDaRiga(btn.dataset.id));
+  });
+}
+
+// Porta l'allievo alla pagina Fatture con la fattura già precompilata.
+// Per i minorenni (nomeGenitore compilato) il destinatario è il genitore,
+// con l'allievo nominato nella descrizione. Importo e nota sono quelli
+// attualmente scritti nel dettaglio (anche se non ancora salvati).
+function creaFatturaDaRiga(iscrizioneId) {
+  const riga = righeAllievi.find(r => r.iscrizioneId === iscrizioneId);
+  if (!riga) return;
+  const importoEl = document.getElementById(`fatt-importo-${iscrizioneId}`);
+  const notaEl = document.getElementById(`fatt-nota-${iscrizioneId}`);
+  const importo = importoEl ? parseFloat(importoEl.value) : importoAttuale(riga);
+  const nomeAllievo = `${riga.nome} ${riga.cognome}`.trim();
+  const pre = {
+    destinatario: {
+      nome: riga.nomeGenitore || nomeAllievo,
+      via: riga.via, cap: riga.cap, localita: riga.localita, email: riga.email
+    },
+    oggetto: riga.corsoOriginaleNome,
+    note: notaEl ? notaEl.value.trim() : "",
+    righe: [{
+      descrizione: `${riga.corsoOriginaleNome} — ${nomeAllievo}`,
+      quantita: 1,
+      prezzoUnitario: Number.isFinite(importo) ? importo : importoAttuale(riga)
+    }],
+    origine: { tipo: "fatturazioneCorsi", id: iscrizioneId }
+  };
+  try {
+    sessionStorage.setItem("fatturaPrefill", JSON.stringify(pre));
+  } catch {
+    alert("Il browser non permette di passare i dati alla pagina Fatture: compila la fattura a mano.");
+  }
+  location.href = "fatture.html";
 }
 
 async function onSalvaRiga(iscrizioneId) {

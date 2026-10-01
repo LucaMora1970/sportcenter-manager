@@ -127,6 +127,7 @@
       <a href="#utenti">Utenti e ruoli</a><span class="sep">·</span>
       <a href="#corsi">Corsi</a><span class="sep">·</span>
       <a href="#allievi">Allievi</a><span class="sep">·</span>
+      <a href="#fatture">Fatture</a><span class="sep">·</span>
       <a href="#buoni">Buoni regalo</a><span class="sep">·</span>
       <a href="#tabellone">Tabellone generale</a><span class="sep">·</span>
       <a href="#biglietto">Biglietto</a>
@@ -329,6 +330,12 @@
         <span class="dove">Configurazione → Quote campo</span>
         <div class="cosa">Quota dovuta dal collaboratore al circolo</div>
         <div class="come">Si applica solo se sia l'utente (checkbox "soggetto a quota campo" in Utenti) sia il tipo attività (stesso checkbox in Tipi attività) hanno il flag attivo. Calcolata nel Resoconto, non scalata automaticamente da nessuna parte.</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove">Configurazione → Quote campo / Tariffe campi</span>
+        <div class="cosa">Padel di domenica e festivi: tariffa utente esterno</div>
+        <div class="come">Per il <strong>padel</strong>, di domenica e nei giorni festivi (Impostazioni generali) il maestro paga il campo come un utente esterno: la quota campo non viene dalle righe di Quote campo ma dalla tariffa <strong>Utenti</strong> di Tariffe campi per quello slot (orario di inizio e durata della lezione). Vale sia nel Resoconto (voci del Diario) sia nel resoconto del pannello Prenotazioni (prenotazioni esenti). Il sabato resta feriale. Se per quello slot non c'è una tariffa Utenti configurata, si ripiega sulla quota campo normale.</div>
       </div>
 
       <div class="voce">
@@ -652,6 +659,50 @@
     </div>
     </details>
 
+    <!-- ===================== Fatture ===================== -->
+    <details class="config-section" id="fatture">
+    <summary><h2>Fatture</h2></summary>
+    <div class="config-section-body">
+
+      <div class="voce">
+        <span class="dove"><code>fatture.html</code> → "Dati per la fattura" (permesso <code>fatture:gestisci</code>)</span>
+        <div class="cosa">Creditore, IBAN e tipo di riferimento</div>
+        <div class="come">Nome, indirizzo strutturato (via, civico, CAP, località), IBAN, giorni di scadenza, nota IVA e testo a piè di fattura. Si compila una volta sola; la prima volta propone i dati di <a href="#centro">Dati del centro</a>. Le fatture già emesse conservano uno <strong>snapshot</strong> dei dati di quando sono state emesse: cambiare l'IBAN vale solo per le nuove.</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove"><code>fatture.html</code> → "Dati per la fattura" → Riferimento di pagamento</span>
+        <div class="cosa">SCOR oggi, QRR con il QR-IBAN</div>
+        <div class="come">Con un <strong>IBAN normale</strong> (es. quello Raiffeisen attuale, IID 80808) la polizza usa il riferimento <strong>SCOR</strong> (ISO 11649) oppure nessun riferimento. Quando la banca fornirà un <strong>QR-IBAN</strong> (IID 30000–31999) basta inserirlo al posto dell'IBAN: la pagina lo riconosce e passa a <strong>QRR</strong> (27 cifre) da sola, senza altre modifiche. Combinazioni incoerenti (QR-IBAN senza QRR, QRR con IBAN normale) vengono rifiutate sia qui sia dal server, perché la banca scarterebbe il pagamento.</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove"><code>fatture.html</code> → "Nuova fattura"</span>
+        <div class="cosa">Emissione con polizza QR</div>
+        <div class="come">Destinatario, righe libere (descrizione, quantità, prezzo) e nota; il numero progressivo (es. <code>2026-0001</code>, ricomincia ogni anno, mai buchi né doppioni) e la scadenza li assegna il server. Il PDF ha la sezione di pagamento QR svizzera in fondo alla pagina A4. L'indirizzo del destinatario deve essere strutturato: se manca via, CAP o località, il QR esce senza il campo «Pagabile da» (valido, ma il cliente scrive i suoi dati a mano). Non c'è IVA: sulla fattura compare la nota IVA configurata.</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove"><code>fatture.html</code> → elenco "Fatture emesse"</span>
+        <div class="cosa">PDF, invio email, stato di pagamento</div>
+        <div class="come"><strong>PDF</strong> rigenera il file identico all'originale. <strong>Invia email</strong> allega il PDF e porta la fattura da "Emessa" a "Inviata". <strong>Segna pagata</strong> registra la data di pagamento. <strong>Annulla</strong> marca la fattura come annullata: il numero resta assegnato (numerazione continua) e non si può riaprire — se serve, se ne emette un'altra. In alto: totale da incassare, fatture scadute e incassato nell'anno. Le fatture non si modificano né si cancellano da browser, solo tramite queste azioni.</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove"><a href="fatturazione-corsi.html">Fatturazione corsi</a> → dettaglio allievo → "Crea fattura con polizza QR"</span>
+        <div class="cosa">Fattura precompilata da un'iscrizione</div>
+        <div class="come">Porta a Fatture il destinatario (per i minorenni il genitore), l'indirizzo dell'iscrizione, una riga con il corso e l'importo scritto nel dettaglio. Il campo via dell'iscrizione è un testo unico: controlla che CAP e località siano compilati prima di emettere.</div>
+      </div>
+
+      <div class="voce">
+        <span class="dove">Team → Ruoli → permesso <code>fatture:gestisci</code></span>
+        <div class="cosa">Chi può emettere fatture</div>
+        <div class="come">Va assegnato a mano ai ruoli interessati (gli amministratori ce l'hanno già). Senza questo permesso la pagina mostra "Accesso non consentito" e le regole Firestore bloccano la lettura delle fatture.</div>
+      </div>
+
+    </div>
+    </details>
+
     <!-- ===================== Buoni regalo ===================== -->
     <details class="config-section" id="buoni">
     <summary><h2>Buoni regalo</h2></summary>
@@ -721,6 +772,7 @@
     <a href="presenze.html">Presenze</a>
     <a href="prenotazioni.html">Prenotazioni</a>
     <a href="piano-occupazione.html">Camp</a>
+    <a href="fatture.html">Fatture</a>
     <a href="soci.html">Soci</a>
     <a href="utenti.html">Team</a>
     <a href="configurazione.html">Config</a>

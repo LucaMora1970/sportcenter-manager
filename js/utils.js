@@ -275,6 +275,50 @@ function calcOre(oraInizio, oraFine) {
   return Math.round((diff / 60) * 100) / 100;
 }
 
+// Domenica o festivo infrasettimanale (IMPOSTAZIONI.festivi): il sabato
+// resta feriale. Stessa distinzione usata dalle Quote campo.
+function isDomenicaOFestivo(dataIso) {
+  const giorno = new Date(dataIso + "T00:00:00").getDay();
+  return giorno === 0 || (IMPOSTAZIONI.festivi || []).includes(dataIso);
+}
+
+// Il maestro padel che prenota/fa lezione la domenica o in un festivo
+// paga il campo come un utente esterno: la quota campo non viene dalle
+// Quote campo ma dalla tariffa "esterno" di Tariffe campi per quello
+// slot. Stessa selezione di quotaCategoria (functions/index.js, con
+// giorno festivo = "dom"): durata specifica prima, poi banda oraria più
+// stretta, poi meno giorni. Torna null se non c'è una tariffa
+// corrispondente (o mancano orari/durata), così il chiamante può
+// ripiegare sulla quota campo normale invece di addebitare 0.
+// Il padel non ha posizione (tariffe salvate con posizione null).
+function tariffaEsternoPadelDomenicale(tariffeCampi, dataIso, oraInizio, oraFine) {
+  if (!isDomenicaOFestivo(dataIso) || !oraInizio || !oraFine) return null;
+
+  const toMin = o => { const [h, m] = o.split(":").map(Number); return h * 60 + m; };
+  const startMin = toMin(oraInizio);
+  const durata = toMin(oraFine) - startMin;
+
+  const candidati = (tariffeCampi || [])
+    .filter(t => t.disciplina === "padel" && (t.posizione ?? null) === null && t.categoria === "esterno")
+    .filter(t => t.oraInizio != null && t.oraFine != null)
+    .filter(t => !(t.giorniSettimana || []).length || t.giorniSettimana.includes("dom"))
+    .filter(t => startMin >= toMin(t.oraInizio) && startMin < toMin(t.oraFine))
+    .filter(t => t.durataMinuti == null || t.durataMinuti === durata)
+    .sort((a, b) => {
+      const specDurataA = a.durataMinuti != null ? 1 : 0;
+      const specDurataB = b.durataMinuti != null ? 1 : 0;
+      if (specDurataA !== specDurataB) return specDurataB - specDurataA;
+      const durataA = toMin(a.oraFine) - toMin(a.oraInizio);
+      const durataB = toMin(b.oraFine) - toMin(b.oraInizio);
+      if (durataA !== durataB) return durataA - durataB;
+      const giorniA = (a.giorniSettimana || []).length || 7;
+      const giorniB = (b.giorniSettimana || []).length || 7;
+      return giorniA - giorniB;
+    });
+
+  return candidati.length > 0 ? candidati[0].prezzo : null;
+}
+
 // Etichette per voci diario create prima dell'introduzione dei tipi
 // attività configurabili (vedi pannello Configurazione).
 const LEGACY_TIPI_ATTIVITA_LABELS = {
