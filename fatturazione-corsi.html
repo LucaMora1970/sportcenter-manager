@@ -119,6 +119,47 @@
 
 </div>
 
+<div class="modal-backdrop hidden" id="intestatario-modal" role="dialog" aria-modal="true" aria-labelledby="intestatario-titolo">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h2 id="intestatario-titolo">A chi intestare la fattura?</h2>
+      <button type="button" class="btn btn-ghost" id="intestatario-chiudi" aria-label="Chiudi">✕</button>
+    </div>
+    <p class="entry-meta" id="intestatario-allievo" style="margin:-4px 0 12px;"></p>
+    <div class="error-msg" id="intestatario-error"></div>
+    <div id="intestatario-lista"></div>
+    <div id="intestatario-quote" class="hidden"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0;">
+      <button type="button" class="btn btn-ghost" id="intestatario-aggiungi-genitore" style="width:auto;padding:8px 12px;font-size:0.72rem;">+ Aggiungi genitore / intestatario</button>
+      <button type="button" class="btn btn-ghost" id="intestatario-aggiungi-allievo" style="width:auto;padding:8px 12px;font-size:0.72rem;">Intesta all'allievo stesso</button>
+    </div>
+
+    <div class="hidden" id="intestatario-nuovo" style="border:1px solid var(--court-blue-700);border-radius:8px;padding:12px;margin-bottom:12px;">
+      <div class="error-msg" id="intestatario-nuovo-error"></div>
+      <div class="field"><label for="int-nome">Nome e cognome o ragione sociale</label><input type="text" id="int-nome" maxlength="70"></div>
+      <div class="row2">
+        <div class="field" style="flex:3;"><label for="int-via">Via</label><input type="text" id="int-via" maxlength="70"></div>
+        <div class="field" style="flex:1;"><label for="int-civico">N.</label><input type="text" id="int-civico" maxlength="16"></div>
+      </div>
+      <div class="row2">
+        <div class="field" style="flex:1;"><label for="int-cap">CAP</label><input type="text" id="int-cap" maxlength="16"></div>
+        <div class="field" style="flex:2;"><label for="int-localita">Località</label><input type="text" id="int-localita" maxlength="35"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label for="int-email">Email</label><input type="email" id="int-email" maxlength="120"></div>
+        <div class="field"><label for="int-telefono">Telefono</label><input type="text" id="int-telefono" maxlength="40"></div>
+      </div>
+      <input type="hidden" id="int-relazione" value="genitore">
+      <div style="display:flex;gap:8px;">
+        <button type="button" class="btn btn-primary" id="intestatario-nuovo-salva" style="width:auto;">Salva intestatario</button>
+        <button type="button" class="btn btn-ghost" id="intestatario-nuovo-annulla" style="width:auto;">Annulla</button>
+      </div>
+    </div>
+
+    <button type="button" class="btn btn-primary" id="intestatario-conferma">Continua alla fattura</button>
+  </div>
+</div>
+
 <div id="print-area"></div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>

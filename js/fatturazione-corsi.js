@@ -247,6 +247,7 @@ async function calcolaRigaAllievo(iscrizione) {
     localita: iscrizione.localita || "",
     email: iscrizione.email || "",
     nomeGenitore: iscrizione.nomeGenitore || "",
+    telefonoGenitore: iscrizione.telefonoGenitore || "",
     corsoOriginaleId,
     corsoOriginaleNome: corsoOriginale?.nome || "— corso non trovato —",
     prezzoProposto,
@@ -504,6 +505,9 @@ function renderRigheAllievi() {
 // Per i minorenni (nomeGenitore compilato) il destinatario è il genitore,
 // con l'allievo nominato nella descrizione. Importo e nota sono quelli
 // attualmente scritti nel dettaglio (anche se non ancora salvati).
+// Passa dalla scelta dell'intestatario (vedi apriIntestatario): di principio
+// paga il genitore, ma si chiede sempre a chi intestare la fattura, e con
+// genitori separati si può dividerla (metà a ciascuno).
 function creaFatturaDaRiga(iscrizioneId) {
   const riga = righeAllievi.find(r => r.iscrizioneId === iscrizioneId);
   if (!riga) return;
@@ -511,11 +515,7 @@ function creaFatturaDaRiga(iscrizioneId) {
   const notaEl = document.getElementById(`fatt-nota-${iscrizioneId}`);
   const importo = importoEl ? parseFloat(importoEl.value) : importoAttuale(riga);
   const nomeAllievo = `${riga.nome} ${riga.cognome}`.trim();
-  const pre = {
-    destinatario: {
-      nome: riga.nomeGenitore || nomeAllievo,
-      via: riga.via, cap: riga.cap, localita: riga.localita, email: riga.email
-    },
+  const base = {
     oggetto: riga.corsoOriginaleNome,
     note: notaEl ? notaEl.value.trim() : "",
     righe: [{
@@ -525,6 +525,162 @@ function creaFatturaDaRiga(iscrizioneId) {
     }],
     origine: { tipo: "fatturazioneCorsi", id: iscrizioneId }
   };
+  apriIntestatario(riga, base);
+}
+
+// ---------- Scelta dell'intestatario ----------
+
+let intestatarioCtx = null; // { riga, base, clienti: [...], scelti: Set }
+
+function indirizzoRigaCliente(c) {
+  return [c.via && (c.via + (c.civico ? " " + c.civico : "")), [c.cap, c.localita].filter(Boolean).join(" ")].filter(Boolean).join(", ") || "indirizzo mancante";
+}
+
+async function apriIntestatario(riga, base) {
+  const errEl = document.getElementById("intestatario-error");
+  errEl.innerHTML = "";
+  intestatarioCtx = { riga, base, clienti: [], scelti: new Set() };
+  document.getElementById("intestatario-allievo").textContent = `${riga.nome} ${riga.cognome} — ${riga.corsoOriginaleNome}`;
+  document.getElementById("intestatario-modal").classList.remove("hidden");
+  document.body.style.overflow = "hidden";
+
+  // Clienti già collegati a questo allievo (es. i due genitori).
+  try {
+    if (riga.allievoId) {
+      const snap = await db.collection("clienti").where("allievoIds", "array-contains", riga.allievoId).get();
+      intestatarioCtx.clienti = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(c => c.attivo !== false);
+    }
+  } catch (err) {
+    showError(errEl, "Anagrafica clienti non disponibile: " + erroreFunzione(err));
+  }
+  // Un solo intestatario noto: è la scelta più probabile, già selezionata.
+  if (intestatarioCtx.clienti.length === 1) intestatarioCtx.scelti.add(intestatarioCtx.clienti[0].id);
+  renderIntestatario();
+  if (intestatarioCtx.clienti.length === 0) apriNuovoIntestatario("genitore");
+}
+
+function chiudiIntestatario() {
+  document.getElementById("intestatario-modal").classList.add("hidden");
+  document.getElementById("intestatario-nuovo").classList.add("hidden");
+  document.body.style.overflow = "";
+  intestatarioCtx = null;
+}
+
+function renderIntestatario() {
+  const ctx = intestatarioCtx;
+  if (!ctx) return;
+  const lista = document.getElementById("intestatario-lista");
+  lista.innerHTML = ctx.clienti.length === 0
+    ? `<p class="entry-meta">Nessun intestatario in anagrafica per questo allievo.</p>`
+    : ctx.clienti.map(c => `
+        <label class="checkbox-row">
+          <input type="checkbox" class="intestatario-cb" value="${escapeHtml(c.id)}" ${ctx.scelti.has(c.id) ? "checked" : ""}>
+          <span><strong>${escapeHtml(c.nome)}</strong> <span class="entry-meta">(${escapeHtml(c.relazione || "altro")}) · ${escapeHtml(indirizzoRigaCliente(c))}</span></span>
+        </label>`).join("");
+  lista.querySelectorAll(".intestatario-cb").forEach(cb => {
+    cb.addEventListener("change", () => {
+      if (cb.checked) ctx.scelti.add(cb.value); else ctx.scelti.delete(cb.value);
+      aggiornaQuoteIntestatario();
+    });
+  });
+  aggiornaQuoteIntestatario();
+}
+
+function aggiornaQuoteIntestatario() {
+  const ctx = intestatarioCtx;
+  const box = document.getElementById("intestatario-quote");
+  if (ctx.scelti.size === 2) {
+    const [a, b] = [...ctx.scelti].map(id => ctx.clienti.find(c => c.id === id));
+    box.innerHTML = `
+      <p class="entry-meta" style="margin:10px 0 6px;">Fattura divisa: ogni intestatario riceve una fattura propria (numero e polizza QR propri).</p>
+      <div class="row2">
+        <div class="field"><label for="quota-a">Quota di ${escapeHtml(a.nome)} (%)</label>
+          <input type="number" id="quota-a" min="1" max="99" step="0.01" value="50"></div>
+        <div class="field"><label>Quota di ${escapeHtml(b.nome)}</label>
+          <div id="quota-b" class="entry-meta" style="padding-top:10px;">50%</div></div>
+      </div>`;
+    document.getElementById("quota-a").addEventListener("input", (e) => {
+      const q = parseFloat(e.target.value);
+      document.getElementById("quota-b").textContent = (Number.isFinite(q) ? Math.round((100 - q) * 100) / 100 : "—") + "%";
+    });
+    box.classList.remove("hidden");
+  } else {
+    box.innerHTML = "";
+    box.classList.add("hidden");
+  }
+}
+
+function apriNuovoIntestatario(relazione) {
+  const ctx = intestatarioCtx;
+  const r = ctx.riga;
+  const comeAllievo = relazione === "allievo";
+  const set = (id, v) => { document.getElementById(id).value = v || ""; };
+  set("int-nome", comeAllievo ? `${r.nome} ${r.cognome}`.trim() : (r.nomeGenitore || ""));
+  set("int-via", r.via); set("int-civico", ""); set("int-cap", r.cap); set("int-localita", r.localita);
+  set("int-email", r.email); set("int-telefono", comeAllievo ? "" : (r.telefonoGenitore || ""));
+  document.getElementById("int-relazione").value = relazione;
+  document.getElementById("intestatario-nuovo-error").innerHTML = "";
+  document.getElementById("intestatario-nuovo").classList.remove("hidden");
+}
+
+async function salvaNuovoIntestatario() {
+  const ctx = intestatarioCtx;
+  const errEl = document.getElementById("intestatario-nuovo-error");
+  errEl.innerHTML = "";
+  const val = id => document.getElementById(id).value.trim();
+  const btn = document.getElementById("intestatario-nuovo-salva");
+  btn.disabled = true;
+  try {
+    const nomeAllievo = `${ctx.riga.nome} ${ctx.riga.cognome}`.trim();
+    const id = await salvaClienteConControllo({
+      nome: val("int-nome"), via: val("int-via"), civico: val("int-civico"), cap: val("int-cap"),
+      localita: val("int-localita"), email: val("int-email"), telefono: val("int-telefono"),
+      relazione: document.getElementById("int-relazione").value,
+      allievi: ctx.riga.allievoId ? [{ id: ctx.riga.allievoId, nome: nomeAllievo }] : []
+    });
+    if (!id) return;
+    // Il cliente (nuovo o già esistente) va collegato anche a questo allievo.
+    const doc = await db.collection("clienti").doc(id).get();
+    const dati = { id: doc.id, ...doc.data() };
+    if (ctx.riga.allievoId && !(dati.allievoIds || []).includes(ctx.riga.allievoId)) {
+      await cloudFunctions().httpsCallable("salvaCliente")({
+        ...datiClienteDaDoc(dati), forza: true,
+        allievi: [...(dati.allievi || []), { id: ctx.riga.allievoId, nome: nomeAllievo }]
+      });
+      dati.allievoIds = [...(dati.allievoIds || []), ctx.riga.allievoId];
+    }
+    if (!ctx.clienti.some(c => c.id === id)) ctx.clienti.push(dati);
+    ctx.scelti.add(id);
+    document.getElementById("intestatario-nuovo").classList.add("hidden");
+    renderIntestatario();
+  } catch (err) {
+    showError(errEl, erroreFunzione(err));
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function confermaIntestatario() {
+  const ctx = intestatarioCtx;
+  const errEl = document.getElementById("intestatario-error");
+  errEl.innerHTML = "";
+  const scelti = [...ctx.scelti].map(id => ctx.clienti.find(c => c.id === id)).filter(Boolean);
+  if (scelti.length === 0) return showError(errEl, "Scegli a chi intestare la fattura (o aggiungi un intestatario).");
+  if (scelti.length > 2) return showError(errEl, "Seleziona al massimo due intestatari.");
+  const dest = c => ({ nome: c.nome, via: c.via, civico: c.civico, cap: c.cap, localita: c.localita, email: c.email });
+  const pre = { ...ctx.base };
+  if (scelti.length === 1) {
+    pre.destinatario = dest(scelti[0]);
+    pre.clienteId = scelti[0].id;
+  } else {
+    const qa = parseFloat(document.getElementById("quota-a").value);
+    if (!(qa >= 1 && qa <= 99)) return showError(errEl, "La quota del primo intestatario deve essere tra 1 e 99%.");
+    const qb = Math.round((100 - qa) * 100) / 100;
+    pre.ripartizione = [
+      { clienteId: scelti[0].id, destinatario: dest(scelti[0]), percentuale: qa },
+      { clienteId: scelti[1].id, destinatario: dest(scelti[1]), percentuale: qb }
+    ];
+  }
   try {
     sessionStorage.setItem("fatturaPrefill", JSON.stringify(pre));
   } catch {
@@ -621,6 +777,13 @@ requireAuth(async (profile) => {
     renderRigheAllievi();
   });
   document.getElementById("fatt-stampa-btn").addEventListener("click", stampaRiepilogo);
+  document.getElementById("intestatario-chiudi").addEventListener("click", chiudiIntestatario);
+  document.getElementById("intestatario-modal").addEventListener("click", (e) => { if (e.target.id === "intestatario-modal") chiudiIntestatario(); });
+  document.getElementById("intestatario-conferma").addEventListener("click", confermaIntestatario);
+  document.getElementById("intestatario-aggiungi-genitore").addEventListener("click", () => apriNuovoIntestatario("genitore"));
+  document.getElementById("intestatario-aggiungi-allievo").addEventListener("click", () => apriNuovoIntestatario("allievo"));
+  document.getElementById("intestatario-nuovo-salva").addEventListener("click", salvaNuovoIntestatario);
+  document.getElementById("intestatario-nuovo-annulla").addEventListener("click", () => document.getElementById("intestatario-nuovo").classList.add("hidden"));
 });
 
 document.getElementById("logout-link").addEventListener("click", (e) => {

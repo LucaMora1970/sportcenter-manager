@@ -20,6 +20,15 @@ let fattureCache = [];
 let filtroStato = "tutte";
 let ricercaQuery = "";
 let configCorrente = null;
+let clientiCache = [];
+let clienteSelezionatoId = null;
+let ricercaClienti = "";
+let clienteInModificaId = null;
+let clienteInModificaAllievi = [];
+// Fattura divisa tra più intestatari (es. genitori separati): array di
+// { clienteId, destinatario, percentuale }, impostato dal precompilato di
+// Fatturazione corsi. Se presente, si emettono più fatture in una volta.
+let ripartizione = null;
 
 const STATI_LABEL = { emessa: "Emessa", inviata: "Inviata", pagata: "Pagata", annullata: "Annullata" };
 
@@ -47,10 +56,6 @@ function formatDataBreve(iso) {
 
 function chf(n) {
   return Number(n || 0).toFixed(2);
-}
-
-function erroreFunzione(err) {
-  return (err && err.message) ? err.message : "Operazione non riuscita.";
 }
 
 // ---------- IBAN (controlli di cortesia lato client) ----------
@@ -234,8 +239,11 @@ function applicaPrecompilazione() {
   if (!pre) return;
   const d = pre.destinatario || {};
   const set = (id, v) => { document.getElementById(id).value = v || ""; };
+  ripartizione = Array.isArray(pre.ripartizione) && pre.ripartizione.length > 1 ? pre.ripartizione : null;
   set("dest-nome", d.nome); set("dest-via", d.via); set("dest-civico", d.civico);
   set("dest-cap", d.cap); set("dest-localita", d.localita); set("dest-email", d.email);
+  clienteSelezionatoId = pre.clienteId || null;
+  document.getElementById("fat-salva-cliente-box").classList.toggle("hidden", !!clienteSelezionatoId);
   set("fat-oggetto", pre.oggetto); set("fat-note", pre.note);
   if (Array.isArray(pre.righe) && pre.righe.length) {
     righeForm = pre.righe.map(r => ({
@@ -247,11 +255,158 @@ function applicaPrecompilazione() {
   apriModalNuova();
 }
 
+// ---------- Clienti (anagrafica di chi riceve le fatture) ----------
+
+async function caricaClienti() {
+  const snap = await db.collection("clienti").orderBy("nome").get();
+  clientiCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  popolaSelectClienti();
+  renderClienti();
+}
+
+function popolaSelectClienti() {
+  const sel = document.getElementById("fat-cliente");
+  const attivi = clientiCache.filter(c => c.attivo !== false);
+  sel.innerHTML = `<option value="">— Nessun cliente: inserisco il destinatario a mano —</option>` +
+    attivi.map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.nome)}${c.localita ? " — " + escapeHtml(c.localita) : ""}</option>`).join("");
+  sel.value = clienteSelezionatoId || "";
+}
+
+function selezionaCliente(id) {
+  clienteSelezionatoId = id || null;
+  const c = clientiCache.find(x => x.id === id);
+  const set = (campo, v) => { document.getElementById(campo).value = v || ""; };
+  if (c) {
+    set("dest-nome", c.nome); set("dest-via", c.via); set("dest-civico", c.civico);
+    set("dest-cap", c.cap); set("dest-localita", c.localita); set("dest-email", c.email);
+  }
+  document.getElementById("fat-salva-cliente-box").classList.toggle("hidden", !!c);
+  document.getElementById("fat-cliente").value = clienteSelezionatoId || "";
+}
+
+function aggiornaBannerRipartizione() {
+  const attiva = Array.isArray(ripartizione) && ripartizione.length > 1;
+  document.getElementById("fat-ripartizione").classList.toggle("hidden", !attiva);
+  document.getElementById("fat-cliente-box").classList.toggle("hidden", attiva);
+  document.getElementById("dest-campi").classList.toggle("hidden", attiva);
+  document.getElementById("emetti-btn").textContent = attiva
+    ? `Emetti ${ripartizione.length} fatture e scarica i PDF`
+    : "Emetti fattura e scarica PDF";
+  if (attiva) {
+    document.getElementById("fat-ripartizione-info").innerHTML = ripartizione
+      .map(r => `${escapeHtml(r.destinatario.nome)} — ${r.percentuale}%`).join("<br>");
+  }
+}
+
+function renderClienti() {
+  const el = document.getElementById("clienti-list");
+  const q = ricercaClienti.trim().toLowerCase();
+  const filtrati = clientiCache.filter(c => !q || `${c.nome} ${c.email || ""} ${c.localita || ""}`.toLowerCase().includes(q));
+  if (filtrati.length === 0) {
+    el.innerHTML = `<div class="empty-state"><div class="display">Nessun cliente</div></div>`;
+    return;
+  }
+  el.innerHTML = filtrati.map(c => {
+    const sue = fattureCache.filter(f => f.clienteId === c.id && f.stato !== "annullata");
+    const totale = sue.reduce((somma, f) => somma + (f.totale || 0), 0);
+    const aperte = sue.filter(f => f.stato === "emessa" || f.stato === "inviata").reduce((somma, f) => somma + (f.totale || 0), 0);
+    const allievi = (c.allievi || []).map(a => escapeHtml(a.nome)).join(", ");
+    return `
+      <div class="dipendente-block">
+        <div class="entry-card">
+          <div class="entry-main">
+            <div class="entry-tipo">${escapeHtml(c.nome)}</div>
+            <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">
+              <span class="badge">${escapeHtml(c.relazione || "altro")}</span>
+              ${c.attivo === false ? `<span class="badge" style="border-color:var(--chalk-grey-dim);color:var(--chalk-grey);">Archiviato</span>` : ""}
+            </div>
+            <div class="entry-meta" style="margin-top:6px;">${escapeHtml([c.via && (c.via + (c.civico ? " " + c.civico : "")), [c.cap, c.localita].filter(Boolean).join(" ")].filter(Boolean).join(", ") || "Indirizzo mancante")}</div>
+            ${c.email || c.telefono ? `<div class="entry-meta">${escapeHtml([c.email, c.telefono].filter(Boolean).join(" · "))}</div>` : ""}
+            ${allievi ? `<div class="entry-meta">Allievi: ${allievi}</div>` : ""}
+            <div class="entry-meta">${sue.length} ${sue.length === 1 ? "fattura" : "fatture"} · CHF ${chf(totale)}${aperte > 0 ? ` · da incassare CHF ${chf(aperte)}` : ""}</div>
+          </div>
+        </div>
+        <div class="dipendente-actions">
+          <button type="button" class="btn btn-ghost" data-cliente-azione="modifica" data-id="${escapeHtml(c.id)}">Modifica</button>
+          <button type="button" class="btn btn-ghost" data-cliente-azione="archivia" data-id="${escapeHtml(c.id)}">${c.attivo === false ? "Riattiva" : "Archivia"}</button>
+        </div>
+      </div>`;
+  }).join("");
+  el.querySelectorAll("[data-cliente-azione]").forEach(btn => {
+    btn.addEventListener("click", () => azioneCliente(btn.dataset.clienteAzione, btn.dataset.id));
+  });
+}
+
+function apriModalCliente(c) {
+  clienteInModificaId = c ? c.id : null;
+  clienteInModificaAllievi = c ? (c.allievi || []) : [];
+  document.getElementById("cliente-titolo").textContent = c ? "Modifica cliente" : "Nuovo cliente";
+  document.getElementById("cliente-error").innerHTML = "";
+  const set = (id, v) => { document.getElementById(id).value = v || ""; };
+  set("cli-nome", c && c.nome); set("cli-via", c && c.via); set("cli-civico", c && c.civico);
+  set("cli-cap", c && c.cap); set("cli-localita", c && c.localita); set("cli-email", c && c.email);
+  set("cli-telefono", c && c.telefono); set("cli-note", c && c.note);
+  document.getElementById("cli-relazione").value = (c && c.relazione) || "genitore";
+  document.getElementById("cli-allievi-info").textContent = clienteInModificaAllievi.length
+    ? "Collegato a: " + clienteInModificaAllievi.map(a => a.nome).join(", ") : "";
+  document.getElementById("cliente-modal").classList.remove("hidden");
+  document.body.style.overflow = "hidden";
+}
+
+function chiudiModalCliente() {
+  document.getElementById("cliente-modal").classList.add("hidden");
+  document.body.style.overflow = "";
+}
+
+async function salvaClienteForm(e) {
+  e.preventDefault();
+  const errEl = document.getElementById("cliente-error");
+  errEl.innerHTML = "";
+  const val = id => document.getElementById(id).value.trim();
+  const btn = document.getElementById("cliente-salva-btn");
+  btn.disabled = true;
+  try {
+    const id = await salvaClienteConControllo({
+      id: clienteInModificaId || undefined,
+      nome: val("cli-nome"), via: val("cli-via"), civico: val("cli-civico"), cap: val("cli-cap"),
+      localita: val("cli-localita"), email: val("cli-email"), telefono: val("cli-telefono"),
+      relazione: document.getElementById("cli-relazione").value, note: val("cli-note"),
+      allievi: clienteInModificaAllievi,
+      attivo: clienteInModificaId ? (clientiCache.find(c => c.id === clienteInModificaId) || {}).attivo !== false : true
+    });
+    if (!id) return;
+    chiudiModalCliente();
+    await caricaClienti();
+  } catch (err) {
+    showError(errEl, erroreFunzione(err));
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function azioneCliente(azione, id) {
+  const c = clientiCache.find(x => x.id === id);
+  if (!c) return;
+  const errEl = document.getElementById("cli-error");
+  errEl.innerHTML = "";
+  if (azione === "modifica") { apriModalCliente(c); return; }
+  try {
+    await cloudFunctions().httpsCallable("salvaCliente")({
+      ...datiClienteDaDoc(c), attivo: c.attivo === false, forza: true
+    });
+    await caricaClienti();
+  } catch (err) {
+    showError(errEl, erroreFunzione(err));
+  }
+}
+
 function apriModalNuova() {
   document.getElementById("nuova-error").innerHTML = "";
   const scadEl = document.getElementById("fat-scadenza");
   if (!scadEl.value) scadEl.value = scadenzaPredefinitaISO();
   scadEl.min = oggiISO();
+  popolaSelectClienti();
+  aggiornaBannerRipartizione();
   document.getElementById("nuova-modal").classList.remove("hidden");
   document.body.style.overflow = "hidden";
 }
@@ -312,25 +467,48 @@ async function emettiFattura(e) {
   btn.disabled = true;
   mostraCaricamento("Emetto la fattura…");
   try {
-    const res = await cloudFunctions().httpsCallable("emettiFattura")({
-      destinatario: {
-        nome: val("dest-nome"), via: val("dest-via"), civico: val("dest-civico"),
-        cap: val("dest-cap"), localita: val("dest-localita"), email: val("dest-email")
-      },
-      oggetto: val("fat-oggetto"),
-      dataScadenza: scadenza,
-      note: val("fat-note"),
-      righe,
-      origine: origineForm
-    });
-    const pdf = await cloudFunctions().httpsCallable("pdfFattura")({ id: res.data.id });
-    scaricaBase64(pdf.data.nomeFile, pdf.data.base64);
+    const diviso = Array.isArray(ripartizione) && ripartizione.length > 1;
+    const destinatario = {
+      nome: val("dest-nome"), via: val("dest-via"), civico: val("dest-civico"),
+      cap: val("dest-cap"), localita: val("dest-localita"), email: val("dest-email")
+    };
+    let idsEmessi = [];
+    if (diviso) {
+      const res = await cloudFunctions().httpsCallable("emettiFattureRipartite")({
+        quote: ripartizione.map(r => ({ clienteId: r.clienteId, destinatario: r.destinatario, percentuale: r.percentuale })),
+        oggetto: val("fat-oggetto"), dataScadenza: scadenza, note: val("fat-note"), righe, origine: origineForm
+      });
+      idsEmessi = res.data.fatture.map(f => f.id);
+    } else {
+      // Destinatario scritto a mano: di default entra in anagrafica (con
+      // controllo dei doppioni, anche a nomi invertiti), così la prossima
+      // volta basta sceglierlo e la fattura resta collegata al cliente.
+      let clienteId = clienteSelezionatoId;
+      if (!clienteId && document.getElementById("fat-salva-cliente").checked) {
+        nascondiCaricamento();
+        clienteId = await salvaClienteConControllo({ ...destinatario, relazione: "altro" });
+        if (!clienteId) { btn.disabled = false; return; }
+        mostraCaricamento("Emetto la fattura…");
+      }
+      const res = await cloudFunctions().httpsCallable("emettiFattura")({
+        destinatario, clienteId,
+        oggetto: val("fat-oggetto"), dataScadenza: scadenza, note: val("fat-note"), righe, origine: origineForm
+      });
+      idsEmessi = [res.data.id];
+    }
+    for (const id of idsEmessi) {
+      const pdf = await cloudFunctions().httpsCallable("pdfFattura")({ id });
+      scaricaBase64(pdf.data.nomeFile, pdf.data.base64);
+    }
     document.getElementById("nuova-form").reset();
     righeForm = [{ descrizione: "", quantita: 1, prezzoUnitario: "" }];
     origineForm = null;
+    ripartizione = null;
+    clienteSelezionatoId = null;
     renderRighe();
     chiudiModalNuova();
     await caricaFatture();
+    await caricaClienti();
   } catch (err) {
     showError(errEl, erroreFunzione(err));
   } finally {
@@ -347,6 +525,7 @@ async function caricaFatture() {
   aggiornaRiepilogo();
   renderFiltri();
   renderElenco();
+  renderClienti();
 }
 
 function inRitardo(f) {
@@ -496,6 +675,14 @@ requireAuth(async (profile) => {
     await loadDatiCentro();
     await caricaConfig();
     await caricaFatture();
+    // Non fatale: se le regole dei clienti non sono ancora pubblicate le
+    // fatture devono comunque funzionare.
+    try {
+      await caricaClienti();
+    } catch (err) {
+      showError(document.getElementById("cli-error"), "Anagrafica clienti non disponibile: " + erroreFunzione(err));
+    }
+    applicaPrecompilazione();
   } catch (err) {
     document.getElementById("access-denied").classList.remove("hidden");
     document.getElementById("access-denied").querySelector("p").textContent = erroreFunzione(err);
@@ -504,7 +691,6 @@ requireAuth(async (profile) => {
 
   document.getElementById("content").classList.remove("hidden");
   renderRighe();
-  applicaPrecompilazione();
 
   document.getElementById("cfg-form").addEventListener("submit", salvaConfig);
   document.getElementById("cfg-iban").addEventListener("input", aggiornaInfoIban);
@@ -514,7 +700,17 @@ requireAuth(async (profile) => {
   document.getElementById("nuova-modal").addEventListener("click", (e) => {
     if (e.target.id === "nuova-modal") chiudiModalNuova();
   });
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") chiudiModalNuova(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { chiudiModalNuova(); chiudiModalCliente(); } });
+  document.getElementById("fat-cliente").addEventListener("change", (e) => selezionaCliente(e.target.value));
+  document.getElementById("fat-ripartizione-annulla").addEventListener("click", () => {
+    ripartizione = null;
+    aggiornaBannerRipartizione();
+  });
+  document.getElementById("cli-search").addEventListener("input", (e) => { ricercaClienti = e.target.value; renderClienti(); });
+  document.getElementById("nuovo-cliente-btn").addEventListener("click", () => apriModalCliente(null));
+  document.getElementById("cliente-chiudi").addEventListener("click", chiudiModalCliente);
+  document.getElementById("cliente-modal").addEventListener("click", (e) => { if (e.target.id === "cliente-modal") chiudiModalCliente(); });
+  document.getElementById("cliente-form").addEventListener("submit", salvaClienteForm);
   document.getElementById("aggiungi-riga-btn").addEventListener("click", () => {
     righeForm.push({ descrizione: "", quantita: 1, prezzoUnitario: "" });
     renderRighe();

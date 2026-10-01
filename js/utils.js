@@ -664,3 +664,37 @@ function renderBannerModalitaTest() {
 }
 renderBannerModalitaTest();
 initMenuUtente();
+
+
+// ---------- Fatture / clienti (condivisi da fatture.js e fatturazione-corsi.js) ----------
+
+function erroreFunzione(err) {
+  return (err && err.message) ? err.message : "Operazione non riuscita.";
+}
+
+// Salva (o aggiorna) un cliente dell'anagrafica fatture tramite la Cloud
+// Function salvaCliente. Se esiste già un cliente con lo stesso nome (anche
+// con nome e cognome invertiti) chiede cosa fare: ritorna l'id da usare,
+// oppure null se l'utente annulla.
+async function salvaClienteConControllo(dati) {
+  const salva = cloudFunctions().httpsCallable("salvaCliente");
+  let res = (await salva(dati)).data;
+  if (res.duplicati && res.duplicati.length) {
+    const elenco = res.duplicati.map(d => `• ${d.nome}${d.localita ? " — " + d.localita : ""}${d.email ? " (" + d.email + ")" : ""}`).join("\n");
+    if (!dati.id && confirm(`Esiste già in anagrafica:\n${elenco}\n\nOK = usa il cliente esistente.\nAnnulla = crea comunque un nuovo cliente.`)) {
+      return res.duplicati[0].id;
+    }
+    if (!confirm("Creare comunque un nuovo cliente con lo stesso nome?")) return null;
+    res = (await salva({ ...dati, forza: true })).data;
+  }
+  return res.id;
+}
+
+// Solo i campi che salvaCliente legge (niente Timestamp né altro dal doc).
+function datiClienteDaDoc(c) {
+  return {
+    id: c.id, tipo: c.tipo, relazione: c.relazione, nome: c.nome, via: c.via, civico: c.civico, cap: c.cap,
+    localita: c.localita, paese: c.paese, email: c.email, telefono: c.telefono, note: c.note,
+    attivo: c.attivo !== false, allievi: c.allievi || []
+  };
+}

@@ -138,6 +138,20 @@
           </div>
           <div class="error-msg" id="nuova-error"></div>
           <form id="nuova-form">
+            <div class="field" id="fat-cliente-box">
+              <label for="fat-cliente">Cliente</label>
+              <select id="fat-cliente">
+                <option value="">— Nessun cliente: inserisco il destinatario a mano —</option>
+              </select>
+            </div>
+            <div class="entry-card hidden" id="fat-ripartizione" style="margin-bottom:14px;">
+              <div class="entry-main">
+                <div class="entry-tipo">Fattura divisa</div>
+                <div class="entry-meta" id="fat-ripartizione-info"></div>
+              </div>
+              <button type="button" class="btn btn-ghost" id="fat-ripartizione-annulla" style="width:auto;padding:6px 10px;font-size:0.7rem;">Non dividere</button>
+            </div>
+            <div id="dest-campi">
             <div class="field">
               <label for="dest-nome">Destinatario</label>
               <input type="text" id="dest-nome" required maxlength="70" placeholder="Nome e cognome o ragione sociale">
@@ -167,6 +181,11 @@
               <label for="dest-email">Email (per l'invio, facoltativa)</label>
               <input type="email" id="dest-email" maxlength="120">
             </div>
+            <label class="checkbox-row" id="fat-salva-cliente-box" style="margin-bottom:14px;">
+              <input type="checkbox" id="fat-salva-cliente" checked>
+              <span>Salva il destinatario nell'anagrafica clienti</span>
+            </label>
+            </div>
             <div class="field">
               <label for="fat-oggetto">Oggetto (facoltativo)</label>
               <input type="text" id="fat-oggetto" maxlength="140" placeholder="es. Corso tennis stagione 2026/27">
@@ -191,6 +210,61 @@
               <textarea id="fat-note" rows="2" maxlength="500"></textarea>
             </div>
             <button type="submit" class="btn btn-primary" id="emetti-btn">Emetti fattura e scarica PDF</button>
+          </form>
+        </div>
+      </div>
+
+      <!-- Clienti -->
+      <div class="section-title"><h2>Clienti</h2></div>
+      <p class="entry-meta" style="margin:-6px 0 12px;">Anagrafica di chi riceve le fatture (genitori, soci, aziende), collegata agli allievi per cui paga. I clienti non si cancellano: si archiviano.</p>
+      <div class="field">
+        <label for="cli-search">Cerca cliente</label>
+        <input type="text" id="cli-search" placeholder="es. Rossi">
+      </div>
+      <button type="button" class="btn btn-ghost" id="nuovo-cliente-btn" style="margin-bottom:12px;">+ Nuovo cliente</button>
+      <div class="error-msg" id="cli-error"></div>
+      <div id="clienti-list"></div>
+
+      <div class="modal-backdrop hidden" id="cliente-modal" role="dialog" aria-modal="true" aria-labelledby="cliente-titolo">
+        <div class="modal-box">
+          <div class="modal-head">
+            <h2 id="cliente-titolo">Cliente</h2>
+            <button type="button" class="btn btn-ghost" id="cliente-chiudi" aria-label="Chiudi">✕</button>
+          </div>
+          <div class="error-msg" id="cliente-error"></div>
+          <form id="cliente-form">
+            <div class="field">
+              <label for="cli-nome">Nome e cognome o ragione sociale</label>
+              <input type="text" id="cli-nome" required maxlength="70">
+            </div>
+            <div class="row2">
+              <div class="field" style="flex:3;"><label for="cli-via">Via</label><input type="text" id="cli-via" maxlength="70"></div>
+              <div class="field" style="flex:1;"><label for="cli-civico">N.</label><input type="text" id="cli-civico" maxlength="16"></div>
+            </div>
+            <div class="row2">
+              <div class="field" style="flex:1;"><label for="cli-cap">CAP</label><input type="text" id="cli-cap" maxlength="16"></div>
+              <div class="field" style="flex:2;"><label for="cli-localita">Località</label><input type="text" id="cli-localita" maxlength="35"></div>
+            </div>
+            <div class="row2">
+              <div class="field"><label for="cli-email">Email</label><input type="email" id="cli-email" maxlength="120"></div>
+              <div class="field"><label for="cli-telefono">Telefono</label><input type="text" id="cli-telefono" maxlength="40"></div>
+            </div>
+            <div class="field">
+              <label for="cli-relazione">Relazione</label>
+              <select id="cli-relazione">
+                <option value="genitore">Genitore</option>
+                <option value="allievo">Allievo (maggiorenne)</option>
+                <option value="socio">Socio</option>
+                <option value="azienda">Azienda</option>
+                <option value="altro">Altro</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="cli-note">Note</label>
+              <textarea id="cli-note" rows="2" maxlength="500"></textarea>
+            </div>
+            <div class="entry-meta" id="cli-allievi-info" style="margin-bottom:12px;"></div>
+            <button type="submit" class="btn btn-primary" id="cliente-salva-btn">Salva cliente</button>
           </form>
         </div>
       </div>

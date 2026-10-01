@@ -5857,24 +5857,11 @@ function verificaConfigFatture(cfg) {
   return { creditore: c, iban, tipoRiferimento: tipo };
 }
 
-exports.emettiFattura = onCall(async (request) => {
-  const { userData } = await richiediPermessoFatture(request);
-  const dati = request.data || {};
-
-  const cfgSnap = await db.collection("fattureConfig").doc("main").get();
-  const cfg = cfgSnap.exists ? cfgSnap.data() : null;
-  const { creditore, iban, tipoRiferimento } = verificaConfigFatture(cfg);
-
-  const destinatario = indirizzoPulito(dati.destinatario || {}, { conEmail: true });
-  if (!destinatario.nome) throw new HttpsError("invalid-argument", "Il nome del destinatario è obbligatorio.");
-  if (destinatario.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(destinatario.email)) {
-    throw new HttpsError("invalid-argument", "L'email del destinatario non è valida.");
-  }
-
-  const righeIn = Array.isArray(dati.righe) ? dati.righe : [];
-  if (righeIn.length === 0) throw new HttpsError("invalid-argument", "Aggiungi almeno una riga.");
+// Righe validate e arrotondate (input del client mai fidato).
+function righeFatturaPulite(righeIn) {
+  if (!Array.isArray(righeIn) || righeIn.length === 0) throw new HttpsError("invalid-argument", "Aggiungi almeno una riga.");
   if (righeIn.length > 60) throw new HttpsError("invalid-argument", "Troppe righe (massimo 60).");
-  const righe = righeIn.map((r, i) => {
+  return righeIn.map((r, i) => {
     const descrizione = testoPulito(r.descrizione, 200);
     const quantita = Number(r.quantita);
     const prezzoUnitario = Number(r.prezzoUnitario);
@@ -5883,64 +5870,216 @@ exports.emettiFattura = onCall(async (request) => {
     if (!isFinite(prezzoUnitario)) throw new HttpsError("invalid-argument", `Riga ${i + 1}: prezzo non valido.`);
     return { descrizione, quantita, prezzoUnitario: arrotonda2(prezzoUnitario), importo: arrotonda2(quantita * prezzoUnitario) };
   });
-  const totale = arrotonda2(righe.reduce((s, r) => s + r.importo, 0));
-  if (!(totale > 0)) throw new HttpsError("invalid-argument", "Il totale della fattura deve essere maggiore di zero.");
-  if (totale > 999999999.99) throw new HttpsError("invalid-argument", "Importo troppo elevato.");
+}
 
-  const dataEmissione = dati.dataEmissione ? String(dati.dataEmissione) : oggiZurigo();
+function destinatarioPulito(d) {
+  const destinatario = indirizzoPulito(d || {}, { conEmail: true });
+  if (!destinatario.nome) throw new HttpsError("invalid-argument", "Il nome del destinatario è obbligatorio.");
+  if (destinatario.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(destinatario.email)) {
+    throw new HttpsError("invalid-argument", `L'email di «${destinatario.nome}» non è valida.`);
+  }
+  return destinatario;
+}
+
+// Cuore dell'emissione: scrive UNA o PIÙ fatture nella stessa transazione
+// (numeri consecutivi, tutto o niente) — serve alla divisione tra due
+// genitori, dove emettere una sola delle due lascerebbe la pratica a metà.
+// voci: [{ destinatario, righe, clienteId, quotaPercentuale }]
+async function emettiFattureCore(request, userData, dati, voci) {
+  const cfgSnap = await db.collection("fattureConfig").doc("main").get();
+  const cfg = cfgSnap.exists ? cfgSnap.data() : null;
+  const { creditore, iban, tipoRiferimento } = verificaConfigFatture(cfg);
+
+  // Data di emissione: oggi, o al massimo fino a 60 giorni fa (fatture
+  // dimenticate); mai nel futuro — altrimenti una data inventata aprirebbe
+  // una numerazione parallela per un altro anno.
+  const oggi = oggiZurigo();
+  const dataEmissione = dati.dataEmissione ? String(dati.dataEmissione) : oggi;
   if (!dataIsoValida(dataEmissione)) throw new HttpsError("invalid-argument", "Data di emissione non valida.");
+  if (dataEmissione > oggi) throw new HttpsError("invalid-argument", "La data di emissione non può essere nel futuro.");
+  if (dataEmissione < aggiungiGiorniIso(oggi, -60)) throw new HttpsError("invalid-argument", "La data di emissione non può essere più vecchia di 60 giorni.");
   const giorni = Number.isFinite(Number(cfg.giorniScadenza)) ? Math.max(0, Math.round(Number(cfg.giorniScadenza))) : 30;
   const dataScadenza = dati.dataScadenza ? String(dati.dataScadenza) : aggiungiGiorniIso(dataEmissione, giorni);
   if (!dataIsoValida(dataScadenza)) throw new HttpsError("invalid-argument", "Data di scadenza non valida.");
+  if (dataScadenza < dataEmissione) throw new HttpsError("invalid-argument", "La scadenza non può precedere l'emissione.");
+
+  // clienteId: deve esistere davvero (altrimenti la fattura punterebbe nel vuoto).
+  for (const v of voci) {
+    if (v.clienteId) {
+      const c = await db.collection("clienti").doc(String(v.clienteId)).get();
+      if (!c.exists) throw new HttpsError("not-found", "Cliente non trovato nell'anagrafica.");
+    }
+  }
 
   const anno = parseInt(dataEmissione.slice(0, 4), 10);
   const contatoreRef = db.collection("fattureContatori").doc("main");
-  const fatturaRef = db.collection("fatture").doc();
+  const daNome = (userData && userData.nome) || "";
+  const gruppoId = voci.length > 1 ? db.collection("fatture").doc().id : null;
 
-  const fattura = await db.runTransaction(async (tx) => {
+  const emesse = await db.runTransaction(async (tx) => {
     const cSnap = await tx.get(contatoreRef);
     const campo = "anno_" + anno;
-    const progressivo = ((cSnap.exists ? cSnap.data()[campo] : 0) || 0) + 1;
-    tx.set(contatoreRef, { [campo]: progressivo }, { merge: true });
+    let progressivo = (cSnap.exists ? cSnap.data()[campo] : 0) || 0;
+    const risultato = [];
 
-    const doc = {
-      numero: `${anno}-${String(progressivo).padStart(4, "0")}`,
-      anno,
-      progressivo,
-      valuta: "CHF",
-      dataEmissione,
-      dataScadenza,
-      destinatario,
-      oggetto: testoPulito(dati.oggetto, 140),
-      righe,
-      totale,
-      iban,
-      tipoRiferimento,
-      riferimento: costruisciRiferimento(tipoRiferimento, anno, progressivo),
-      creditore,
-      contatti: { telefono: testoPulito(cfg.telefono, 40), email: testoPulito(cfg.email, 120) },
-      notaIva: testoPulito(cfg.notaIva, 200),
-      pieDiPagina: testoPulito(cfg.pieDiPagina, 300),
-      note: testoPulito(dati.note, 500),
-      origine: dati.origine && dati.origine.tipo ? {
-        tipo: testoPulito(dati.origine.tipo, 40),
-        id: testoPulito(dati.origine.id, 80)
-      } : null,
-      stato: "emessa",
-      emessaDa: request.auth.uid,
-      emessaDaNome: (userData && userData.nome) || "",
-      createdAt: FieldValue.serverTimestamp()
-    };
-    tx.set(fatturaRef, doc);
-    tx.set(fatturaRef.collection("eventi").doc(), {
-      daStato: null, aStato: "emessa", motivo: null, dataPagamento: null,
-      daUid: request.auth.uid, daNome: (userData && userData.nome) || "",
-      at: FieldValue.serverTimestamp()
+    voci.forEach((v, idx) => {
+      progressivo += 1;
+      const totale = arrotonda2(v.righe.reduce((somma, r) => somma + r.importo, 0));
+      if (!(totale > 0)) throw new HttpsError("invalid-argument", "Il totale della fattura deve essere maggiore di zero.");
+      if (totale > 999999999.99) throw new HttpsError("invalid-argument", "Importo troppo elevato.");
+      const fatturaRef = db.collection("fatture").doc();
+      const doc = {
+        numero: `${anno}-${String(progressivo).padStart(4, "0")}`,
+        anno,
+        progressivo,
+        valuta: "CHF",
+        dataEmissione,
+        dataScadenza,
+        destinatario: v.destinatario,
+        clienteId: v.clienteId ? String(v.clienteId) : null,
+        gruppoId,
+        quotaPercentuale: v.quotaPercentuale != null ? v.quotaPercentuale : null,
+        oggetto: testoPulito(dati.oggetto, 140),
+        righe: v.righe,
+        totale,
+        iban,
+        tipoRiferimento,
+        riferimento: costruisciRiferimento(tipoRiferimento, anno, progressivo),
+        creditore,
+        contatti: { telefono: testoPulito(cfg.telefono, 40), email: testoPulito(cfg.email, 120) },
+        notaIva: testoPulito(cfg.notaIva, 200),
+        pieDiPagina: testoPulito(cfg.pieDiPagina, 300),
+        note: testoPulito(dati.note, 500),
+        origine: dati.origine && dati.origine.tipo ? {
+          tipo: testoPulito(dati.origine.tipo, 40),
+          id: testoPulito(dati.origine.id, 80)
+        } : null,
+        stato: "emessa",
+        emessaDa: request.auth.uid,
+        emessaDaNome: daNome,
+        createdAt: FieldValue.serverTimestamp()
+      };
+      tx.set(fatturaRef, doc);
+      tx.set(fatturaRef.collection("eventi").doc(), {
+        daStato: null, aStato: "emessa",
+        motivo: voci.length > 1 ? `Fattura ${idx + 1} di ${voci.length} (quota ${v.quotaPercentuale}%)` : null,
+        dataPagamento: null,
+        daUid: request.auth.uid, daNome,
+        at: FieldValue.serverTimestamp()
+      });
+      risultato.push({ id: fatturaRef.id, numero: doc.numero, riferimento: doc.riferimento, totale: doc.totale, destinatario: doc.destinatario.nome });
     });
-    return doc;
-  });
 
-  return { id: fatturaRef.id, numero: fattura.numero, riferimento: fattura.riferimento, totale: fattura.totale };
+    tx.set(contatoreRef, { [campo]: progressivo }, { merge: true });
+    return risultato;
+  });
+  return emesse;
+}
+
+exports.emettiFattura = onCall(async (request) => {
+  const { userData } = await richiediPermessoFatture(request);
+  const dati = request.data || {};
+  const emesse = await emettiFattureCore(request, userData, dati, [{
+    destinatario: destinatarioPulito(dati.destinatario),
+    righe: righeFatturaPulite(dati.righe),
+    clienteId: dati.clienteId || null,
+    quotaPercentuale: null
+  }]);
+  return emesse[0];
+});
+
+// Fattura divisa tra più intestatari (es. genitori separati: metà a
+// ciascuno). Ogni intestatario riceve una fattura propria, con numero e
+// polizza QR propri, dove ogni riga è la sua quota. Le percentuali devono
+// sommare 100; gli importi si arrotondano al centesimo e l'ultimo prende
+// il resto, così le fatture sommano ESATTAMENTE il totale originale.
+exports.emettiFattureRipartite = onCall(async (request) => {
+  const { userData } = await richiediPermessoFatture(request);
+  const dati = request.data || {};
+  const quote = Array.isArray(dati.quote) ? dati.quote : [];
+  if (quote.length < 2 || quote.length > 4) throw new HttpsError("invalid-argument", "La divisione richiede da 2 a 4 intestatari.");
+  const percentuali = quote.map(q => Number(q.percentuale));
+  if (percentuali.some(p => !(p > 0) || !isFinite(p))) throw new HttpsError("invalid-argument", "Ogni quota deve essere maggiore di zero.");
+  if (Math.abs(percentuali.reduce((a, b) => a + b, 0) - 100) > 0.001) throw new HttpsError("invalid-argument", "Le quote devono sommare 100%.");
+
+  const righeOriginali = righeFatturaPulite(dati.righe);
+  const voci = quote.map((q, j) => ({
+    destinatario: destinatarioPulito(q.destinatario),
+    clienteId: q.clienteId || null,
+    quotaPercentuale: percentuali[j],
+    righe: []
+  }));
+  const etichetta = p => (Number.isInteger(p) ? String(p) : String(arrotonda2(p)));
+  righeOriginali.forEach(r => {
+    let assegnato = 0;
+    voci.forEach((v, j) => {
+      const ultimo = j === voci.length - 1;
+      const importo = ultimo ? arrotonda2(r.importo - assegnato) : arrotonda2(r.importo * percentuali[j] / 100);
+      assegnato = arrotonda2(assegnato + importo);
+      v.righe.push({
+        descrizione: testoPulito(`${r.descrizione} — quota ${etichetta(percentuali[j])}%`, 200),
+        quantita: 1, prezzoUnitario: importo, importo
+      });
+    });
+  });
+  return { fatture: await emettiFattureCore(request, userData, dati, voci) };
+});
+
+// ---------- Anagrafica clienti ----------
+//
+// Un "cliente" è chi riceve le fatture (persona o azienda): un genitore, un
+// socio, un'azienda convenzionata... collegato agli allievi per cui paga.
+// Un genitore separato è un secondo cliente collegato allo stesso allievo.
+// Non si cancella mai (obbligo di conservazione): si archivia (attivo =
+// false). Scrittura solo da qui, mai dal client; ogni modifica lascia una
+// riga in clienti/{id}/eventi.
+exports.salvaCliente = onCall(async (request) => {
+  const { userData } = await richiediPermessoFatture(request);
+  const dati = request.data || {};
+  const indirizzo = destinatarioPulito(dati);
+  const telefono = testoPulito(dati.telefono, 40);
+  const relazione = ["genitore", "allievo", "socio", "azienda", "altro"].includes(dati.relazione) ? dati.relazione : "altro";
+  const allievi = (Array.isArray(dati.allievi) ? dati.allievi : []).slice(0, 12)
+    .map(a => ({ id: testoPulito(a && a.id, 80), nome: testoPulito(a && a.nome, 80) }))
+    .filter(a => a.id);
+  const nomeChiave = chiaveNomeAllievo(indirizzo.nome, "x") || "";
+
+  // Doppioni: stesso nome (in qualunque ordine) già in anagrafica. Si
+  // segnalano e basta; chi chiama decide se usare l'esistente o forzare.
+  const tutti = await db.collection("clienti").get();
+  const duplicati = tutti.docs
+    .filter(d => d.id !== dati.id && chiaveNomeAllievo(d.data().nome, "x") === nomeChiave && nomeChiave)
+    .map(d => ({ id: d.id, nome: d.data().nome, localita: d.data().localita || "", email: d.data().email || "" }));
+  if (duplicati.length > 0 && !dati.forza) return { duplicati };
+
+  const daNome = (userData && userData.nome) || "";
+  const campi = {
+    tipo: dati.tipo === "azienda" ? "azienda" : "persona",
+    relazione,
+    nome: indirizzo.nome, via: indirizzo.via, civico: indirizzo.civico, cap: indirizzo.cap,
+    localita: indirizzo.localita, paese: indirizzo.paese, email: indirizzo.email || "", telefono,
+    note: testoPulito(dati.note, 500),
+    attivo: dati.attivo !== false,
+    allievi,
+    allievoIds: allievi.map(a => a.id),
+    updatedAt: FieldValue.serverTimestamp(),
+    updatedDa: request.auth.uid
+  };
+
+  let ref;
+  if (dati.id) {
+    ref = db.collection("clienti").doc(String(dati.id));
+    const snap = await ref.get();
+    if (!snap.exists) throw new HttpsError("not-found", "Cliente non trovato.");
+    await ref.update(campi);
+  } else {
+    ref = db.collection("clienti").doc();
+    await ref.set({ ...campi, createdAt: FieldValue.serverTimestamp(), creatoDa: request.auth.uid, creatoDaNome: daNome });
+  }
+  await ref.collection("eventi").add({
+    azione: dati.id ? "modificato" : "creato", daUid: request.auth.uid, daNome, at: FieldValue.serverTimestamp()
+  });
+  return { id: ref.id };
 });
 
 async function caricaFattura(id) {
