@@ -4282,6 +4282,17 @@ exports.addebitaIscrizioneCorso = onCall(
   }
 );
 
+// Chiave di confronto nome+cognome: minuscolo, senza accenni/punteggiatura,
+// parole ordinate — così "Rossi Mario" e "Mario Rossi" (nome e cognome
+// scritti invertiti) danno la stessa chiave. Vuota se manca uno dei due.
+function chiaveNomeAllievo(nome, cognome) {
+  const norm = v => String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(Boolean);
+  const n = norm(nome), c = norm(cognome);
+  if (!n.length || !c.length) return "";
+  return [...n, ...c].sort().join(" ");
+}
+
 // Collega automaticamente una nuova iscrizione (pubblica o inserita dallo
 // staff) al profilo allievo giusto in allieviCorsi, cercando per
 // email+dataNascita — l'unico modo per farlo con accesso privilegiato a
@@ -4312,16 +4323,39 @@ exports.onIscrizioneCorsoCreata = onDocumentCreated(
 
     const email = (iscrizione.email || "").trim().toLowerCase();
     const dataNascita = iscrizione.dataNascita || null;
-    if (!email || !dataNascita) return;
+    const chiaveNomeIscritto = chiaveNomeAllievo(iscrizione.nome, iscrizione.cognome);
+    // Senza un'identità minima (né email+data né un nome) non c'è nulla
+    // da abbinare né da creare.
+    if (!(email && dataNascita) && !chiaveNomeIscritto) return;
 
-    const candidatiSnap = await db.collection("allieviCorsi")
-      .where("emailLower", "==", email)
-      .where("dataNascita", "==", dataNascita)
-      .get();
+    let candidatiIds = [];
+    if (email && dataNascita) {
+      const candidatiSnap = await db.collection("allieviCorsi")
+        .where("emailLower", "==", email)
+        .where("dataNascita", "==", dataNascita)
+        .get();
+      candidatiIds = candidatiSnap.docs.map(d => d.id);
+    }
 
-    if (candidatiSnap.size === 1) {
-      await snap.ref.update({ allievoId: candidatiSnap.docs[0].id, allievoIdStato: "da_confermare" });
-    } else if (candidatiSnap.size === 0) {
+    // Iscrizioni inserite a mano dallo staff spesso non hanno email/data
+    // di nascita (o ne hanno di diverse da quelle in anagrafica): si
+    // cerca allora per nome e cognome, in qualunque ordine (c'è chi li
+    // scrive invertiti nei campi) e senza badare a maiuscole/accenti.
+    // Due date di nascita entrambe presenti ma diverse = persone diverse.
+    if (candidatiIds.length === 0 && chiaveNomeIscritto) {
+      const tuttiSnap = await db.collection("allieviCorsi").get();
+      candidatiIds = tuttiSnap.docs
+        .filter(d => {
+          const a = d.data();
+          if (chiaveNomeAllievo(a.nome, a.cognome) !== chiaveNomeIscritto) return false;
+          return !(dataNascita && a.dataNascita && a.dataNascita !== dataNascita);
+        })
+        .map(d => d.id);
+    }
+
+    if (candidatiIds.length === 1) {
+      await snap.ref.update({ allievoId: candidatiIds[0], allievoIdStato: "da_confermare" });
+    } else if (candidatiIds.length === 0) {
       const nuovoAllievo = await db.collection("allieviCorsi").add({
         nome: iscrizione.nome || "",
         cognome: iscrizione.cognome || "",
@@ -4343,7 +4377,7 @@ exports.onIscrizioneCorsoCreata = onDocumentCreated(
       });
       await snap.ref.update({ allievoId: nuovoAllievo.id, allievoIdStato: "confermato" });
     } else {
-      await snap.ref.update({ allievoCandidatiIds: candidatiSnap.docs.map(d => d.id) });
+      await snap.ref.update({ allievoCandidatiIds: candidatiIds });
     }
   }
 );

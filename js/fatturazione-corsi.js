@@ -349,14 +349,29 @@ function statoAttuale(riga) {
   return (fatturazioniSalvate[riga.iscrizioneId] || {}).stato || "da_valutare";
 }
 
+const STATI_FATTURAZIONE = [
+  { id: "da_valutare", label: "Da valutare", badge: "badge-in-attesa" },
+  { id: "da_fatturare", label: "Da fatturare", badge: "badge-in-attesa" },
+  { id: "fatturato", label: "Fatturato", badge: "badge-confermata" },
+  { id: "rifiutato", label: "Rifiutato", badge: "" }
+];
+
+function statoInfo(id) {
+  return STATI_FATTURAZIONE.find(s => s.id === id) || STATI_FATTURAZIONE[0];
+}
+
 function aggiornaScoreboard(righeFiltrate) {
-  let daValutare = 0, fatturato = 0, totale = 0;
+  const conteggi = { da_valutare: 0, da_fatturare: 0, fatturato: 0, rifiutato: 0 };
+  let totale = 0;
   righeFiltrate.forEach(r => {
-    if (statoAttuale(r) === "fatturato") fatturato++; else daValutare++;
-    totale += importoAttuale(r);
+    conteggi[statoInfo(statoAttuale(r)).id]++;
+    // Un rifiutato non verrà fatturato: non entra nel totale.
+    if (statoAttuale(r) !== "rifiutato") totale += importoAttuale(r);
   });
-  document.getElementById("fatt-conteggio-da-valutare").textContent = daValutare;
-  document.getElementById("fatt-conteggio-fatturato").textContent = fatturato;
+  document.getElementById("fatt-conteggio-da-valutare").textContent = conteggi.da_valutare;
+  document.getElementById("fatt-conteggio-da-fatturare").textContent = conteggi.da_fatturare;
+  document.getElementById("fatt-conteggio-fatturato").textContent = conteggi.fatturato;
+  document.getElementById("fatt-conteggio-rifiutato").textContent = conteggi.rifiutato;
   const piuOre = righeFiltrate.filter(r => r.prezzoAOra && r.oreFatturabili > 1).length;
   const piuOreEl = document.getElementById("fatt-piu-ore-info");
   piuOreEl.textContent = piuOre > 0 ? `${piuOre} ${piuOre === 1 ? "allievo frequenta" : "allievi frequentano"} più di 1 ora a settimana (corsi a ora): importo già moltiplicato per le ore.` : "";
@@ -417,8 +432,9 @@ function rigaCardHtml(riga) {
             ${riga.fuMaiSpostato ? `<span class="badge">Spostato</span>` : ""}
             ${riga.prezzoAOra && riga.oreFatturabili > 1 ? `<span class="badge">${formatOreFatt(riga.oreFatturabili)} ore</span>` : ""}
             ${riga.prezzoProposto == null ? `<span class="badge" style="border-color:var(--danger);color:var(--danger);">Prezzo non configurato sul corso originale</span>` : ""}
-            <span class="badge ${stato === "fatturato" ? "badge-confermata" : "badge-in-attesa"}">${stato === "fatturato" ? "Fatturato" : "Da valutare"}</span>
+            <span class="badge ${statoInfo(stato).badge}">${statoInfo(stato).label}</span>
           </div>
+          ${salvata.nota ? `<div class="entry-meta" style="margin-top:6px;">📝 ${escapeHtml(salvata.nota)}</div>` : ""}
           <div class="entry-meta" style="margin-top:6px;">Corso originale: ${escapeHtml(riga.corsoOriginaleNome)}</div>
           ${riga.nrIscrittiCorso != null ? `<div class="entry-meta" style="margin-top:6px;">Listino: ${riga.nrIscrittiCorso} iscritti nel corso → CHF ${riga.prezzoUnitario != null ? riga.prezzoUnitario.toFixed(2) : "—"} a persona</div>` : ""}
           ${oreRigaHtml(riga)}
@@ -442,8 +458,7 @@ function rigaCardHtml(riga) {
         <div class="field">
           <label for="fatt-stato-${riga.iscrizioneId}">Stato</label>
           <select id="fatt-stato-${riga.iscrizioneId}">
-            <option value="da_valutare" ${stato === "da_valutare" ? "selected" : ""}>Da valutare</option>
-            <option value="fatturato" ${stato === "fatturato" ? "selected" : ""}>Fatturato</option>
+            ${STATI_FATTURAZIONE.map(st => `<option value="${st.id}" ${stato === st.id ? "selected" : ""}>${st.label}</option>`).join("")}
           </select>
         </div>
         <div class="error-msg" id="fatt-salva-error-${riga.iscrizioneId}"></div>
@@ -558,7 +573,7 @@ function stampaRiepilogo() {
         <td>${escapeHtml(r.corsoOriginaleNome)}</td>
         <td>CHF ${importoAttuale(r).toFixed(2)}</td>
         <td>${escapeHtml(salvata.nota || "")}</td>
-        <td>${statoAttuale(r) === "fatturato" ? "Fatturato" : "Da valutare"}</td>
+        <td>${statoInfo(statoAttuale(r)).label}</td>
       </tr>
     `;
   }).join("");

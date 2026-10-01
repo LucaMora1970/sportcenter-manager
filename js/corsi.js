@@ -1250,6 +1250,7 @@ function renderIscrizioniCorso(container, corso, iscrizioni) {
               <button type="button" class="btn btn-ghost sposta-corso-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}" data-nome="${escapeHtml(i.nome + " " + i.cognome)}" disabled>Sposta</button>
             ` : ""}
             ${i.stato !== "annullata" ? `<button class="btn btn-ghost modifica-iscrizione-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}">Modifica</button>` : ""}
+            <button class="btn btn-danger elimina-iscrizione-btn" style="width:auto;padding:8px 12px;font-size:0.7rem;" data-id="${i.id}">Elimina</button>
           </div>
         </div>
         ${i.stato !== "annullata" ? `<div class="dettaglio-giorni hidden" id="modifica-isc-iscrizioni-${i.id}"></div>` : ""}
@@ -1280,6 +1281,12 @@ function renderIscrizioniCorso(container, corso, iscrizioni) {
     btn.addEventListener("click", () => {
       const i = iscrizioniOrdinate.find(x => x.id === btn.dataset.id);
       if (i) toggleModificaIscrizione(i, corso, "iscrizioni");
+    });
+  });
+  container.querySelectorAll(".elimina-iscrizione-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const i = iscrizioniOrdinate.find(x => x.id === btn.dataset.id);
+      if (i) eliminaIscrizione(i, corso);
     });
   });
   container.querySelectorAll(".sposta-corso-btn").forEach(btn => {
@@ -1590,6 +1597,50 @@ async function confermaIscrizione(iscrizioneId, corsoId, giorno, orario, nome, c
           ? `Gentile ${nome},\n\nSiamo lieti di confermarti nel corso "${corso?.nome || ""}".\n\nA presto!`
           : `Gentile ${nome},\n\nSiamo lieti di confermarti nel corso "${corso?.nome || ""}":\n\nGiorno: ${giornoLabel}\nOrario: ${orario}${campo ? "\nCampo: " + campo : ""}\n\nA presto!`);
     }
+  } catch (err) {
+    showError(document.getElementById("corsi-list-error"), "Errore: " + err.message);
+  }
+}
+
+// Eliminazione definitiva di un iscritto (iscrizione inserita per errore,
+// doppione, ecc.) — diversa da "Rifiuta", che la tiene come annullata.
+// Toglie anche l'iscritto dai gruppi del corso e la sua riga da
+// Fatturazione corsi; le presenze già registrate restano (sono un
+// registro). Lascia una riga nello Storico, che è immutabile.
+async function eliminaIscrizione(iscrizione, corso) {
+  const nome = `${iscrizione.nome} ${iscrizione.cognome}`.trim();
+  if (!confirm(`Eliminare definitivamente ${nome} dal corso "${corso.nome}"?\n\nVerrà tolto anche dai gruppi e dalla Fatturazione corsi. Le presenze già registrate restano nello storico. L'operazione non è reversibile.`)) return;
+  try {
+    await registraLog(iscrizione.id, corso.id, nome, "eliminato", `Iscrizione eliminata (stato: ${iscrizione.stato})`);
+
+    // Pulizia dei riferimenti: non blocca l'eliminazione se un permesso
+    // scoped (es. solo Padel) non consente di leggerli.
+    try {
+      const gruppi = await db.collection("gruppiCorso").where("membriIds", "array-contains", iscrizione.id).get();
+      if (!gruppi.empty) {
+        const batch = db.batch();
+        gruppi.docs.forEach(g => batch.update(g.ref, { membriIds: firebase.firestore.FieldValue.arrayRemove(iscrizione.id) }));
+        await batch.commit();
+      }
+    } catch (err) {
+      console.warn("eliminaIscrizione: pulizia gruppi:", err.message);
+    }
+    try {
+      await db.collection("fatturazioniCorsi").doc(iscrizione.id).delete();
+    } catch (err) {
+      console.warn("eliminaIscrizione: pulizia fatturazione:", err.message);
+    }
+
+    await db.collection("iscrizioniCorsi").doc(iscrizione.id).delete();
+
+    if (iscrizione.tokenStato === "ATTIVO") {
+      cloudFunctions().httpsCallable("eliminaTokenIscrizione")({ iscrizioneId: iscrizione.id })
+        .catch(err => console.error("eliminaTokenIscrizione:", err));
+    }
+
+    await ricaricaIscrizioniCorso(corso.id);
+    await ricaricaPanoramicaSeAperta(corso.id);
+    await aggiornaContatoriDopoModifica(corso.id);
   } catch (err) {
     showError(document.getElementById("corsi-list-error"), "Errore: " + err.message);
   }
