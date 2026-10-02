@@ -584,12 +584,12 @@ function fatturaCardHtml(f) {
   const badgeClasse = f.stato === "pagata" ? "badge-confermata" : f.stato === "annullata" ? "badge-annullata" : "badge-in-attesa";
   const chiusa = f.stato === "pagata" || f.stato === "annullata";
   return `
-    <div class="dipendente-block" data-id="${f.id}">
+    <div class="dipendente-block" data-id="${escapeHtml(f.id)}">
       <div class="entry-card">
         <div class="entry-main">
           <div class="entry-tipo">${escapeHtml(f.numero)} · ${escapeHtml(f.destinatario.nome)}</div>
           <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">
-            <span class="badge ${badgeClasse}">${STATI_LABEL[f.stato] || f.stato}</span>
+            <span class="badge ${badgeClasse}">${escapeHtml(STATI_LABEL[f.stato] || f.stato)}</span>
             ${ritardo ? `<span class="badge" style="border-color:var(--danger);color:var(--danger);">Scaduta</span>` : ""}
           </div>
           <div class="entry-meta" style="margin-top:6px;">Emessa il ${formatDataBreve(f.dataEmissione)} · scadenza ${formatDataBreve(f.dataScadenza)}${f.dataPagamento ? ` · pagata il ${formatDataBreve(f.dataPagamento)}` : ""}</div>
@@ -600,11 +600,11 @@ function fatturaCardHtml(f) {
         <div class="entry-ore">CHF ${chf(f.totale)}</div>
       </div>
       <div class="dipendente-actions">
-        <button type="button" class="btn btn-ghost" data-azione="pdf" data-id="${f.id}">PDF</button>
-        <button type="button" class="btn btn-ghost" data-azione="storico" data-id="${f.id}">Storico</button>
-        ${f.stato !== "annullata" ? `<button type="button" class="btn btn-ghost" data-azione="email" data-id="${f.id}">Invia email</button>` : ""}
-        ${!chiusa ? `<button type="button" class="btn btn-primary" data-azione="pagata" data-id="${f.id}">Segna pagata</button>` : ""}
-        ${f.stato !== "annullata" ? `<button type="button" class="btn btn-danger" data-azione="annulla" data-id="${f.id}">Annulla</button>` : ""}
+        <button type="button" class="btn btn-ghost" data-azione="pdf" data-id="${escapeHtml(f.id)}">PDF</button>
+        <button type="button" class="btn btn-ghost" data-azione="storico" data-id="${escapeHtml(f.id)}">Storico</button>
+        ${f.stato !== "annullata" ? `<button type="button" class="btn btn-ghost" data-azione="email" data-id="${escapeHtml(f.id)}">Invia email</button>` : ""}
+        ${!chiusa ? `<button type="button" class="btn btn-primary" data-azione="pagata" data-id="${escapeHtml(f.id)}">Segna pagata</button>` : ""}
+        ${f.stato !== "annullata" ? `<button type="button" class="btn btn-danger" data-azione="annulla" data-id="${escapeHtml(f.id)}">Annulla</button>` : ""}
       </div>
     </div>`;
 }

@@ -3,19 +3,40 @@ rules_version = '2';
 // Solo immagini caricate da Configurazione (foto disciplina, foto
 // sponsor): lettura pubblica perché mostrate sulle pagine pubbliche di
 // prenotazione (tcm.html), senza login — stesso ragionamento già fatto
-// per le collection Firestore "discipline"/"impostazioni". Scrittura
-// riservata allo staff autenticato: l'accesso alla UI di caricamento è
-// già filtrato da Configurazione (permesso config:gestisci), qui basta
-// escludere gli anonimi.
+// per le collection Firestore "discipline"/"impostazioni".
+//
+// Scrittura: solo chi ha il permesso "config:gestisci" (o l'admin "*") e
+// ha un utente attivo — prima bastava un qualunque account autenticato
+// (anche un giocatore Padel esterno) per sovrascrivere le foto pubbliche.
+// Solo JPEG (l'uploader comprime sempre in image/jpeg) e al massimo 2 MB.
+// Le regole Storage leggono Firestore con firestore.get().
 service firebase.storage {
   match /b/{bucket}/o {
+
+    function staffConfig() {
+      return request.auth != null
+        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.attivo != false
+        && (
+          firestore.get(/databases/(default)/documents/roles/$(firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.ruoloId)).data.permessi.hasAny(["config:gestisci"])
+          || firestore.get(/databases/(default)/documents/roles/$(firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.ruoloId)).data.permessi.hasAny(["*"])
+        );
+    }
+
+    function immagineValida() {
+      return request.resource != null
+        && request.resource.size < 2 * 1024 * 1024
+        && request.resource.contentType == "image/jpeg";
+    }
+
     match /discipline/{fileName} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow create, update: if staffConfig() && immagineValida();
+      allow delete: if staffConfig();
     }
     match /sponsor/{fileName} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow create, update: if staffConfig() && immagineValida();
+      allow delete: if staffConfig();
     }
   }
 }

@@ -359,7 +359,7 @@ function escapeHtml(str) {
 
 function populateSelect(selectEl, options, placeholder) {
   const placeholderOpt = placeholder !== undefined ? `<option value="">${placeholder}</option>` : "";
-  selectEl.innerHTML = placeholderOpt + options.map(o => `<option value="${o.id}">${o.label}</option>`).join("");
+  selectEl.innerHTML = placeholderOpt + options.map(o => `<option value="${escapeHtml(o.id)}">${escapeHtml(o.label)}</option>`).join("");
 }
 
 // Trasforma un messaggio d'errore in HTML sicuro con eventuali URL

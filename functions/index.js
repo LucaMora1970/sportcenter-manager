@@ -476,7 +476,7 @@ async function notificaGiocatoriAggiunti(bookingId, { disciplina, campoLabel, da
       await inviaEmail({
         to: socio.email,
         subject: "Sei stato aggiunto a una prenotazione",
-        html: `<p>Ciao ${socio.nome || ""}, sei stato aggiunto come giocatore a una prenotazione ${etichettaSlot}.</p>${rigaQuota}`
+        html: `<p>Ciao ${escapeHtmlBase(socio.nome || "")}, sei stato aggiunto come giocatore a una prenotazione ${etichettaSlot}.</p>${rigaQuota}`
       });
     } catch (err) {
       console.error("notificaGiocatoriAggiunti: invio fallito per", riga.socioId, err);
@@ -1218,7 +1218,7 @@ exports.webhookPostFinance = onRequest(
               await inviaEmail({
                 to: iscrizione.email,
                 subject: `Pagamento corso — ${iscrizione.corsoNome || ""}`,
-                html: `<p>Il corso "${iscrizione.corsoNome || ""}" è confermato, ma non siamo riusciti ad addebitare la carta salvata.</p>`
+                html: `<p>Il corso "${escapeHtmlBase(iscrizione.corsoNome || "")}" è confermato, ma non siamo riusciti ad addebitare la carta salvata.</p>`
                   + `<p>Completa il pagamento da qui: <a href="${paymentPageUrl}">${paymentPageUrl}</a></p>`
               });
             }
@@ -2361,7 +2361,7 @@ exports.approvaIscrizioneSocio = onCall(
       await inviaEmail({
         to: r.email,
         subject: "La tua iscrizione è stata verificata — completa il pagamento",
-        html: `<p>La tua richiesta di iscrizione (categoria ${categoriaSnap.data().nome}) è stata verificata dal circolo.</p>`
+        html: `<p>La tua richiesta di iscrizione (categoria ${escapeHtmlBase(categoriaSnap.data().nome)}) è stata verificata dal circolo.</p>`
           + `<p>Per completarla, tocca il link qui sotto e concludi il pagamento della quota (CHF ${importo.toFixed(2)}):</p>`
           + `<p><a href="${paymentPageUrl}">${paymentPageUrl}</a></p>`
       });
@@ -2526,9 +2526,32 @@ exports.eliminaSocioAdmin = onCall(async (request) => {
 // {ok:true} indipendentemente dal risultato reale della ricerca — non deve
 // essere possibile usare questo endpoint per scoprire se un indirizzo
 // appartiene o no a un socio del circolo.
+// Limite di richieste per chiave (email, IP...) in una finestra di tempo: le
+// funzioni pubbliche che mandano email o creano account non hanno login, e
+// senza un tetto chiunque potrebbe usarle per inondare di email un indirizzo
+// altrui o per creare account in massa. Ritorna true se il limite è superato.
+// I contatori stanno in limitiRichieste/{hash} (nessuna regola client =
+// negato); il campo scadeAt permette di impostare una policy TTL di Firestore
+// per ripulirli da soli.
+async function superaLimite(chiave, max, finestraMs) {
+  const id = crypto.createHash("sha256").update(String(chiave)).digest("hex").slice(0, 40);
+  const ref = db.collection("limitiRichieste").doc(id);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const adesso = Date.now();
+    let d = snap.exists ? snap.data() : null;
+    if (!d || adesso - d.inizio > finestraMs) d = { inizio: adesso, n: 0 };
+    d.n += 1;
+    tx.set(ref, { inizio: d.inizio, n: d.n, scadeAt: new Date(d.inizio + finestraMs) });
+    return d.n > max;
+  });
+}
+
 exports.richiediAttivazioneEmail = onCall({ secrets: MAIL_SECRETS }, async (request) => {
   const email = (request.data?.email || "").trim().toLowerCase();
   if (!email) throw new HttpsError("invalid-argument", "Email mancante.");
+  // Stessa risposta di sempre anche oltre il limite: non si rivela nulla.
+  if (await superaLimite(`attivazione:${email}`, 3, 60 * 60 * 1000)) return { ok: true };
 
   const snap = await db.collection("soci").where("email", "==", email).where("attivo", "==", true).limit(1).get();
   if (!snap.empty) {
@@ -2561,6 +2584,7 @@ exports.richiediAttivazioneEmail = onCall({ secrets: MAIL_SECRETS }, async (requ
 exports.richiediResetPassword = onCall({ secrets: MAIL_SECRETS }, async (request) => {
   const email = (request.data?.email || "").trim();
   if (!email) throw new HttpsError("invalid-argument", "Email mancante.");
+  if (await superaLimite(`reset:${email.toLowerCase()}`, 3, 60 * 60 * 1000)) return { ok: true };
 
   try {
     const link = await getAuth().generatePasswordResetLink(email, { url: `${APP_URL}index.html` });
@@ -2990,7 +3014,7 @@ exports.inviaInvitoAzienda = onCall({ secrets: MAIL_SECRETS }, async (request) =
       to: user.email,
       subject: `Benvenuto in Sport-OS come Partner — ${nomeCentro}`,
       html: `<p>Ciao ${user.nome || ""},</p>`
-        + `<p><strong>${azienda.nome}</strong> è ora un'azienda convenzionata con ${nomeCentro}! Da qui i tuoi dipendenti potranno prenotare i campi alla tariffa concordata.</p>`
+        + `<p><strong>${escapeHtmlBase(azienda.nome)}</strong> è ora un'azienda convenzionata con ${escapeHtmlBase(nomeCentro)}! Da qui i tuoi dipendenti potranno prenotare i campi alla tariffa concordata.</p>`
         + `<p>Accedi al tuo portale aziendale per gestire i dipendenti e vedere i consumi:<br><a href="${portaleUrl}">${portaleUrl}</a></p>`
         + `<p>Per impostare la tua password, tocca questo link:<br><a href="${link}">${link}</a></p>`
         + `<p>Email di accesso: ${user.email}</p>`
@@ -3095,7 +3119,7 @@ exports.inviaInvitoDipendente = onCall({ secrets: MAIL_SECRETS }, async (request
     await inviaEmail({
       to: socio.email,
       subject: `Il tuo accesso a Sport-OS — ${nomeAzienda}`,
-      html: `<p>Ciao ${socio.nome || ""},</p>`
+      html: `<p>Ciao ${escapeHtmlBase(socio.nome || "")},</p>`
         + `<p><strong>${nomeAzienda}</strong> ti ha registrato per prenotare i campi alla tariffa aziendale convenzionata.</p>`
         + `<p>Tocca questo link per attivare il tuo accesso:<br><a href="${link}">${link}</a></p>`
         + `<p>Il link è valido una sola volta.</p>`
@@ -3447,7 +3471,7 @@ exports.richiediRicaricaSuFattura = onCall({ secrets: MAIL_SECRETS }, async (req
       await inviaEmail({
         to: centro.email,
         subject: `Richiesta ricarica su fattura — ${azienda.nome}`,
-        html: `<p><strong>${azienda.nome}</strong> ha richiesto una ricarica di credito da CHF ${importo.toFixed(2)}, da pagare su fattura.</p>`
+        html: `<p><strong>${escapeHtmlBase(azienda.nome)}</strong> ha richiesto una ricarica di credito da CHF ${importo.toFixed(2)}, da pagare su fattura.</p>`
           + `<p>Attendere il bonifico, poi confermare la ricarica dal pannello Configurazione → Aziende per attivare il credito.</p>`
       });
     } catch (err) {
@@ -5128,6 +5152,16 @@ exports.registraGiocatorePadel = onCall({ secrets: MAIL_SECRETS }, async (reques
   if (!emailValidaServer(email)) {
     throw new HttpsError("invalid-argument", "Email non valida.");
   }
+  // Tetto contro registrazioni in massa e mail di verifica verso indirizzi altrui.
+  const ipRichiedente = (request.rawRequest && request.rawRequest.ip) || "sconosciuto";
+  if (await superaLimite(`regpadel-email:${String(email).toLowerCase()}`, 3, 60 * 60 * 1000)
+    || await superaLimite(`regpadel-ip:${ipRichiedente}`, 10, 60 * 60 * 1000)) {
+    throw new HttpsError("resource-exhausted", "Troppi tentativi: riprova tra un'ora.");
+  }
+  // Lunghezze massime: nome e cognome finiscono nelle email e nelle schede staff.
+  if (String(nome).length > 60 || String(cognome).length > 60) {
+    throw new HttpsError("invalid-argument", "Nome o cognome troppo lunghi.");
+  }
   // Obbligatorio — chi vuole restare identificabile col proprio nome vero
   // lo scrive lui stesso come pseudonimo. Verificato prima di toccare
   // Auth/Firestore, per non creare un'identità orfana su un rifiuto.
@@ -5421,7 +5455,7 @@ exports.proponiSessionePadel = onCall({ secrets: MAIL_SECRETS }, async (request)
       inviaEmail({
         to: emailInvitato,
         subject: "Invito a una partita di Padel — Sport-OS",
-        html: `<p>${giocatore.nome} ${giocatore.cognome} ti propone una sessione di gioco il ${date} alle ${startTime} presso il campo Padel.</p>`
+        html: `<p>${escapeHtmlBase(giocatore.nome)} ${escapeHtmlBase(giocatore.cognome)} ti propone una sessione di gioco il ${date} alle ${startTime} presso il campo Padel.</p>`
           + `<p>Conferma la tua presenza toccando il link qui sotto — puoi anche segnalare che non puoi partecipare:</p>`
           + `<p><a href="${link}">${link}</a></p>`
           + `<p>Puoi controllare in ogni momento chi ha aderito, a questo link:</p>`
