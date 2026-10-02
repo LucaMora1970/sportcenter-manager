@@ -1368,7 +1368,7 @@ select:focus, input:focus, textarea:focus {
   border: 1px solid var(--court-blue-700);
   border-radius: var(--radius);
   width: 100%;
-  max-width: 640px;
+  max-width: 920px;
   padding: var(--gap);
   margin: auto;
 }
@@ -1380,3 +1380,13 @@ select:focus, input:focus, textarea:focus {
   margin-bottom: 12px;
 }
 .modal-head h2 { font-size: 1.1rem; }
+/* Bottone di chiusura dei modal: piccolo, non a tutta larghezza come .btn */
+.modal-close {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  flex: 0 0 auto;
+  font-size: 0.8rem;
+  line-height: 1;
+  border-radius: 6px;
+}
