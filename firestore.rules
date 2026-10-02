@@ -494,8 +494,18 @@ service cloud.firestore {
     // Cloud Functions (emettiFattura ecc.), così la numerazione resta
     // continua e uno snapshot emesso non si altera da browser. Il
     // contatore (fattureContatori) non ha regole: solo server.
+    // La configurazione (creditore, IBAN) si legge da chi ha fatture:gestisci
+    // ma si scrive SOLO dalla Cloud Function salvaConfigFatture (storico di
+    // ogni modifica, cambio IBAN solo admin): un IBAN cambiato da browser
+    // dirotterebbe i pagamenti di tutte le fatture successive.
     match /fattureConfig/{id} {
-      allow read, write: if hasPermission("fatture:gestisci");
+      allow read: if hasPermission("fatture:gestisci");
+      allow write: if false;
+
+      match /storico/{storicoId} {
+        allow read: if hasPermission("fatture:gestisci");
+        allow write: if false;
+      }
     }
     match /fatture/{id} {
       allow read: if hasPermission("fatture:gestisci");

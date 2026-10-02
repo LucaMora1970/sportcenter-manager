@@ -5899,6 +5899,50 @@ function verificaConfigFatture(cfg) {
   return { creditore: c, iban, tipoRiferimento: tipo };
 }
 
+// Configurazione fatture (creditore, IBAN, tipo di riferimento...). Prima si
+// scriveva dal browser: chi aveva il permesso Fatture poteva cambiare l'IBAN
+// e le fatture successive avrebbero pagato un altro conto, senza traccia.
+// Ora passa da qui: ogni modifica lascia una riga in fattureConfig/main/storico
+// (chi, quando, valori prima/dopo) e il CAMBIO di IBAN è riservato
+// all'amministratore (la prima configurazione, quando non esiste ancora,
+// può farla chi ha il permesso Fatture).
+exports.salvaConfigFatture = onCall(async (request) => {
+  const { userData } = await richiediPermessoFatture(request);
+  const { isAdmin } = await permessiUtente(request.auth.uid);
+  const d = request.data || {};
+  const nuova = {
+    creditore: indirizzoPulito(d.creditore || {}),
+    telefono: testoPulito(d.telefono, 40),
+    email: testoPulito(d.email, 120),
+    iban: String(d.iban || "").replace(/\s+/g, "").toUpperCase(),
+    tipoRiferimento: ["SCOR", "QRR", "NON"].includes(d.tipoRiferimento) ? d.tipoRiferimento : "SCOR",
+    giorniScadenza: Math.min(365, Math.max(0, Math.round(Number(d.giorniScadenza) || 0))),
+    notaIva: testoPulito(d.notaIva, 200),
+    pieDiPagina: testoPulito(d.pieDiPagina, 300)
+  };
+  verificaConfigFatture(nuova); // stessi controlli dell'emissione (IBAN, QRR/SCOR, dati creditore)
+
+  const ref = db.collection("fattureConfig").doc("main");
+  const daNome = (userData && userData.nome) || "";
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const vecchia = snap.exists ? snap.data() : null;
+    const ibanVecchio = vecchia ? String(vecchia.iban || "").replace(/\s+/g, "").toUpperCase() : null;
+    if (vecchia && ibanVecchio !== nuova.iban && !isAdmin) {
+      throw new HttpsError("permission-denied", "Solo un amministratore può cambiare l'IBAN: le fatture successive pagherebbero un altro conto.");
+    }
+    tx.set(ref, { ...nuova, updatedAt: FieldValue.serverTimestamp(), updatedBy: request.auth.uid });
+    tx.set(ref.collection("storico").doc(), {
+      daUid: request.auth.uid, daNome,
+      ibanPrima: ibanVecchio, ibanDopo: nuova.iban,
+      riferimentoPrima: vecchia ? vecchia.tipoRiferimento || null : null, riferimentoDopo: nuova.tipoRiferimento,
+      creditorePrima: vecchia && vecchia.creditore ? vecchia.creditore.nome || null : null, creditoreDopo: nuova.creditore.nome,
+      at: FieldValue.serverTimestamp()
+    });
+  });
+  return { ok: true };
+});
+
 // Righe validate e arrotondate (input del client mai fidato).
 function righeFatturaPulite(righeIn) {
   if (!Array.isArray(righeIn) || righeIn.length === 0) throw new HttpsError("invalid-argument", "Aggiungi almeno una riga.");
@@ -5958,7 +6002,19 @@ async function emettiFattureCore(request, userData, dati, voci) {
   const daNome = (userData && userData.nome) || "";
   const gruppoId = voci.length > 1 ? db.collection("fatture").doc().id : null;
 
+  // Anti doppio clic / nuovo tentativo dopo un errore di rete: il browser
+  // manda un richiestaId casuale; se quella richiesta (dello stesso utente)
+  // ha già emesso, si restituisce l'esito di allora invece di emettere una
+  // seconda fattura con un altro numero. Senza richiestaId (client vecchi)
+  // nessuna protezione, come prima.
+  const richiestaId = /^[A-Za-z0-9_-]{8,64}$/.test(String(dati.richiestaId || "")) ? String(dati.richiestaId) : null;
+  const richiestaRef = richiestaId ? db.collection("fattureRichieste").doc(`${request.auth.uid}_${richiestaId}`) : null;
+
   const emesse = await db.runTransaction(async (tx) => {
+    if (richiestaRef) {
+      const gia = await tx.get(richiestaRef);
+      if (gia.exists) return gia.data().emesse;
+    }
     const cSnap = await tx.get(contatoreRef);
     const campo = "anno_" + anno;
     let progressivo = (cSnap.exists ? cSnap.data()[campo] : 0) || 0;
@@ -6013,6 +6069,7 @@ async function emettiFattureCore(request, userData, dati, voci) {
     });
 
     tx.set(contatoreRef, { [campo]: progressivo }, { merge: true });
+    if (richiestaRef) tx.set(richiestaRef, { emesse: risultato, daUid: request.auth.uid, createdAt: FieldValue.serverTimestamp() });
     return risultato;
   });
   return emesse;

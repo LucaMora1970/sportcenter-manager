@@ -29,6 +29,13 @@ let clienteInModificaAllievi = [];
 // { clienteId, destinatario, percentuale }, impostato dal precompilato di
 // Fatturazione corsi. Se presente, si emettono più fatture in una volta.
 let ripartizione = null;
+// Identificativo della richiesta di emissione: stesso valore per i nuovi
+// tentativi (doppio clic, errore di rete), così il server non emette due
+// volte; si rigenera solo dopo un'emissione riuscita.
+let richiestaEmissioneId = null;
+function nuovaRichiestaId() {
+  return (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).slice(2, 12));
+}
 
 const STATI_LABEL = { emessa: "Emessa", inviata: "Inviata", pagata: "Pagata", annullata: "Annullata" };
 
@@ -160,12 +167,11 @@ async function salvaConfig(e) {
     tipoRiferimento: tipo,
     giorniScadenza: Math.max(0, parseInt(val("cfg-giorni"), 10) || 0),
     notaIva: val("cfg-nota-iva"),
-    pieDiPagina: val("cfg-piede"),
-    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-    updatedBy: currentProfile.uid
+    pieDiPagina: val("cfg-piede")
   };
   try {
-    await db.collection("fattureConfig").doc("main").set(dati);
+    // La scrittura passa dalla Cloud Function (storico, IBAN solo admin).
+    await cloudFunctions().httpsCallable("salvaConfigFatture")(dati);
     configCorrente = dati;
     document.getElementById("cfg-iban").value = formattaIban(iban);
     errEl.innerHTML = "";
@@ -412,6 +418,10 @@ function apriModalNuova() {
 }
 
 function chiudiModalNuova() {
+  // Chiudere il modal chiude anche la "richiesta": una fattura nuova aperta
+  // dopo avrà un identificativo nuovo (quello di un tentativo andato storto
+  // non deve far restituire una fattura diversa).
+  richiestaEmissioneId = null;
   document.getElementById("nuova-modal").classList.add("hidden");
   document.body.style.overflow = "";
 }
@@ -467,6 +477,7 @@ async function emettiFattura(e) {
   btn.disabled = true;
   mostraCaricamento("Emetto la fattura…");
   try {
+    if (!richiestaEmissioneId) richiestaEmissioneId = nuovaRichiestaId();
     const diviso = Array.isArray(ripartizione) && ripartizione.length > 1;
     const destinatario = {
       nome: val("dest-nome"), via: val("dest-via"), civico: val("dest-civico"),
@@ -476,7 +487,8 @@ async function emettiFattura(e) {
     if (diviso) {
       const res = await cloudFunctions().httpsCallable("emettiFattureRipartite")({
         quote: ripartizione.map(r => ({ clienteId: r.clienteId, destinatario: r.destinatario, percentuale: r.percentuale })),
-        oggetto: val("fat-oggetto"), dataScadenza: scadenza, note: val("fat-note"), righe, origine: origineForm
+        oggetto: val("fat-oggetto"), dataScadenza: scadenza, note: val("fat-note"), righe, origine: origineForm,
+        richiestaId: richiestaEmissioneId
       });
       idsEmessi = res.data.fatture.map(f => f.id);
     } else {
@@ -492,7 +504,8 @@ async function emettiFattura(e) {
       }
       const res = await cloudFunctions().httpsCallable("emettiFattura")({
         destinatario, clienteId,
-        oggetto: val("fat-oggetto"), dataScadenza: scadenza, note: val("fat-note"), righe, origine: origineForm
+        oggetto: val("fat-oggetto"), dataScadenza: scadenza, note: val("fat-note"), righe, origine: origineForm,
+        richiestaId: richiestaEmissioneId
       });
       idsEmessi = [res.data.id];
     }
@@ -505,6 +518,7 @@ async function emettiFattura(e) {
     origineForm = null;
     ripartizione = null;
     clienteSelezionatoId = null;
+    richiestaEmissioneId = null;
     renderRighe();
     chiudiModalNuova();
     await caricaFatture();
