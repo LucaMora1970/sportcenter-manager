@@ -602,6 +602,75 @@ function stampaListatoAllievo(id) {
   window.print();
 }
 
+// ---------- Email a tutti gli iscritti (CCN, invio dal server) ----------
+
+function popolaPannelloEmail() {
+  const selD = document.getElementById("email-disciplina");
+  const discipline = (typeof DISCIPLINE !== "undefined" && DISCIPLINE.length) ? DISCIPLINE : [{ id: "tennis", label: "Tennis" }];
+  selD.innerHTML = discipline.map(d => `<option value="${escapeHtml(d.id)}">${escapeHtml(d.label || d.nome || d.id)}</option>`).join("");
+  if (discipline.some(d => d.id === "tennis")) selD.value = "tennis";
+  aggiornaCorsiEmail();
+}
+
+function aggiornaCorsiEmail() {
+  const disc = document.getElementById("email-disciplina").value;
+  const sel = document.getElementById("email-corso");
+  const oggi = todayISO();
+  const corsi = corsiListaCache.filter(c => c.disciplina === disc && (!c.al || c.al >= oggi));
+  sel.innerHTML = `<option value="">Tutti i corsi in corso o futuri</option>` +
+    corsi.map(c => `<option value="${c.id}">${escapeHtml(c.nome || c.id)}</option>`).join("");
+  aggiornaConteggioEmail();
+}
+
+function parametriEmail() {
+  const corsoId = document.getElementById("email-corso").value;
+  return {
+    disciplina: document.getElementById("email-disciplina").value,
+    corsoId: corsoId || null,
+    includiInAttesa: document.getElementById("email-in-attesa").checked,
+    copiaStaff: document.getElementById("email-copia-staff").checked
+  };
+}
+
+async function aggiornaConteggioEmail() {
+  const el = document.getElementById("email-conteggio");
+  el.textContent = "Conteggio destinatari…";
+  try {
+    const res = await cloudFunctions().httpsCallable("inviaEmailAllievi")({ ...parametriEmail(), soloConteggio: true });
+    el.textContent = `${res.data.destinatari} indirizzi email distinti (${res.data.corsi} corsi)` + (res.data.staff ? ` + ${res.data.staff} staff in copia.` : ".");
+  } catch (err) {
+    el.textContent = "Impossibile contare i destinatari: " + (err.message || err);
+  }
+}
+
+async function onInviaEmailAllievi() {
+  const btn = document.getElementById("email-invia-btn");
+  const errorEl = document.getElementById("email-error");
+  errorEl.textContent = "";
+  const oggetto = document.getElementById("email-oggetto").value.trim();
+  const testo = document.getElementById("email-testo").value.trim();
+  if (!oggetto || !testo) { showError(errorEl, "Oggetto e messaggio sono obbligatori."); return; }
+  if (!confirm("Inviare ora l'email a tutti i destinatari? Non si può annullare.\n\n" + document.getElementById("email-conteggio").textContent)) return;
+
+  btn.disabled = true;
+  mostraCaricamento("Invio email…");
+  try {
+    const res = await cloudFunctions().httpsCallable("inviaEmailAllievi")({ ...parametriEmail(), oggetto, testo });
+    const d = res.data || {};
+    nascondiCaricamento();
+    if (d.nessunDestinatario) {
+      alert("Nessun destinatario con email valida.");
+    } else {
+      alert(`Email inviate a ${d.inviati} indirizzi${d.falliti ? ` — falliti: ${d.falliti}` : ""}.`);
+      if (!d.falliti) { document.getElementById("email-oggetto").value = ""; document.getElementById("email-testo").value = ""; }
+    }
+  } catch (err) {
+    nascondiCaricamento();
+    showError(errorEl, "Errore nell'invio: " + (err.message || err));
+  }
+  btn.disabled = false;
+}
+
 // ---------- Init ----------
 
 requireAuth(async (profile) => {
@@ -615,9 +684,17 @@ requireAuth(async (profile) => {
   }
 
   await loadDatiCentro();
+  await loadDiscipline();
   await Promise.all([caricaAllievi(), caricaIndiceIscrizioni()]);
   popolaFiltroCorso();
   renderAllieviList();
+
+  popolaPannelloEmail();
+  document.getElementById("email-disciplina").addEventListener("change", aggiornaCorsiEmail);
+  document.getElementById("email-corso").addEventListener("change", aggiornaConteggioEmail);
+  document.getElementById("email-in-attesa").addEventListener("change", aggiornaConteggioEmail);
+  document.getElementById("email-copia-staff").addEventListener("change", aggiornaConteggioEmail);
+  document.getElementById("email-invia-btn").addEventListener("click", onInviaEmailAllievi);
 
   let ricercaTimeout = null;
   document.getElementById("allievi-search-input").addEventListener("input", () => {

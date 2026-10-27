@@ -320,6 +320,12 @@ service cloud.firestore {
       allow read, write: if hasPermission("vendite:gestisci");
     }
 
+    // Indirizzi email interni (copia in CCN delle comunicazioni agli allievi):
+    // NON in "impostazioni" perché quella collection è leggibile da tutti.
+    match /configEmail/{id} {
+      allow read, write: if hasPermission("config:gestisci");
+    }
+
     // Impostazioni generali (doc "generale": minutiEliminazioneDiario; doc
     // "tariffePadel": prezzi campo). Lettura pubblica perché la pagina
     // pubblica di prenotazione padel, senza login, deve poter mostrare il

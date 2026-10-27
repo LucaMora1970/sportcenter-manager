@@ -4833,6 +4833,111 @@ exports.avvisaIscrittiPianificazione = onCall(
   }
 );
 
+// Email unica agli iscritti dei corsi (tutti i corsi di una disciplina,
+// oppure uno solo), con i destinatari in CCN: ognuno vede solo il centro
+// come mittente/destinatario. Pensata per le comunicazioni generali
+// (es. avvisi a tutti gli allievi di tennis): gli indirizzi sono quelli
+// indicati in iscrizione, di solito dei genitori. Con soloConteggio
+// restituisce solo il numero di destinatari (anteprima, nessun invio).
+// Invii a blocchi per non superare il limite di destinatari per messaggio
+// dei server SMTP; ogni invio viene registrato in "emailAllievi".
+exports.inviaEmailAllievi = onCall(
+  { secrets: MAIL_SECRETS, timeoutSeconds: 300 },
+  async (request) => {
+    if (!request.auth) throw new HttpsError("unauthenticated", "Devi essere loggato.");
+    const { userData, permessi, isAdmin } = await permessiUtente(request.auth.uid);
+    if (!isAdmin && !permessi.includes("iscrizioni:gestisci") && !permessi.includes("allievi:gestisci")) {
+      throw new HttpsError("permission-denied", "Permesso mancante.");
+    }
+
+    const { disciplina, corsoId, includiInAttesa, copiaStaff, oggetto, testo, soloConteggio } = request.data || {};
+    if (!disciplina && !corsoId) throw new HttpsError("invalid-argument", "Scegli una disciplina o un corso.");
+
+    // Corsi in corso o futuri (quelli già finiti non ricevono comunicazioni).
+    const oggi = oggiZurigo();
+    let corsi;
+    if (corsoId) {
+      const s = await db.collection("corsi").doc(String(corsoId)).get();
+      if (!s.exists) throw new HttpsError("not-found", "Corso non trovato.");
+      corsi = [{ id: s.id, ...s.data() }];
+    } else {
+      const s = await db.collection("corsi").where("disciplina", "==", String(disciplina)).get();
+      corsi = s.docs.map(d => ({ id: d.id, ...d.data() })).filter(c => !c.al || c.al >= oggi);
+    }
+
+    const stati = includiInAttesa ? ["confermata", "in_attesa"] : ["confermata"];
+    const iscrSnaps = await Promise.all(corsi.map(c =>
+      db.collection("iscrizioniCorsi").where("corsoId", "==", c.id).where("stato", "in", stati).get()
+    ));
+    const indirizzi = new Map(); // email minuscola -> email (deduplica: un genitore con più figli riceve un solo messaggio)
+    iscrSnaps.forEach(s => s.docs.forEach(d => {
+      const e = String(d.data().email || "").trim();
+      if (/^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$/.test(e)) indirizzi.set(e.toLowerCase(), e);
+    }));
+    const lista = [...indirizzi.values()];
+
+    // Copia allo staff (elenco in configEmail/copiaStaff, staff-only):
+    // in CCN come gli altri, senza duplicare chi è già in lista.
+    let staff = [];
+    if (copiaStaff) {
+      const sSnap = await db.collection("configEmail").doc("copiaStaff").get();
+      staff = ((sSnap.exists && sSnap.data().indirizzi) || [])
+        .filter(e => typeof e === "string" && !indirizzi.has(e.toLowerCase()));
+    }
+
+    if (soloConteggio) return { destinatari: lista.length, staff: staff.length, corsi: corsi.length };
+    if (lista.length === 0) return { inviati: 0, falliti: 0, nessunDestinatario: true };
+
+    const subject = String(oggetto || "").trim();
+    const corpo = String(testo || "").trim();
+    if (!subject) throw new HttpsError("invalid-argument", "L'oggetto è vuoto.");
+    if (!corpo) throw new HttpsError("invalid-argument", "Il testo del messaggio è vuoto.");
+    if (subject.length > 200 || corpo.length > 10000) throw new HttpsError("invalid-argument", "Messaggio troppo lungo.");
+
+    const centroSnap = await db.collection("impostazioni").doc("centro").get();
+    const centro = centroSnap.exists ? centroSnap.data() : {};
+    const replyTo = centro.email || undefined;
+    const firma = centro.nome || "Sport-OS";
+    const from = MAIL_FROM.value();
+    const html = corpo.split(/\n{2,}/)
+      .map(p => `<p>${escapeHtmlBase(p).replace(/\n/g, "<br>")}</p>`)
+      .join("") + `<p>—<br>${escapeHtmlBase(firma)}</p>`;
+
+    const transporter = mailTransporter();
+    const BLOCCO = 40;
+    let inviati = 0;
+    const dettaglioFalliti = [];
+    const tutti = [...lista, ...staff];
+    for (let i = 0; i < tutti.length; i += BLOCCO) {
+      const blocco = tutti.slice(i, i + BLOCCO);
+      try {
+        await transporter.sendMail({ from, to: replyTo || from, bcc: blocco, subject, html, replyTo });
+        inviati += blocco.length;
+      } catch (err) {
+        blocco.forEach(email => dettaglioFalliti.push({ email, errore: err && err.message ? err.message : String(err) }));
+      }
+    }
+
+    await db.collection("emailAllievi").add({
+      createdAt: FieldValue.serverTimestamp(),
+      daUid: request.auth.uid,
+      daNome: (userData && userData.nome) || null,
+      disciplina: corsoId ? null : String(disciplina),
+      corsoId: corsoId ? String(corsoId) : null,
+      includiInAttesa: !!includiInAttesa,
+      oggetto: subject,
+      testo: corpo,
+      copiaStaff: !!copiaStaff,
+      destinatariStaff: staff.length,
+      destinatari: lista.length,
+      inviati,
+      falliti: dettaglioFalliti.length
+    });
+
+    return { inviati, falliti: dettaglioFalliti.length, dettaglioFalliti };
+  }
+);
+
 // Prima data (YYYY-MM-DD) da dataInizioStr in cui cade il giorno della
 // settimana giornoId, on/after dataInizioStr incluso. Stessa logica di
 // GIORNO_JS_DAY_ABB/generaDateAbbonamento sopra.

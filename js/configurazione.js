@@ -89,6 +89,44 @@ async function onSaveDatiCentro(e) {
   }
 }
 
+// ---------- Copia email allo staff ----------
+
+const REGEX_EMAIL_CONFIG = /^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$/;
+
+async function loadCopiaStaffForm() {
+  try {
+    const snap = await db.collection("configEmail").doc("copiaStaff").get();
+    const lista = snap.exists ? (snap.data().indirizzi || []) : [];
+    document.getElementById("copia-staff-indirizzi").value = lista.join("\n");
+  } catch (err) {
+    showError(document.getElementById("copia-staff-error"), "Impossibile leggere l'elenco: " + err.message);
+  }
+}
+
+async function onSaveCopiaStaff(e) {
+  e.preventDefault();
+  const btn = document.getElementById("salva-copia-staff-btn");
+  const errorEl = document.getElementById("copia-staff-error");
+  errorEl.textContent = "";
+  btn.disabled = true;
+  const testoBtn = btn.textContent;
+  try {
+    const grezzi = document.getElementById("copia-staff-indirizzi").value.split(/[\s,;]+/).map(x => x.trim()).filter(Boolean);
+    const errati = grezzi.filter(x => !REGEX_EMAIL_CONFIG.test(x));
+    if (errati.length) throw new Error("Indirizzo non valido: " + errati.join(", "));
+    const visti = new Set();
+    const indirizzi = grezzi.filter(x => { const k = x.toLowerCase(); if (visti.has(k)) return false; visti.add(k); return true; });
+    await db.collection("configEmail").doc("copiaStaff").set({ indirizzi });
+    document.getElementById("copia-staff-indirizzi").value = indirizzi.join("\n");
+    btn.textContent = "Salvato ✓";
+    setTimeout(() => { btn.textContent = testoBtn; }, 1800);
+  } catch (err) {
+    showError(errorEl, "Errore: " + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // ---------- Impostazioni generali ----------
 
 // Il testo iniziale (segnaposto scritto in fase di sviluppo, mai
@@ -2538,6 +2576,7 @@ requireAuth(async (profile) => {
     .join("");
 
   document.getElementById("centro-form").addEventListener("submit", onSaveDatiCentro);
+  document.getElementById("copia-staff-form").addEventListener("submit", onSaveCopiaStaff);
   document.getElementById("impostazioni-form").addEventListener("submit", onSaveImpostazioni);
   document.getElementById("new-festivo-form").addEventListener("submit", onAggiungiFestivo);
   document.getElementById("new-disciplina-form").addEventListener("submit", onCreateDisciplina);
@@ -2592,6 +2631,7 @@ requireAuth(async (profile) => {
 
   await loadImpostazioniForm();
   await loadDatiCentroForm();
+  await loadCopiaStaffForm();
   await loadDisciplineList();
   await loadFotoDisciplineForm();
   await loadSponsorList();

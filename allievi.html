@@ -61,6 +61,36 @@
       <div class="allievi-layout">
       <div class="allievi-col-list">
 
+      <details id="email-panel" style="margin-bottom:14px;">
+        <summary style="cursor:pointer;font-weight:600;">✉ Scrivi a tutti gli iscritti</summary>
+        <div style="margin-top:10px;">
+          <div class="row2">
+            <div class="field">
+              <label for="email-disciplina">Disciplina</label>
+              <select id="email-disciplina"></select>
+            </div>
+            <div class="field">
+              <label for="email-corso">Corso</label>
+              <select id="email-corso"><option value="">Tutti i corsi in corso o futuri</option></select>
+            </div>
+          </div>
+          <label style="display:block;margin-bottom:8px;font-size:0.85rem;"><input type="checkbox" id="email-in-attesa"> Includi anche le iscrizioni in attesa</label>
+          <label style="display:block;margin-bottom:8px;font-size:0.85rem;"><input type="checkbox" id="email-copia-staff"> Invia copia allo staff (elenco in Configurazione)</label>
+          <p id="email-conteggio" style="color:var(--chalk-grey);font-size:0.82rem;margin:0 0 10px;"></p>
+          <div class="field">
+            <label for="email-oggetto">Oggetto</label>
+            <input type="text" id="email-oggetto" maxlength="200">
+          </div>
+          <div class="field">
+            <label for="email-testo">Messaggio</label>
+            <textarea id="email-testo" rows="7"></textarea>
+          </div>
+          <p style="color:var(--chalk-grey);font-size:0.78rem;margin:0 0 10px;">I destinatari sono in copia nascosta: nessuno vede gli indirizzi degli altri. Chi risponde scrive al centro.</p>
+          <div class="error-msg" id="email-error"></div>
+          <button type="button" class="btn" id="email-invia-btn" style="width:auto;">Invia email</button>
+        </div>
+      </details>
+
       <div class="section-title"><h2>Cerca allievo</h2></div>
       <p id="allievi-conteggio" style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 10px;"></p>
       <div class="allievi-search-row">

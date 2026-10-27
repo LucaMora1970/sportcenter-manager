@@ -81,6 +81,21 @@
       <div class="error-msg" id="config-list-error"></div>
 
       <details class="config-section">
+      <summary><h2>Copia email allo staff</h2></summary>
+      <div class="config-section-body">
+      <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Responsabili, maestri e segreteria che ricevono, in copia nascosta, le email inviate dalla pagina Allievi (quando si spunta "Invia copia allo staff"). Un indirizzo per riga, o separati da virgola.</p>
+      <form id="copia-staff-form">
+        <div class="field">
+          <label for="copia-staff-indirizzi">Indirizzi</label>
+          <textarea id="copia-staff-indirizzi" rows="5" placeholder="maestro@esempio.ch&#10;segreteria@esempio.ch"></textarea>
+        </div>
+        <div class="error-msg" id="copia-staff-error"></div>
+        <button type="submit" class="btn btn-ghost" id="salva-copia-staff-btn">Salva</button>
+      </form>
+      </div>
+      </details>
+
+      <details class="config-section">
       <summary><h2>Dati del centro</h2></summary>
       <div class="config-section-body">
       <p style="color:var(--chalk-grey);font-size:0.82rem;margin:-6px 0 14px;">Usati sul biglietto delle prenotazioni padel e sui documenti stampati (liste, panoramiche, riepiloghi).</p>
