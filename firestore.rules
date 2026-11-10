@@ -594,10 +594,11 @@ service cloud.firestore {
         || hasPermission("iscrizioni:gestisci")
         || hasPermission("iscrizioni:gestisci_padel");
       allow update: if hasPermission("allievi:gestisci");
-      // Eliminazione riservata al vero amministratore (isAdmin(), non solo
-      // al permesso allievi:gestisci): evita che chi ha solo quel permesso
-      // cancelli per errore profili collegati a storico iscrizioni/pagamenti.
-      allow delete: if isAdmin();
+      // Eliminazione riservata al vero amministratore o a chi ha il
+      // permesso dedicato allievi:elimina (non basta allievi:gestisci):
+      // evita che chi ha solo quel permesso cancelli per errore profili
+      // collegati a storico iscrizioni/pagamenti.
+      allow delete: if isAdmin() || hasPermission("allievi:elimina");
 
       // Log delle comunicazioni con l'allievo (telefonate, email...): dato
       // sensibile quanto l'anagrafica, riservato a chi la gestisce davvero.

@@ -367,10 +367,10 @@ function renderComunicazioniAllievo() {
 function mostraAllievo(allievo) {
   popolaFormAllievo(allievo);
   document.getElementById("allievo-form-title").querySelector("h2").textContent = `Modifica ${allievo.nome} ${allievo.cognome}`;
-  // Eliminazione riservata al vero admin — vedi firestore.rules, stessa
-  // regola: chi ha solo allievi:gestisci non deve nemmeno vedere il
-  // bottone, non solo essere bloccato al click.
-  document.getElementById("allievo-delete-btn").classList.toggle("hidden", !isAdmin(currentProfile));
+  // Eliminazione riservata ad admin o a chi ha allievi:elimina — vedi
+  // firestore.rules: chi ha solo allievi:gestisci non deve nemmeno vedere
+  // il bottone, non solo essere bloccato al click.
+  document.getElementById("allievo-delete-btn").classList.toggle("hidden", !hasPermission(currentProfile, "allievi:elimina"));
   document.getElementById("allievo-stampa-btn").classList.remove("hidden");
   document.getElementById("allievo-detail").classList.remove("hidden");
   // Anche su desktop (≥900px, pannello a fianco della lista in
